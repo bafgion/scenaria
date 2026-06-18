@@ -24,6 +24,14 @@ def _release_payload():
 
 
 @patch("app.version.app_version", return_value="0.2.0")
+def test_check_for_updates_requests_full_github_url(_version):
+    with patch("app.update.checker._request_json") as mock_request:
+        mock_request.return_value = _release_payload() | {"tag_name": "v0.2.0"}
+        check_for_updates()
+    mock_request.assert_called_once_with("https://api.github.com/repos/bafgion/scenaria/releases/latest")
+
+
+@patch("app.version.app_version", return_value="0.2.0")
 @patch("app.update.checker._request_json")
 def test_check_for_updates_finds_newer(mock_request, _version):
     mock_request.return_value = _release_payload()

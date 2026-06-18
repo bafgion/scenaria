@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
@@ -27,8 +27,8 @@ from app.scenario_hints import gherkin_template_text
 from app.qt.branding import about_text, brand_mark_pixmap
 from app.brand import BRAND_NAME
 from app.qt.update_ui import (
-    UpdateCheckWorker,
-    UpdateDownloadWorker,
+    UpdateCheckRunner,
+    UpdateDownloadRunner,
     current_version_label,
     updates_supported,
 )
@@ -925,26 +925,19 @@ class MainWindow(QMainWindow):
         self._check_updates(silent=False)
 
     def _check_updates(self, *, silent: bool, skip_version: str = "") -> None:
-        thread = getattr(self, "_update_thread", None)
-        if thread is not None:
-            if thread.isRunning():
-                if not silent:
-                    alert(self, BRAND_NAME, "Проверка обновлений уже выполняется…")
-                return
-            self._cleanup_update_check_thread()
+        if getattr(self, "_update_check_running", False):
+            if not silent:
+                alert(self, BRAND_NAME, "Проверка обновлений уже выполняется…")
+            return
 
+        self._update_check_running = True
         if not silent:
-            self._show_update_wait_dialog()
+            self.status_bar.set_message("Проверка обновлений…", "info")
 
-        self._update_thread = QThread(self)
-        self._update_worker = UpdateCheckWorker()
-        self._update_worker.moveToThread(self._update_thread)
-        self._update_thread.started.connect(self._update_worker.run)
-        self._update_worker.finished.connect(
+        self._update_runner = UpdateCheckRunner(self)
+        self._update_runner.finished.connect(
             lambda info, error: self._on_update_check_finished(info, error, silent=silent, skip_version=skip_version)
         )
-        self._update_worker.finished.connect(self._update_thread.quit)
-        self._update_thread.finished.connect(self._cleanup_update_check_thread)
         if not silent:
             self._update_check_watchdog = QTimer(self)
             self._update_check_watchdog.setSingleShot(True)
@@ -952,26 +945,7 @@ class MainWindow(QMainWindow):
                 lambda: self._on_update_check_timeout(silent=silent)
             )
             self._update_check_watchdog.start(45_000)
-        self._update_thread.start()
-        if not silent:
-            self.status_bar.set_message("Проверка обновлений…", "info")
-
-    def _show_update_wait_dialog(self) -> None:
-        self._close_update_wait_dialog()
-        box = QMessageBox(self)
-        box.setWindowTitle(BRAND_NAME)
-        box.setText("Проверка обновлений…")
-        box.setStandardButtons(QMessageBox.StandardButton.NoButton)
-        box.setModal(False)
-        box.show()
-        self._update_wait_dialog = box
-
-    def _close_update_wait_dialog(self) -> None:
-        box = getattr(self, "_update_wait_dialog", None)
-        if box is not None:
-            box.close()
-            box.deleteLater()
-            self._update_wait_dialog = None
+        self._update_runner.start()
 
     def _stop_update_check_watchdog(self) -> None:
         watchdog = getattr(self, "_update_check_watchdog", None)
@@ -981,24 +955,19 @@ class MainWindow(QMainWindow):
             self._update_check_watchdog = None
 
     def _on_update_check_timeout(self, *, silent: bool) -> None:
-        if silent:
+        if silent or not getattr(self, "_update_check_running", False):
             return
-        if getattr(self, "_update_thread", None) is not None and self._update_thread.isRunning():
-            alert(
-                self,
-                BRAND_NAME,
-                "Проверка обновлений заняла слишком много времени. "
-                "Проверьте доступ к github.com и повторите попытку.",
-            )
-        self._close_update_wait_dialog()
-
-    def _cleanup_update_check_thread(self) -> None:
-        self._update_thread = None
-        self._update_worker = None
+        alert(
+            self,
+            BRAND_NAME,
+            "Проверка обновлений заняла слишком много времени. "
+            "Проверьте доступ к github.com и повторите попытку.",
+        )
 
     def _on_update_check_finished(self, info, error: str | None, *, silent: bool, skip_version: str) -> None:
+        self._update_check_running = False
+        self._update_runner = None
         self._stop_update_check_watchdog()
-        self._close_update_wait_dialog()
         if error:
             if not silent:
                 alert(self, BRAND_NAME, error)
@@ -1038,7 +1007,7 @@ class MainWindow(QMainWindow):
             save_settings(settings)
 
     def _start_update_download(self, info) -> None:
-        if getattr(self, "_download_thread", None) is not None:
+        if getattr(self, "_download_runner", None) is not None:
             return
 
         progress = QMessageBox(self)
@@ -1048,15 +1017,10 @@ class MainWindow(QMainWindow):
         progress.show()
 
         self._download_progress = progress
-        self._download_thread = QThread(self)
-        self._download_worker = UpdateDownloadWorker(info)
-        self._download_worker.moveToThread(self._download_thread)
-        self._download_thread.started.connect(self._download_worker.run)
-        self._download_worker.progress.connect(self._on_update_download_progress)
-        self._download_worker.finished.connect(self._on_update_download_finished)
-        self._download_worker.finished.connect(self._download_thread.quit)
-        self._download_thread.finished.connect(self._cleanup_update_download_thread)
-        self._download_thread.start()
+        self._download_runner = UpdateDownloadRunner(info)
+        self._download_runner.progress.connect(self._on_update_download_progress)
+        self._download_runner.finished.connect(self._on_update_download_finished)
+        self._download_runner.start()
 
     def _on_update_download_progress(self, done: int, total: int) -> None:
         if not getattr(self, "_download_progress", None):
@@ -1065,15 +1029,12 @@ class MainWindow(QMainWindow):
         self._download_progress.setText(f"Скачивание… {percent}%")
 
     def _on_update_download_finished(self, error: str | None) -> None:
+        self._download_runner = None
         if getattr(self, "_download_progress", None):
             self._download_progress.close()
             self._download_progress = None
         if error:
             alert(self, BRAND_NAME, error)
-
-    def _cleanup_update_download_thread(self) -> None:
-        self._download_thread = None
-        self._download_worker = None
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._browser_watch_timer.stop()

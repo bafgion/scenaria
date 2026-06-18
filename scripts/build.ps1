@@ -46,7 +46,9 @@ Get-ChildItem $PlaywrightLocal -Directory | Where-Object {
 }
 
 New-Item -ItemType Directory -Path (Join-Path $Dist "data") -Force | Out-Null
-Set-Content -Path (Join-Path $Dist "version.txt") -Value $Version -Encoding UTF8
+$versionPath = Join-Path $Dist "version.txt"
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($versionPath, $Version, $utf8NoBom)
 
 function Get-FolderSizeMb {
     param([string]$Path)

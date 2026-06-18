@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -15,6 +16,10 @@ from pathlib import Path
 from app.brand import BRAND_NAME, EXE_NAME
 from app.paths import app_root
 from app.update.checker import UpdateAsset, UpdateCheckError
+
+_STAGING_DIR_NAME = "_update_staging"
+_LOG_NAME = "_apply_update.log"
+_BAT_NAME = "_apply_update.bat"
 
 
 def _sha256_file(path: Path) -> str:
@@ -31,18 +36,26 @@ def download_asset(asset: UpdateAsset, destination: Path, on_progress=None) -> P
 
     request = urllib.request.Request(asset.url, headers={"User-Agent": BRAND_NAME})
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(request, timeout=120) as response:
-        total = int(response.headers.get("Content-Length", "0") or 0)
-        read = 0
-        with destination.open("wb") as handle:
-            while True:
-                chunk = response.read(1024 * 256)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                read += len(chunk)
-                if on_progress and total > 0:
-                    on_progress(read, total)
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            total = int(response.headers.get("Content-Length", "0") or 0)
+            read = 0
+            with destination.open("wb") as handle:
+                while True:
+                    chunk = response.read(1024 * 256)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    read += len(chunk)
+                    if on_progress and total > 0:
+                        on_progress(read, total)
+    except urllib.error.URLError as exc:
+        raise UpdateCheckError(f"Не удалось скачать {asset.name}: {exc.reason}") from exc
+    except OSError as exc:
+        raise UpdateCheckError(
+            f"Не удалось скачать {asset.name}: {exc}. "
+            "Если браузер не открывает файлы с GitHub, попробуйте VPN или скачайте ZIP вручную."
+        ) from exc
 
     if asset.sha256 and _sha256_file(destination) != asset.sha256.lower():
         destination.unlink(missing_ok=True)
@@ -63,21 +76,47 @@ def _find_payload_root(extracted_dir: Path) -> Path:
     return exe[0].parent
 
 
+def _quote_batch_path(path: Path) -> str:
+    return str(path.resolve())
+
+
 def prepare_update_script(staging_dir: Path, install_dir: Path, exe_name: str = EXE_NAME) -> Path:
-    script_path = install_dir / "_apply_update.bat"
+    script_path = install_dir / _BAT_NAME
+    log_path = install_dir / _LOG_NAME
+    target = _quote_batch_path(install_dir)
+    staging = _quote_batch_path(staging_dir)
+    log_file = _quote_batch_path(log_path)
     lines = [
         "@echo off",
-        "setlocal",
-        f"set TARGET={install_dir}",
-        f"set STAGING={staging_dir}",
-        f"echo Updating {BRAND_NAME}...",
-        "timeout /t 2 /nobreak >nul",
-        f'robocopy "%STAGING%" "%TARGET%" /E /XD data browsers /R:2 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP >nul',
+        "setlocal EnableExtensions",
+        f'set "TARGET={target}"',
+        f'set "STAGING={staging}"',
+        f'set "LOG={log_file}"',
+        f'echo [%date% %time%] Update started >"%LOG%"',
+        ":wait_exit",
+        f'tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul',
+        "if %ERRORLEVEL%==0 (",
+        "  timeout /t 1 /nobreak >nul",
+        "  goto wait_exit",
+        ")",
+        f'echo [%date% %time%] Copying update files >>"%LOG%"',
+        (
+            f'robocopy "%STAGING%" "%TARGET%" /E /XD data browsers /R:5 /W:2 '
+            f'/NFL /NDL /NJH /NJS /NC /NS /NP >>"%LOG%" 2>&1'
+        ),
+        "set RC=%ERRORLEVEL%",
+        f'echo [%date% %time%] robocopy exit %RC% >>"%LOG%"',
+        "if %RC% GEQ 8 (",
+        f'  echo Update failed, robocopy code %RC% >>"%LOG%"',
+        "  exit /b %RC%",
+        ")",
+        f'if exist "%STAGING%" rmdir /S /Q "%STAGING%"',
+        f'echo [%date% %time%] Restarting {BRAND_NAME} >>"%LOG%"',
         f'start "" "%TARGET%\\{exe_name}"',
         "endlocal",
         "del \"%~f0\"",
     ]
-    script_path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    script_path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="strict")
     return script_path
 
 
@@ -88,25 +127,54 @@ def stage_update_package(zip_path: Path) -> Path:
     return _find_payload_root(extracted)
 
 
+def _copy_to_local_staging(source: Path, install_dir: Path) -> Path:
+    local_staging = install_dir / _STAGING_DIR_NAME
+    if local_staging.exists():
+        shutil.rmtree(local_staging, ignore_errors=True)
+    shutil.copytree(source, local_staging)
+    return local_staging
+
+
+def _launch_update_script(script: Path, install_dir: Path) -> None:
+    if os.name != "nt":
+        raise UpdateCheckError("Обновление поддерживается только в Windows")
+
+    create_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+    create_flags |= breakaway
+
+    subprocess.Popen(
+        ["cmd.exe", "/c", "start", "", "/min", str(script)],
+        cwd=str(install_dir),
+        creationflags=create_flags,
+        close_fds=True,
+    )
+    time.sleep(0.3)
+
+
 def apply_update(asset: UpdateAsset, on_progress=None) -> None:
     if not getattr(sys, "frozen", False):
         raise UpdateCheckError("Обновление доступно только в portable EXE")
 
     install_dir = app_root()
-    temp_root = Path(tempfile.mkdtemp(prefix="scenaria-download-"))
-    zip_path = temp_root / asset.name
+    download_temp = Path(tempfile.mkdtemp(prefix="scenaria-download-"))
+    zip_path = download_temp / asset.name
+    remote_staging_parent: Path | None = None
     try:
         download_asset(asset, zip_path, on_progress=on_progress)
-        staging_dir = stage_update_package(zip_path)
-        script = prepare_update_script(staging_dir, install_dir)
+        remote_staging = stage_update_package(zip_path)
+        remote_staging_parent = remote_staging.parent.parent
+        local_staging = _copy_to_local_staging(remote_staging, install_dir)
+        script = prepare_update_script(local_staging, install_dir)
     except Exception:
-        shutil.rmtree(temp_root, ignore_errors=True)
+        shutil.rmtree(download_temp, ignore_errors=True)
+        if remote_staging_parent is not None:
+            shutil.rmtree(remote_staging_parent, ignore_errors=True)
         raise
+    finally:
+        shutil.rmtree(download_temp, ignore_errors=True)
+        if remote_staging_parent is not None:
+            shutil.rmtree(remote_staging_parent, ignore_errors=True)
 
-    subprocess.Popen(
-        ["cmd.exe", "/c", str(script)],
-        cwd=str(install_dir),
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        close_fds=True,
-    )
+    _launch_update_script(script, install_dir)
     os._exit(0)

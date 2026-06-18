@@ -140,7 +140,7 @@ def _pick_assets(release: dict[str, Any]) -> tuple[UpdateAsset | None, UpdateAss
 
 
 def check_for_updates() -> UpdateInfo | None:
-    release = _request_json("/releases/latest")
+    release = _request_json(_api_url("/releases/latest"))
     version = _normalize_tag(str(release.get("tag_name", "")))
     if not version:
         raise UpdateCheckError("У релиза нет tag_name")
