@@ -58,6 +58,8 @@ def _request_json(url: str, timeout: float = 20.0) -> Any:
         raise UpdateCheckError(f"GitHub API HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         raise UpdateCheckError(f"Не удалось проверить обновления: {exc.reason}") from exc
+    except OSError as exc:
+        raise UpdateCheckError(f"Не удалось проверить обновления: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise UpdateCheckError("Некорректный ответ GitHub API") from exc
 

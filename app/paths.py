@@ -15,6 +15,18 @@ def app_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def bundled_root() -> Path:
+    """PyInstaller data root (_MEIPASS / _internal) for frozen builds."""
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass)
+        internal = app_root() / "_internal"
+        if internal.is_dir():
+            return internal
+    return app_root()
+
+
 def data_dir() -> Path:
     if getattr(sys, "frozen", False):
         path = app_root() / "data"

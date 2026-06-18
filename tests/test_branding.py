@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from app.paths import bundled_root
 from app.qt.branding import about_text, app_icon, brand_mark_pixmap, branding_dir
 from app.qt.theme import BRAND_TAGLINE
 
@@ -13,6 +16,29 @@ def qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+def test_bundled_root_uses_internal_when_frozen(monkeypatch, tmp_path):
+    internal = tmp_path / "_internal"
+    internal.mkdir()
+    exe = tmp_path / "Scenaria.exe"
+    exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe), raising=False)
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    assert bundled_root() == internal
+
+
+def test_branding_dir_frozen_layout(monkeypatch, tmp_path):
+    internal = tmp_path / "_internal" / "assets" / "branding"
+    internal.mkdir(parents=True)
+    (internal / "app.ico").write_bytes(b"ico")
+    exe = tmp_path / "Scenaria.exe"
+    exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe), raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "_internal"), raising=False)
+    assert branding_dir() == internal
 
 
 def test_branding_assets_present():

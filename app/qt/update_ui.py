@@ -20,6 +20,9 @@ class UpdateCheckWorker(QObject):
         except UpdateCheckError as exc:
             self.finished.emit(None, str(exc))
             return
+        except Exception as exc:  # noqa: BLE001 — must reach UI in windowed EXE
+            self.finished.emit(None, f"Ошибка проверки обновлений: {exc}")
+            return
         self.finished.emit(info, None)
 
 
@@ -40,6 +43,9 @@ class UpdateDownloadWorker(QObject):
             apply_update(asset, on_progress=self.progress.emit)
         except UpdateCheckError as exc:
             self.finished.emit(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.finished.emit(f"Ошибка установки обновления: {exc}")
             return
         self.finished.emit(None)
 

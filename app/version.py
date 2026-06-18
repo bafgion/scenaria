@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 
 from app.brand import PACKAGE_NAME
+from app.paths import app_root
+
+
+def _read_bundled_version() -> str | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    version_file = app_root() / "version.txt"
+    if not version_file.is_file():
+        return None
+    value = version_file.read_text(encoding="utf-8").strip()
+    return value or None
 
 
 def _read_pyproject_version() -> str | None:
@@ -22,6 +34,9 @@ def _read_pyproject_version() -> str | None:
 
 @lru_cache(maxsize=1)
 def app_version() -> str:
+    bundled = _read_bundled_version()
+    if bundled:
+        return bundled
     try:
         return metadata.version(PACKAGE_NAME)
     except metadata.PackageNotFoundError:

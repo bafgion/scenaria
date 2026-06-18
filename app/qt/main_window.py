@@ -925,8 +925,16 @@ class MainWindow(QMainWindow):
         self._check_updates(silent=False)
 
     def _check_updates(self, *, silent: bool, skip_version: str = "") -> None:
-        if getattr(self, "_update_thread", None) is not None:
-            return
+        thread = getattr(self, "_update_thread", None)
+        if thread is not None:
+            if thread.isRunning():
+                if not silent:
+                    alert(self, BRAND_NAME, "Проверка обновлений уже выполняется…")
+                return
+            self._cleanup_update_check_thread()
+
+        if not silent:
+            self._show_update_wait_dialog()
 
         self._update_thread = QThread(self)
         self._update_worker = UpdateCheckWorker()
@@ -937,15 +945,60 @@ class MainWindow(QMainWindow):
         )
         self._update_worker.finished.connect(self._update_thread.quit)
         self._update_thread.finished.connect(self._cleanup_update_check_thread)
+        if not silent:
+            self._update_check_watchdog = QTimer(self)
+            self._update_check_watchdog.setSingleShot(True)
+            self._update_check_watchdog.timeout.connect(
+                lambda: self._on_update_check_timeout(silent=silent)
+            )
+            self._update_check_watchdog.start(45_000)
         self._update_thread.start()
         if not silent:
             self.status_bar.set_message("Проверка обновлений…", "info")
+
+    def _show_update_wait_dialog(self) -> None:
+        self._close_update_wait_dialog()
+        box = QMessageBox(self)
+        box.setWindowTitle(BRAND_NAME)
+        box.setText("Проверка обновлений…")
+        box.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        box.setModal(False)
+        box.show()
+        self._update_wait_dialog = box
+
+    def _close_update_wait_dialog(self) -> None:
+        box = getattr(self, "_update_wait_dialog", None)
+        if box is not None:
+            box.close()
+            box.deleteLater()
+            self._update_wait_dialog = None
+
+    def _stop_update_check_watchdog(self) -> None:
+        watchdog = getattr(self, "_update_check_watchdog", None)
+        if watchdog is not None:
+            watchdog.stop()
+            watchdog.deleteLater()
+            self._update_check_watchdog = None
+
+    def _on_update_check_timeout(self, *, silent: bool) -> None:
+        if silent:
+            return
+        if getattr(self, "_update_thread", None) is not None and self._update_thread.isRunning():
+            alert(
+                self,
+                BRAND_NAME,
+                "Проверка обновлений заняла слишком много времени. "
+                "Проверьте доступ к github.com и повторите попытку.",
+            )
+        self._close_update_wait_dialog()
 
     def _cleanup_update_check_thread(self) -> None:
         self._update_thread = None
         self._update_worker = None
 
     def _on_update_check_finished(self, info, error: str | None, *, silent: bool, skip_version: str) -> None:
+        self._stop_update_check_watchdog()
+        self._close_update_wait_dialog()
         if error:
             if not silent:
                 alert(self, BRAND_NAME, error)

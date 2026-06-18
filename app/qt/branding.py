@@ -9,24 +9,30 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from app.paths import app_root
+from app.paths import app_root, bundled_root
 from app.brand import BRAND_DESCRIPTION, BRAND_NAME, BRAND_TAGLINE
 
-_BRANDING_DIR = app_root() / "assets" / "branding"
-_MASTER_PNG = "icon-variant-b-monogram-su.png"
-_SQUARE_PNG = "app-icon-square.png"
-_MARK_PNG = "app-icon-mark.png"
-_ICON_FALLBACK = "app.ico"
+_BRANDING_REL = Path("assets") / "branding"
 _ICON_SIZES = (16, 20, 24, 32, 48, 64, 128, 256)
 _cached_icon: QIcon | None = None
 
 
 def branding_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        bundled = app_root() / "assets" / "branding"
-        if bundled.is_dir():
-            return bundled
-    return _BRANDING_DIR if _BRANDING_DIR.is_dir() else app_root() / "assets" / "branding"
+    candidates = [
+        bundled_root() / _BRANDING_REL,
+        Path(__file__).resolve().parent.parent.parent / _BRANDING_REL,
+        app_root() / _BRANDING_REL,
+    ]
+    for path in candidates:
+        if path.is_dir():
+            return path
+    return candidates[0]
+
+
+_MASTER_PNG = "icon-variant-b-monogram-su.png"
+_SQUARE_PNG = "app-icon-square.png"
+_MARK_PNG = "app-icon-mark.png"
+_ICON_FALLBACK = "app.ico"
 
 
 def _artwork_path() -> Path | None:
@@ -66,6 +72,14 @@ def app_icon() -> QIcon:
     if _cached_icon is not None and not _cached_icon.isNull():
         return _cached_icon
 
+    folder = branding_dir()
+    fallback = folder / _ICON_FALLBACK
+    if sys.platform == "win32" and fallback.is_file():
+        ico = QIcon(str(fallback))
+        if not ico.isNull():
+            _cached_icon = ico
+            return _cached_icon
+
     artwork = _artwork_path()
     if artwork is not None:
         png_icon = _build_png_icon(artwork)
@@ -73,7 +87,7 @@ def app_icon() -> QIcon:
             _cached_icon = png_icon
             return _cached_icon
 
-    fallback = branding_dir() / _ICON_FALLBACK
+    fallback = folder / _ICON_FALLBACK
     if fallback.is_file():
         _cached_icon = QIcon(str(fallback))
         return _cached_icon
