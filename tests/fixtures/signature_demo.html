@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Демо ПЭП — подпись на canvas</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #f4f4f5;
+      color: #18181b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(480px, 100%);
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+      padding: 32px 28px;
+    }
+    .brand {
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      font-size: 1.25rem;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+    .hint {
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: #52525b;
+      margin-bottom: 20px;
+    }
+    .signature-wrap {
+      border: 1px solid #d4d4d8;
+      border-radius: 8px;
+      background: #fafafa;
+      padding: 8px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 180px;
+      touch-action: none;
+      cursor: crosshair;
+      background: #fff;
+      border-radius: 4px;
+    }
+    .clear-link {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 0.875rem;
+      color: #3f3f46;
+      text-decoration: underline;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .clear-link:hover { color: #18181b; }
+    .status {
+      margin-top: 16px;
+      font-size: 0.8125rem;
+      color: #71717a;
+    }
+    .status.signed { color: #15803d; font-weight: 500; }
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 0.9375rem;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid #d4d4d8;
+      cursor: pointer;
+      background: #fff;
+    }
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: #18181b;
+      color: #fff;
+      border-color: #18181b;
+    }
+    .btn-primary:not(:disabled):hover { background: #27272a; }
+    .success {
+      display: none;
+      margin-top: 20px;
+      padding: 14px;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      border-radius: 8px;
+      color: #166534;
+      font-size: 0.875rem;
+    }
+    .success.visible { display: block; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">DEMO</div>
+    <h1>Подписание</h1>
+    <p class="hint">
+      Нарисуйте подпись в поле ниже. Кнопка «Далее» станет активной после ввода подписи.
+      Страница для проверки шага Gherkin: <code>рисую подпись в "canvas"</code>.
+    </p>
+
+    <div class="signature-wrap">
+      <canvas id="signature-canvas" width="400" height="180" aria-label="Поле подписи"></canvas>
+    </div>
+    <button type="button" class="clear-link" id="clear-btn">Очистить</button>
+    <p class="status" id="status">Подпись не введена</p>
+
+    <div class="actions">
+      <button type="button" class="btn" id="back-btn">Назад</button>
+      <button type="button" class="btn btn-primary" id="next-btn" disabled>Далее</button>
+    </div>
+
+    <div class="success" id="success" role="status">
+      Подпись принята. Форма отправлена (демо).
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById("signature-canvas");
+      const ctx = canvas.getContext("2d");
+      const statusEl = document.getElementById("status");
+      const nextBtn = document.getElementById("next-btn");
+      const clearBtn = document.getElementById("clear-btn");
+      const successEl = document.getElementById("success");
+
+      let drawing = false;
+      let hasStroke = false;
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = Math.floor(rect.width);
+        canvas.height = 180;
+        ctx.putImageData(image, 0, 0);
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#2563eb";
+      }
+
+      function setSigned(signed) {
+        hasStroke = signed;
+        nextBtn.disabled = !signed;
+        statusEl.textContent = signed ? "Подпись введена" : "Подпись не введена";
+        statusEl.classList.toggle("signed", signed);
+        if (!signed) successEl.classList.remove("visible");
+      }
+
+      function pos(event) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+        const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+        return {
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+        };
+      }
+
+      function start(event) {
+        event.preventDefault();
+        drawing = true;
+        const p = pos(event);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+      }
+
+      function move(event) {
+        if (!drawing) return;
+        event.preventDefault();
+        const p = pos(event);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        if (!hasStroke) setSigned(true);
+      }
+
+      function end() {
+        drawing = false;
+      }
+
+      function clear() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setSigned(false);
+      }
+
+      canvas.addEventListener("mousedown", start);
+      canvas.addEventListener("mousemove", move);
+      canvas.addEventListener("mouseup", end);
+      canvas.addEventListener("mouseleave", end);
+      canvas.addEventListener("touchstart", start, { passive: false });
+      canvas.addEventListener("touchmove", move, { passive: false });
+      canvas.addEventListener("touchend", end);
+
+      clearBtn.addEventListener("click", clear);
+      nextBtn.addEventListener("click", function () {
+        if (!hasStroke) return;
+        successEl.classList.add("visible");
+      });
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "#2563eb";
+    })();
+  </script>
+</body>
+</html>

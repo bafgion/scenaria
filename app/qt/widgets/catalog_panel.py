@@ -1,0 +1,319 @@
+"""Features catalog tree widget."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedWidget, QTreeView, QVBoxLayout, QWidget
+
+from app.mvc.models.catalog_model import CatalogNode, CatalogViewState
+from app.qt.theme import COLOR_ERROR, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING
+from app.qt.widgets.catalog_empty_state import CatalogEmptyState
+
+
+class CatalogTreeView(QTreeView):
+    run_folder_requested = Signal(object)  # Path
+    add_folder_to_selection_requested = Signal(object)  # Path
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setIndentation(16)
+        self.setAnimated(True)
+        self.setExpandsOnDoubleClick(False)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+        self._on_activate = None
+        self._on_expansion_changed = None
+        self._on_toggle_run_selection = None
+        self._run_selection: frozenset[str] = frozenset()
+
+    def set_activate_handler(self, handler) -> None:
+        self._on_activate = handler
+        self.activated.connect(self._handle_activated)
+
+    def set_toggle_run_selection_handler(self, handler) -> None:
+        self._on_toggle_run_selection = handler
+
+    def set_run_selection(self, keys: frozenset[str]) -> None:
+        self._run_selection = keys
+
+    def set_expansion_handler(self, handler) -> None:
+        self._on_expansion_changed = handler
+        self.collapsed.connect(self._handle_collapsed)
+        self.expanded.connect(self._handle_expanded)
+
+    def _node_key(self, index: QModelIndex) -> tuple[str, str] | None:
+        if not index.isValid():
+            return None
+        data = index.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return None
+        path_str, kind = data
+        return path_str, kind
+
+    def _handle_collapsed(self, index: QModelIndex) -> None:
+        if not self._on_expansion_changed:
+            return
+        info = self._node_key(index)
+        if info and info[1] in {"root", "dir"}:
+            self._on_expansion_changed(info[0], True)
+
+    def _handle_expanded(self, index: QModelIndex) -> None:
+        if not self._on_expansion_changed:
+            return
+        info = self._node_key(index)
+        if info and info[1] in {"root", "dir"}:
+            self._on_expansion_changed(info[0], False)
+
+    def _handle_activated(self, index: QModelIndex) -> None:
+        if not index.isValid():
+            return
+        from PySide6.QtWidgets import QApplication
+
+        if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier:
+            return
+        self._activate_index(index)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        index = self.indexAt(event.position().toPoint())
+        if index.isValid() and event.button() == Qt.MouseButton.LeftButton:
+            data = index.data(Qt.ItemDataRole.UserRole)
+            if data:
+                path_str, kind = data
+                if (
+                    event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                    and kind == "file"
+                    and self._on_toggle_run_selection
+                ):
+                    self._on_toggle_run_selection(Path(path_str))
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
+
+    def _activate_index(self, index: QModelIndex) -> None:
+        if not self._on_activate:
+            return
+        data = index.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        path_str, kind = data
+        self._on_activate(Path(path_str), kind=kind)
+
+    def _node_at(self, point: QPoint) -> tuple[Path, str] | None:
+        index = self.indexAt(point)
+        if not index.isValid():
+            return None
+        data = index.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return None
+        path_str, kind = data
+        return Path(path_str), kind
+
+    def _show_context_menu(self, point: QPoint) -> None:
+        info = self._node_at(point)
+        if info is None:
+            return
+        path, kind = info
+        menu = QMenu(self)
+        if kind == "file":
+            selected = str(path.resolve()) in self._run_selection
+            if selected:
+                toggle = menu.addAction("Убрать из запуска")
+            else:
+                toggle = menu.addAction("Добавить в запуск")
+            toggle.triggered.connect(
+                lambda: self._on_toggle_run_selection(path) if self._on_toggle_run_selection else None
+            )
+        elif kind in {"root", "dir"}:
+            menu.addAction("Запустить сценарии в папке", lambda: self.run_folder_requested.emit(path))
+            menu.addAction(
+                "Добавить папку в выбор",
+                lambda: self.add_folder_to_selection_requested.emit(path),
+            )
+        if menu.actions():
+            menu.exec(self.viewport().mapToGlobal(point))
+
+    @staticmethod
+    def _strip_run_mark(text: str) -> str:
+        return text[2:] if text.startswith("◉ ") else text
+
+    def update_run_selection_marks(self, keys: frozenset[str]) -> None:
+        self._run_selection = keys
+        model = self.model()
+        if not isinstance(model, QStandardItemModel):
+            return
+        root = model.invisibleRootItem().child(0)
+        if root is not None:
+            self._update_item_marks(root)
+
+    def _update_item_marks(self, item: QStandardItem) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if data:
+            path_str, kind = data
+            if kind == "file":
+                base = self._strip_run_mark(item.text())
+                selected = str(Path(path_str).resolve()) in self._run_selection
+                item.setText(f"◉ {base}" if selected else base)
+        for row in range(item.rowCount()):
+            self._update_item_marks(item.child(row))
+
+    def show_tree(
+        self,
+        tree: CatalogNode | None,
+        *,
+        collapsed: set[str] | None = None,
+        expand_all: bool = False,
+        run_selection: frozenset[str] | None = None,
+    ) -> None:
+        collapsed = collapsed or set()
+        self._run_selection = run_selection or frozenset()
+        model = QStandardItemModel()
+        if tree is not None:
+            root_item = self._make_item(tree)
+            for child in tree.children:
+                root_item.appendRow(self._make_branch(child))
+            model.appendRow(root_item)
+        self.setModel(model)
+        if expand_all:
+            self.expandAll()
+        elif tree is not None:
+            self._apply_expansion(model.invisibleRootItem().child(0), collapsed)
+
+    def _apply_expansion(self, item: QStandardItem | None, collapsed: set[str]) -> None:
+        if item is None:
+            return
+        index = item.index()
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if data:
+            path_str, kind = data
+            if kind in {"root", "dir"}:
+                self.setExpanded(index, path_str not in collapsed)
+        for row in range(item.rowCount()):
+            self._apply_expansion(item.child(row), collapsed)
+
+    def _file_label(self, node: CatalogNode) -> str:
+        if node.parse_error:
+            badge = "⚠"
+        elif node.run_success is True:
+            badge = "✓"
+        elif node.run_success is False:
+            badge = "✗"
+        else:
+            badge = "○"
+        selected = str(node.path.resolve()) in self._run_selection
+        mark = "◉ " if selected else ""
+        parts = [node.name]
+        if node.parse_error:
+            parts.append("ошибка")
+        elif node.step_count:
+            parts.append(f"{node.step_count} ш.")
+        if node.domain:
+            parts.append(node.domain)
+        return f"{mark}{badge} {' · '.join(parts)}"
+
+    def _make_item(self, node: CatalogNode) -> QStandardItem:
+        if node.kind == "file":
+            text = self._file_label(node)
+            tooltip_parts = [node.path.name]
+            if node.parse_error:
+                tooltip_parts.append(f"Ошибка разбора: {node.parse_error}")
+            elif node.step_count:
+                tooltip_parts.append(f"Шагов: {node.step_count}")
+            if node.domain:
+                tooltip_parts.append(f"Домен: {node.domain}")
+            if node.run_success is True:
+                tooltip_parts.append("Последний прогон: успех")
+            elif node.run_success is False:
+                tooltip_parts.append("Последний прогон: ошибка")
+            else:
+                tooltip_parts.append("Прогон не выполнялся")
+            if node.run_at:
+                tooltip_parts.append(f"Когда: {node.run_at}")
+            tooltip = "\n".join(tooltip_parts)
+        else:
+            text = f"📁 {node.name}"
+            tooltip = str(node.path)
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setToolTip(tooltip)
+        item.setData((str(node.path), node.kind), Qt.ItemDataRole.UserRole)
+        if node.kind == "file":
+            if node.parse_error:
+                item.setForeground(QBrush(QColor(COLOR_WARNING)))
+            elif node.run_success is True:
+                item.setForeground(QBrush(QColor(COLOR_SUCCESS)))
+            elif node.run_success is False:
+                item.setForeground(QBrush(QColor(COLOR_ERROR)))
+            else:
+                item.setForeground(QBrush(QColor(COLOR_MUTED)))
+        return item
+
+    def _make_branch(self, node: CatalogNode) -> QStandardItem:
+        item = self._make_item(node)
+        for child in node.children:
+            item.appendRow(self._make_branch(child))
+        return item
+
+
+class CatalogPanel(QWidget):
+    _PAGE_TREE = 0
+    _PAGE_EMPTY = 1
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("role", "catalog-panel")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self._stack = QStackedWidget(self)
+        layout.addWidget(self._stack, stretch=1)
+
+        self.tree = CatalogTreeView(self)
+        self._stack.addWidget(self.tree)
+
+        self._empty = CatalogEmptyState(self)
+        self._stack.addWidget(self._empty)
+
+    def bind_activate(self, handler) -> None:
+        self.tree.set_activate_handler(handler)
+
+    def bind_expansion(self, handler) -> None:
+        self.tree.set_expansion_handler(handler)
+
+    def display_state(
+        self,
+        state: CatalogViewState,
+        *,
+        collapsed: set[str] | None = None,
+        run_selection: frozenset[str] | None = None,
+    ) -> None:
+        if state.show_empty_message:
+            self._empty.set_state(
+                state.empty_title or "",
+                state.empty_hint or "",
+                state.empty_kind,
+            )
+            self._stack.setCurrentIndex(self._PAGE_EMPTY)
+            return
+
+        self._stack.setCurrentIndex(self._PAGE_TREE)
+        if state.tree is not None:
+            self.tree.show_tree(
+                state.tree,
+                collapsed=collapsed or set(),
+                expand_all=state.expand_all,
+                run_selection=run_selection,
+            )
+        else:
+            self.tree.setModel(None)
+
+    def display_tree(self, tree: CatalogNode | None) -> None:
+        """Backward-compatible wrapper."""
+        from app.mvc.models.catalog_model import CatalogViewState
+
+        self.display_state(CatalogViewState(tree=tree))
