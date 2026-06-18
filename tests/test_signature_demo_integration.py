@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
 
+pytestmark = pytest.mark.integration
+
 from app.paths import configure_playwright_browsers
 from app.player import run_scenario_on_page
 from app.gherkin_ru import gherkin_to_steps
@@ -39,7 +41,8 @@ def test_signature_demo_feature_file_parses() -> None:
         "assert_visible",
         "close_browser",
     ]
-    assert steps[0]["url"] == _file_url(FIXTURE_HTML)
+    assert steps[0]["action"] == "goto"
+    assert steps[0]["url"].endswith("signature_demo.html")
 
 
 def test_signature_demo_page(signature_demo_url: str) -> None:

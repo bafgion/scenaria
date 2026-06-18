@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from playwright.sync_api import sync_playwright
+import pytest
 
 from app.paths import configure_playwright_browsers
 from app.picker_script import PICKER_INSTALL_SCRIPT
+
+pytestmark = pytest.mark.integration
 
 NESTED_LABEL_FORM_HTML = """
 <!doctype html>

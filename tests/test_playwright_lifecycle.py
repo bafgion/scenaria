@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from playwright.sync_api import sync_playwright
 
 from app.paths import configure_playwright_browsers
 from app.playwright_lifecycle import release_playwright_session
+
+pytestmark = pytest.mark.integration
 
 
 def test_release_playwright_session() -> None:

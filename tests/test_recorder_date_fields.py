@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from playwright.sync_api import sync_playwright
+import pytest
 
 from app.paths import configure_playwright_browsers
 from app.recorder_script import RECORDER_INIT_SCRIPT
 from app.steps import normalize_steps
+
+pytestmark = pytest.mark.integration
 
 PASSPORT_FORM_HTML = """
 <!doctype html>

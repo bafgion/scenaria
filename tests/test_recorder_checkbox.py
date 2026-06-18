@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from playwright.sync_api import sync_playwright
+import pytest
 
 from app.paths import configure_playwright_browsers
 from app.recorder_script import RECORDER_INIT_SCRIPT
 from app.steps import apply_coalesced_step, normalize_steps
+
+pytestmark = pytest.mark.integration
 
 
 CHECKBOX_HTML = """

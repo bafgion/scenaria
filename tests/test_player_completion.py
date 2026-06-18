@@ -5,8 +5,12 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+import pytest
+
 from app.player import ScenarioPlayer
 from app.run_suite import run_feature_file
+
+pytestmark = pytest.mark.integration
 
 
 def test_headless_run_feature_file_completes_without_close_browser(tmp_path: Path) -> None:
