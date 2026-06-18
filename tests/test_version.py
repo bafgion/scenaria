@@ -1,8 +1,8 @@
-from app.version import app_version, is_newer_version, version_tuple
+from app.version import _read_pyproject_version, app_version, is_newer_version, version_tuple
 
 
 def test_app_version_matches_pyproject():
-    assert app_version() == "0.2.0"
+    assert app_version() == _read_pyproject_version()
 
 
 def test_version_tuple():

@@ -30,6 +30,7 @@ def normalize_steps(steps: list[dict]) -> list[dict]:
     merged = _collapse_checkbox_noise(merged)
     merged = [_upgrade_checkbox_selector(step) for step in merged]
     merged = [_upgrade_canvas_step(step) for step in merged]
+    merged = [_upgrade_click_selector(step) for step in merged]
     merged = _collapse_duplicate_hovers(merged)
     merged = _collapse_duplicate_clicks(merged)
     merged = _drop_spurious_midform_gotos(merged)
@@ -184,6 +185,25 @@ def _selector_is_fragile(selector: str) -> bool:
     if re.search(r">\s*input\s*$", lowered):
         return True
     return False
+
+
+def _upgrade_click_selector(step: dict) -> dict:
+    if step.get("action") != "click":
+        return step
+    selector = str(step.get("selector", ""))
+    if "canvas" in selector.lower():
+        return step
+    if not _selector_is_fragile(selector):
+        return step
+    text = str(step.get("text", "")).strip().replace("\n", " ")
+    text = re.sub(r"\s+", " ", text)
+    if len(text) < 2:
+        return step
+    snippet = text[:40] if len(text) > 60 else text
+    if len(snippet) < 2:
+        return step
+    escaped = snippet.replace("\\", "\\\\").replace('"', '\\"')
+    return {**step, "selector": f'button:has-text("{escaped}")'}
 
 
 def _upgrade_checkbox_selector(step: dict) -> dict:

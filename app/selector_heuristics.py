@@ -86,6 +86,74 @@ SELECTOR_HEURISTICS_JS = """
     return `label:has-text("${snippet.replace(/"/g, '\\\\"')}")`;
   }
 
+  function hasTextSelectorForElement(el, text, minLen) {
+    const min = typeof minLen === 'number' ? minLen : 2;
+    const normalized = String(text || visibleText(el) || '').trim().replace(/\\s+/g, ' ');
+    if (!normalized || normalized.length < min || normalized.length > 80) return null;
+    const escaped = normalized.replace(/"/g, '\\\\"');
+    const tag = el.tagName;
+    if (tag === 'BUTTON') return `button:has-text("${escaped}")`;
+    if (tag === 'A') return `a:has-text("${escaped}")`;
+    const role = el.getAttribute('role');
+    if (role === 'button') return `button:has-text("${escaped}")`;
+    if (role === 'link') return `a:has-text("${escaped}")`;
+    if (role === 'menuitem') return `[role="menuitem"]:has-text("${escaped}")`;
+    if (role === 'tab') return `[role="tab"]:has-text("${escaped}")`;
+    if (['DIV', 'SPAN', 'P', 'LI'].includes(tag)) {
+      return `${tag.toLowerCase()}:has-text("${escaped}")`;
+    }
+    return `button:has-text("${escaped}")`;
+  }
+
+  function looksLikeButtonClass(el) {
+    const cls = (el.getAttribute('class') || '').toLowerCase();
+    return /\\b(btn|button|cta|choice|option|select|card-btn|action)\\b/.test(cls);
+  }
+
+  function clickableAncestor(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const interactive = el.closest(
+      'button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"], input[type="submit"], [type="submit"]'
+    );
+    if (interactive) return interactive;
+
+    const withOnClick = el.closest('[onclick]');
+    if (withOnClick) return withOnClick;
+
+    let node = el;
+    for (let depth = 0; node && depth < 8; depth++) {
+      if (node.tagName === 'BUTTON' || node.tagName === 'A') return node;
+      const role = node.getAttribute('role');
+      if (role && ['button', 'link', 'menuitem', 'tab'].includes(role)) return node;
+      if (looksLikeButtonClass(node)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function buildClickSelector(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (isTextInput(el) || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return null;
+    if (checkboxInputFor(el)) return null;
+    if (canvasFor(el)) return null;
+
+    const target = clickableAncestor(el) || el;
+    if (isTextInput(target) || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return null;
+
+    const testId = target.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+
+    if (target.id) return `#${cssEscape(target.id)}`;
+
+    const aria = target.getAttribute('aria-label');
+    if (aria && aria.trim()) return `[aria-label="${cssEscape(aria.trim())}"]`;
+
+    const textSelector = hasTextSelectorForElement(target, '', 2);
+    if (textSelector) return textSelector;
+
+    return null;
+  }
+
   function checkboxInputFor(el) {
     if (!el || el.nodeType !== 1) return null;
     if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return el;
@@ -285,6 +353,9 @@ SELECTOR_HEURISTICS_JS = """
 
   function buildSelector(el) {
     if (!el || el.nodeType !== 1) return null;
+
+    const clickSelector = buildClickSelector(el);
+    if (clickSelector) return clickSelector;
 
     const inputSelector = buildInputSelector(el);
     if (inputSelector) return inputSelector;

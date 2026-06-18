@@ -186,7 +186,7 @@ RECORDER_INIT_SCRIPT = (
     }
 
     const el = event.target.closest(
-      'a,button,input,select,textarea,label,[role="button"],[role="link"],[type="submit"],[onclick]'
+      'a,button,input,select,textarea,label,[role="button"],[role="link"],[role="menuitem"],[role="tab"],[type="submit"],[onclick]'
     ) || event.target;
     if (!shouldRecordClick(el)) return;
 
@@ -195,7 +195,8 @@ RECORDER_INIT_SCRIPT = (
 
     if (isTextInput(el)) return;
 
-    const selector = buildSelector(el);
+    const clickRoot = clickableAncestor(event.target) || el;
+    const selector = buildSelector(event.target);
     if (!selector) return;
     const now = Date.now();
     if (selector === lastClick.selector && now - lastClick.at < 600) return;
@@ -216,7 +217,7 @@ RECORDER_INIT_SCRIPT = (
     const payload = {
       action: 'click',
       selector,
-      text: (el.innerText || el.value || '').trim().slice(0, 120),
+      text: visibleText(clickRoot).slice(0, 120),
     };
     if (hover) {
       payload.hoverSelector = hover.selector;
