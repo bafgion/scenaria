@@ -9,7 +9,9 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout
 from app.feature_store import get_root, resolve_project_root
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
+from app.http_auth import apply_url_credentials_to_settings, host_from_url, strip_url_credentials
 from app.qt.dialogs import BTN_OK, alert, confirm, prompt_text
+from app.qt.widgets.http_auth_dialog import HttpAuthDialog
 from app.qt.sync_prompts import install_prompt_service
 from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.widgets.browser_overlay import BrowserOverlayPanel
@@ -178,6 +180,7 @@ class MainWindow(QMainWindow):
         self.workspace.welcome_panel.quick_start.connect(self._quick_start)
         self.workspace.welcome_panel.insert_template.connect(self._new_scenario_with_template)
         self.workspace.welcome_activated.connect(self._refresh_welcome_recents)
+        self.workspace.welcome_activated.connect(self._sync_menu_states)
         self.workspace.empty_panel.show_start.connect(
             lambda: self.workspace.ensure_welcome_tab(activate=True)
         )
@@ -484,6 +487,7 @@ class MainWindow(QMainWindow):
         run_menu.addAction("Закрыть браузер", rec.close_browser)
         run_menu.addSeparator()
         run_menu.addAction("Стартовый URL…", self._edit_start_url)
+        run_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
         run_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
         run_menu.addSeparator()
         self._act_record = QAction("Запись", self)
@@ -539,33 +543,46 @@ class MainWindow(QMainWindow):
     def _start_url(self) -> str:
         return self._controller.scenario.start_url.strip()
 
+    def _apply_start_url(self, url: str) -> bool:
+        url = url.strip()
+        if url and not url.startswith("http"):
+            return False
+        settings = load_settings()
+        url, settings = apply_url_credentials_to_settings(url, settings)
+        save_settings(settings)
+        url = strip_url_credentials(url)
+        self._controller.scenario.set_start_url(url)
+        self.workspace.editor_action_bar.set_url(url)
+        return True
+
     def _edit_start_url(self) -> None:
         current = self._start_url()
         value = prompt_text(
             self,
             "Стартовый URL",
-            "URL для браузера и записи:",
+            "URL для браузера и записи:\n(можно указать https://логин:пароль@сайт — пароль сохранится локально)",
             initial=current,
         )
         if value is None:
             return
-        url = value.strip()
-        if url and not url.startswith("http"):
+        if not self._apply_start_url(value):
             alert(self, BRAND_NAME, "Укажите корректный URL (https://…)")
             return
-        self._controller.scenario.set_start_url(url)
-        self.workspace.editor_action_bar.set_url(url)
+        url = self._start_url()
         if url:
             self.status_bar.set_message(f"Стартовый URL: {url}", "success")
         else:
             self.status_bar.set_message("Стартовый URL не задан", "info")
 
+    def _edit_http_auth(self) -> None:
+        dialog = HttpAuthDialog(self, suggested_host=host_from_url(self._start_url()))
+        dialog.exec()
+
     def _set_start_url(self, url: str) -> None:
-        if url and not url.startswith("http"):
+        if not self._apply_start_url(url):
             alert(self, BRAND_NAME, "Укажите корректный URL (https://…)")
             self.workspace.editor_action_bar.set_url(self._start_url())
             return
-        self._controller.scenario.set_start_url(url)
 
     def _on_workflow_next_step(self, action: str) -> None:
         rec = self._controller.recording
@@ -666,9 +683,10 @@ class MainWindow(QMainWindow):
 
     def _sync_menu_states(self) -> None:
         s = self._controller.session
-        has_steps = bool(self._controller.scenario.steps)
+        editor_active = self.workspace.is_editor_tab_active()
+        has_steps = editor_active and bool(self._controller.scenario.steps)
         pending = s.pending
-        unapplied = self.workspace.gherkin_panel.is_dirty
+        unapplied = self.workspace.gherkin_panel.is_dirty if editor_active else False
         batch_running = self._controller.recording.is_batch_running
         browser_active = s.browser_session_active()
         for action in (self._act_save, self._act_browser, self._act_record, self._act_play):
@@ -677,16 +695,23 @@ class MainWindow(QMainWindow):
             self._act_browser.setEnabled(
                 not browser_active and not s.recording and not batch_running and not s.playing
             )
-            self._act_record.setEnabled(s.browser_open and not s.recording and not s.playing and not batch_running)
+            self._act_record.setEnabled(
+                editor_active
+                and s.browser_open
+                and not s.recording
+                and not s.playing
+                and not batch_running
+            )
             self._act_play.setEnabled(
-                not s.recording
+                editor_active
+                and not s.recording
                 and not s.playing
                 and has_steps
                 and not batch_running
                 and not self._controller.recording.player_worker_active
                 and not unapplied
             )
-            self._act_save.setEnabled(not s.recording)
+            self._act_save.setEnabled(editor_active and not s.recording)
         self._act_stop.setEnabled(
             s.recording
             or s.playing
@@ -709,6 +734,7 @@ class MainWindow(QMainWindow):
             unapplied=unapplied,
             batch_running=batch_running,
             picking=self._controller.recording.is_picking,
+            editor_active=editor_active,
         )
         self.workspace.sync_chrome(
             pending=pending,
@@ -725,14 +751,16 @@ class MainWindow(QMainWindow):
         root = get_root()
         scenario = self._controller.scenario
         project = ""
-        if scenario.feature_path:
+        if not editor_active:
+            project = "Старт"
+        elif scenario.feature_path:
             project = scenario.feature_path.name
         elif root is not None:
             project = root.name
         self.status_bar.sync(
             browser_open=browser_active,
             recording=s.recording,
-            step_count=len(scenario.steps),
+            step_count=len(scenario.steps) if editor_active else 0,
             gherkin_unapplied=unapplied,
             project_label=project,
         )
@@ -814,9 +842,16 @@ class MainWindow(QMainWindow):
         self.workspace.gherkin_panel.sync_from_model(force=True)
         steps = list(self._controller.scenario.steps)
         suspicious = find_suspicious_menu_clicks(steps)
-        if suspicious:
-            self.workspace.focus_failed_step(suspicious[0] + 1)
-            self.workspace.gherkin_panel.fix_menu_click_at_cursor()
+        if not suspicious:
+            return
+        index = suspicious[0]
+        if self._controller.scenario_controller.try_fix_menu_hover(index):
+            self.workspace._sync_steps_from_controller(select_row=index + 1)
+            self.workspace.hide_post_record()
+            self.status_bar.set_message("Шаг разбит: наведение + клик", "success")
+            return
+        self.workspace.focus_failed_step(index + 1)
+        self.workspace.gherkin_panel.fix_menu_click_at_cursor()
 
     def _show_hotkeys(self) -> None:
         HotkeysDialog(self).exec()

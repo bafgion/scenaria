@@ -319,13 +319,77 @@ class GherkinPanel(QWidget):
         self._set_dirty(True)
         self._emit_status(f"Добавлен шаг «{choice.label}»", COLOR_SUCCESS)
 
+    def _step_index_at_cursor(self) -> int | None:
+        line_no = self.editor.textCursor().blockNumber() + 1
+        line_numbers = self._step_line_numbers()
+        if line_no not in line_numbers:
+            return None
+        return line_numbers.index(line_no)
+
+    def fix_menu_click_at_cursor(self) -> bool:
+        """Split hover-menu click at cursor into «навожу» + «нажимаю»."""
+        index = self._step_index_at_cursor()
+        if index is None:
+            block = self.editor.textCursor().block()
+            line = block.text()
+            if not re.search(r"нажимаю\s+\"", line, flags=re.IGNORECASE):
+                self._emit_status("Поставьте курсор на строку «нажимаю ...»", COLOR_WARNING)
+                return False
+            match = re.search(r'нажимаю\s+"((?:\\.|[^"])*)"', line, flags=re.IGNORECASE)
+            if not match:
+                self._emit_status("Не удалось прочитать селектор клика", COLOR_WARNING)
+                return False
+            click_selector = match.group(1).replace(r"\"", '"').replace(r"\\", "\\")
+            from app.scenario_hints import propose_menu_hover_fix
+
+            proposal = propose_menu_hover_fix({"action": "click", "selector": click_selector})
+            if proposal is None:
+                self._emit_status("Не удалось определить селектор наведения", COLOR_WARNING)
+                return False
+            return self._insert_menu_hover_lines(block, proposal[0], proposal[1], line)
+
+        if self._controller.try_fix_menu_hover(index):
+            self.sync_from_model(force=True)
+            self._set_dirty(False)
+            self._emit_status("Шаг разбит: наведение + клик", COLOR_SUCCESS)
+            return True
+
+        if 0 <= index < len(self._model.steps) and self._controller.split_click_into_hover(self, index) is not None:
+            self.sync_from_model(force=True)
+            self._set_dirty(False)
+            self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)
+            return True
+        return False
+
+    def _insert_menu_hover_lines(
+        self,
+        block,
+        hover_selector: str,
+        click_selector: str,
+        click_line: str,
+    ) -> bool:
+        from app.gherkin_ru import leading_indent
+
+        indent = leading_indent(click_line) or STEP_INDENT
+        keyword_match = re.match(r"^(Допустим|Когда|Тогда|И|Но)\s+", click_line.strip(), flags=re.IGNORECASE)
+        click_keyword = keyword_match.group(1) if keyword_match else "И"
+
+        self.editor.insert_step_line(f'навожу "{hover_selector}"', before_block=block)
+        cursor = self.editor.textCursor()
+        cursor.setPosition(block.position())
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(f'{indent}{click_keyword} нажимаю "{click_selector}"')
+        self._set_dirty(True)
+        self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)
+        return True
+
     def insert_hover_step(self) -> None:
         """Insert a hover step at the cursor (for dropdown menus)."""
         selector = prompt_text(
             self,
             "Наведение для меню",
             "Селектор пункта меню, на который нужно навести курсор\n"
-            "(например: a:has-text(\"Одежда\")):",
+            '(например: a:has-text("Одежда")):',
             initial="",
         )
         if selector is None:
@@ -337,56 +401,3 @@ class GherkinPanel(QWidget):
         self.editor.insert_step_line(f'навожу "{selector}"')
         self._set_dirty(True)
         self._emit_status("Добавлен шаг наведения", COLOR_SUCCESS)
-
-    def fix_menu_click_at_cursor(self) -> None:
-        """Insert hover before the click step under the cursor."""
-        cursor = self.editor.textCursor()
-        block = cursor.block()
-        line = block.text()
-        match = re.search(r'нажимаю\s+"((?:\\.|[^"])*)"', line, flags=re.IGNORECASE)
-        if not match:
-            self._emit_status("Поставьте курсор на строку «нажимаю ...»", COLOR_WARNING)
-            return
-
-        click_selector = match.group(1).replace(r"\"", '"').replace(r"\\", "\\")
-        guide = (
-            "Сначала наведение на пункт меню (например «Одежда»),\n"
-            "затем клик по подпункту в выпадающем списке."
-        )
-        hover_selector = prompt_text(
-            self,
-            "Починить hover-меню",
-            f"{guide}\n\nСелектор наведения:",
-            initial="",
-        )
-        if hover_selector is None:
-            return
-        hover_selector = hover_selector.strip()
-        if not hover_selector:
-            return
-
-        new_click = prompt_text(
-            self,
-            "Починить hover-меню",
-            "Селектор клика (подпункт):",
-            initial=click_selector,
-        )
-        if new_click is None:
-            return
-        new_click = new_click.strip()
-        if not new_click:
-            return
-
-        from app.gherkin_ru import leading_indent
-
-        indent = leading_indent(line) or STEP_INDENT
-        keyword_match = re.match(r"^(Допустим|Когда|Тогда|И|Но)\s+", line.strip(), flags=re.IGNORECASE)
-        click_keyword = keyword_match.group(1) if keyword_match else "И"
-
-        self.editor.insert_step_line(f'навожу "{hover_selector}"', before_block=block)
-        cursor = self.editor.textCursor()
-        cursor.setPosition(block.position())
-        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(f'{indent}{click_keyword} нажимаю "{new_click}"')
-        self._set_dirty(True)
-        self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)

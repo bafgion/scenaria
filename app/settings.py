@@ -21,6 +21,7 @@ DEFAULTS: dict[str, Any] = {
     "active_tab_index": 0,
     "check_updates_on_startup": True,
     "dismissed_update_version": "",
+    "http_auth": {},
 }
 
 

@@ -24,7 +24,8 @@ class CatalogEmptyState(QWidget):
 
         card = QWidget(self)
         card.setProperty("role", "catalog-empty-card")
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        card.setMinimumWidth(0)
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Maximum)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(14, 16, 14, 16)
         card_layout.setSpacing(8)

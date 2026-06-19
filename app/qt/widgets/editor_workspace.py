@@ -242,6 +242,10 @@ class EditorWorkspace(QWidget):
             return None
         return self._tabs[self._current_index]
 
+    def is_editor_tab_active(self) -> bool:
+        tab = self.current_tab()
+        return tab is not None and not tab.is_welcome
+
     def sync_chrome(
         self,
         *,
@@ -254,8 +258,11 @@ class EditorWorkspace(QWidget):
     ) -> None:
         if not recorder_browser_open:
             recorder_browser_open = browser_open
-        unapplied = self.gherkin_panel.is_dirty
-        file_unsaved = self._is_file_unsaved()
+        editor_active = self.is_editor_tab_active()
+        if not editor_active:
+            has_steps = False
+        unapplied = self.gherkin_panel.is_dirty if editor_active else False
+        file_unsaved = self._is_file_unsaved() if editor_active else False
         self.editor_action_bar.set_url(self._model.start_url)
         self.editor_action_bar.sync_workflow(
             pending=pending,
@@ -265,10 +272,11 @@ class EditorWorkspace(QWidget):
             has_steps=has_steps,
             unapplied=unapplied,
             file_unsaved=file_unsaved,
+            editor_active=editor_active,
         )
         self._update_run_target()
         self.recording_modes.sync(
-            visible=browser_open or recording,
+            visible=(browser_open or recording) and editor_active,
             filter_recording=self._session.filter_recording,
             nav_only_recording=self._session.nav_only_recording,
             headless=self._session.headless,
@@ -312,21 +320,14 @@ class EditorWorkspace(QWidget):
         return normalize_feature_text(editor_text) == normalize_feature_text(disk_text)
 
     def _prepare_leave_current_tab(self) -> bool:
+        """Flush the active editor into tab state (no confirmation dialogs)."""
         if self._current_index < 0:
             return True
         tab = self._tabs[self._current_index]
         if tab.is_welcome:
             return True
-        dirty = self.gherkin_panel.is_dirty
-        if not dirty and not tab.unapplied and not tab.unsaved:
-            return True
-        unsaved_on_disk = self._is_file_unsaved(tab)
-        if not dirty and not unsaved_on_disk:
-            tab.unapplied = False
-            tab.unsaved = False
-            self._update_tab_bar_item(self._current_index)
-            return True
-        return self.gherkin_panel.prepare_open(unsaved_to_disk=not dirty and unsaved_on_disk)
+        self._persist_current_tab()
+        return True
 
     def open_file(self, path: Path, *, reload_if_clean: bool = False) -> bool:
         resolved = path.resolve()
@@ -338,7 +339,6 @@ class EditorWorkspace(QWidget):
                 return self._activate_tab(index)
         if not self._prepare_leave_current_tab():
             return False
-        self._persist_current_tab()
         try:
             raw = resolved.read_text(encoding="utf-8")
         except OSError:
@@ -351,7 +351,6 @@ class EditorWorkspace(QWidget):
     def open_untitled(self, *, initial_text: str = "") -> bool:
         if not self._prepare_leave_current_tab():
             return False
-        self._persist_current_tab()
         self._untitled_counter += 1
         title = f"Без названия {self._untitled_counter}"
         key = f"untitled:{self._untitled_counter}"
@@ -560,6 +559,15 @@ class EditorWorkspace(QWidget):
             )
             return
         tab = self._tabs[self._current_index]
+        if tab.is_welcome:
+            self.editor_action_bar.set_run_target(
+                title=tab.title,
+                path=None,
+                unapplied=False,
+                unsaved=False,
+                is_welcome=True,
+            )
+            return
         self.editor_action_bar.set_run_target(
             title=tab.title,
             path=tab.path,
@@ -618,7 +626,9 @@ class EditorWorkspace(QWidget):
                 path=None,
                 unapplied=False,
                 unsaved=False,
+                is_welcome=True,
             )
+            self.dirty_banner.set_visible(False)
             self._switching = False
             self.welcome_activated.emit()
             return True
@@ -650,11 +660,6 @@ class EditorWorkspace(QWidget):
         if index < 0:
             if not self._tabs:
                 self._show_empty_workspace()
-            return
-        if not self._prepare_leave_current_tab():
-            self._switching = True
-            self.tab_bar.setCurrentIndex(self._current_index)
-            self._switching = False
             return
         self._activate_tab(index)
 
@@ -868,6 +873,10 @@ class EditorWorkspace(QWidget):
             self._apply_steps_panel_layout()
 
     def _fix_menu_for_step(self, step_index: int) -> None:
+        index = step_index - 1
+        if self._scenario_controller.try_fix_menu_hover(index):
+            self._sync_steps_from_controller(select_row=step_index)
+            return
         self.gherkin_panel.focus_step(step_index)
         self.gherkin_panel.fix_menu_click_at_cursor()
 

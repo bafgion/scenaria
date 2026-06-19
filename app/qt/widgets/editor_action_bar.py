@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QToolButton, QWidget
 
@@ -38,6 +38,7 @@ class EditorActionBar(QWidget):
         root.addWidget(self._separator())
 
         run_box = QWidget()
+        self._run_box = run_box
         run_box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         run_layout = QHBoxLayout(run_box)
         run_layout.setContentsMargins(8, 0, 8, 0)
@@ -69,6 +70,7 @@ class EditorActionBar(QWidget):
         root.addWidget(self._separator())
 
         url_box = QWidget()
+        self._url_box = url_box
         url_box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         url_layout = QHBoxLayout(url_box)
         url_layout.setContentsMargins(4, 0, 4, 0)
@@ -108,6 +110,65 @@ class EditorActionBar(QWidget):
         root.addWidget(self._next_step, 0)
 
         self._next_action = "browser"
+        self._density_chrome_width = 0
+        self._reserve_chrome_layout()
+        self._sync_toolbar_density()
+
+    def _reserve_chrome_layout(self) -> None:
+        """Keep right-side chrome width stable when labels change."""
+        hint_metrics = QFontMetrics(self._file_hint.font())
+        self._file_hint.setFixedWidth(hint_metrics.horizontalAdvance("не сохранён") + 8)
+
+        next_font = self._next_step.font()
+        next_font.setPointSize(8)
+        next_metrics = QFontMetrics(next_font)
+        next_labels = (
+            "Откройте сценарий",
+            "Далее: Сохранить",
+            "Исправьте сценарий",
+            "Далее: Запустить",
+            "Далее: Браузер",
+            "Далее: Запись",
+            "Ожидание…",
+            "Идёт запись…",
+        )
+        next_width = max(next_metrics.horizontalAdvance(label) + 20 for label in next_labels)
+        self._next_step.setFixedWidth(next_width)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = super().minimumSizeHint()
+        return QSize(self._minimum_width(compact_toolbar=True), hint.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._sync_toolbar_density()
+
+    def _measured_chrome_width(self) -> int:
+        return (
+            self._run_box.sizeHint().width()
+            + self._url_box.sizeHint().width()
+            + self._next_step.width()
+            + 20
+        )
+
+    def _fixed_chrome_width(self) -> int:
+        measured = self._measured_chrome_width()
+        self._density_chrome_width = max(self._density_chrome_width, measured)
+        return self._density_chrome_width
+
+    def _minimum_width(self, *, compact_toolbar: bool) -> int:
+        toolbar_w = (
+            self.toolbar.compact_layout_min_width()
+            if compact_toolbar
+            else self.toolbar.full_layout_min_width()
+        )
+        return self._measured_chrome_width() + toolbar_w
+
+    def _sync_toolbar_density(self) -> None:
+        if self.width() <= 0:
+            return
+        available = self.width() - self._fixed_chrome_width()
+        self.toolbar.set_compact(available < self.toolbar.full_layout_min_width())
 
     def _separator(self) -> QFrame:
         line = QFrame()
@@ -119,10 +180,6 @@ class EditorActionBar(QWidget):
     def _set_next_step_label(self, text: str, style: str) -> None:
         self._next_step.setText(text)
         self._next_step.setStyleSheet(style)
-        font = self._next_step.font()
-        font.setPointSize(8)
-        width = QFontMetrics(font).horizontalAdvance(text) + 20
-        self._next_step.setMinimumWidth(width)
 
     def _on_next_step(self) -> None:
         self.next_step_clicked.emit(self._next_action)
@@ -137,6 +194,7 @@ class EditorActionBar(QWidget):
         path: Path | None,
         unapplied: bool,
         unsaved: bool,
+        is_welcome: bool = False,
     ) -> None:
         badges = ""
         if unapplied:
@@ -144,19 +202,25 @@ class EditorActionBar(QWidget):
         if unsaved:
             badges += " *"
         self._file_name.setText(f"{title}{badges}")
-        if path is not None:
-            self._file_hint.hide()
+        if is_welcome:
+            self._file_hint.setText("")
+            self._file_name.setToolTip("Стартовая страница")
+        elif path is not None:
             self._file_hint.setText("")
             self._file_name.setToolTip(str(path))
         else:
             self._file_hint.setText("не сохранён")
-            self._file_hint.show()
             self._file_name.setToolTip("Файл ещё не сохранён на диск")
 
     def set_url(self, url: str) -> None:
         blocked = self._url_edit.blockSignals(True)
         self._url_edit.setText(url)
         self._url_edit.blockSignals(blocked)
+
+    def set_editor_fields_enabled(self, enabled: bool) -> None:
+        self._url_edit.setEnabled(enabled)
+        for child in self._url_box.findChildren(QToolButton):
+            child.setEnabled(enabled)
 
     def sync_workflow(
         self,
@@ -168,8 +232,15 @@ class EditorActionBar(QWidget):
         has_steps: bool,
         unapplied: bool,
         file_unsaved: bool,
+        editor_active: bool = True,
     ) -> None:
-        self._next_step.setEnabled(not pending and not playing)
+        self.set_editor_fields_enabled(editor_active)
+        self._next_step.setEnabled(not pending and not playing and editor_active)
+
+        if not editor_active:
+            self._next_action = ""
+            self._set_next_step_label("Откройте сценарий", f"color: {COLOR_MUTED}; font-size: 8pt;")
+            return
 
         if pending or playing:
             self._next_action = ""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedWidget, QTreeView, QVBoxLayout, QWidget
 
@@ -25,10 +25,27 @@ class CatalogTreeView(QTreeView):
         self.setExpandsOnDoubleClick(False)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(0)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTextElideMode(Qt.TextElideMode.ElideRight)
         self._on_activate = None
         self._on_expansion_changed = None
         self._on_toggle_run_selection = None
         self._run_selection: frozenset[str] = frozenset()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = super().minimumSizeHint()
+        return QSize(0, hint.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_column_width()
+
+    def _fit_column_width(self) -> None:
+        width = self.viewport().width()
+        if width > 0 and self.model() is not None:
+            self.setColumnWidth(0, width)
 
     def set_activate_handler(self, handler) -> None:
         self._on_activate = handler
@@ -148,6 +165,7 @@ class CatalogTreeView(QTreeView):
         root = model.invisibleRootItem().child(0)
         if root is not None:
             self._update_item_marks(root)
+            self._fit_column_width()
 
     def _update_item_marks(self, item: QStandardItem) -> None:
         data = item.data(Qt.ItemDataRole.UserRole)
@@ -181,6 +199,7 @@ class CatalogTreeView(QTreeView):
             self.expandAll()
         elif tree is not None:
             self._apply_expansion(model.invisibleRootItem().child(0), collapsed)
+        self._fit_column_width()
 
     def _apply_expansion(self, item: QStandardItem | None, collapsed: set[str]) -> None:
         if item is None:

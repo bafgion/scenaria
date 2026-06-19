@@ -116,7 +116,8 @@ def prepare_update_script(staging_dir: Path, install_dir: Path, exe_name: str = 
         f'echo [%date% %time%] Restarting {BRAND_NAME} >>"%LOG%"',
         f'start "" "%TARGET%\\{exe_name}"',
         "endlocal",
-        "del \"%~f0\"",
+        "del \"%~f0\" >nul 2>&1",
+        "exit /b 0",
     ]
     script_path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="strict")
     return script_path
@@ -141,12 +142,17 @@ def _launch_update_script(script: Path, install_dir: Path) -> None:
     if os.name != "nt":
         raise UpdateCheckError("Обновление поддерживается только в Windows")
 
-    create_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    create_flags = (
+        subprocess.DETACHED_PROCESS
+        | subprocess.CREATE_NEW_PROCESS_GROUP
+        | create_no_window
+    )
     breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
     create_flags |= breakaway
 
     subprocess.Popen(
-        ["cmd.exe", "/c", "start", "", "/min", str(script)],
+        ["cmd.exe", "/c", str(script)],
         cwd=str(install_dir),
         creationflags=create_flags,
         close_fds=True,

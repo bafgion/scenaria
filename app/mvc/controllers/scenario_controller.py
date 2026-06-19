@@ -40,6 +40,7 @@ from app.scenario_io import (
 )
 from app.settings import load_settings
 from app.steps import normalize_steps
+from app.scenario_hints import apply_menu_hover_fix_at_index
 from app.scenario_utils import ScenarioNotFoundError, suggest_scenario_name
 from app.brand import BRAND_NAME
 
@@ -166,7 +167,20 @@ class ScenarioController:
         self.commit_steps_to_gherkin()
         return self._model.steps
 
+    def try_fix_menu_hover(self, index: int) -> bool:
+        """Split a menu click into hover + click when selectors are known."""
+        steps = list(self._model.steps)
+        updated = apply_menu_hover_fix_at_index(steps, index)
+        if updated is None:
+            return False
+        self._model.set_steps(updated)
+        self.commit_steps_to_gherkin()
+        return True
+
     def split_click_into_hover(self, parent: QWidget, index: int) -> list[dict[str, Any]] | None:
+        if self.try_fix_menu_hover(index):
+            return self._model.steps
+
         steps = copy.deepcopy(self._model.steps)
         if index < 0 or index >= len(steps):
             return None

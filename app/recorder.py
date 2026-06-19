@@ -10,9 +10,11 @@ from typing import Callable
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
-from app.browser_config import BROWSER_CONTEXT_OPTIONS, BROWSER_LAUNCH_ARGS
+from app.browser_config import browser_context_options, BROWSER_LAUNCH_ARGS
 from app.browser_focus import focus_browser_context_with_title
+from app.http_auth import auth_key, resolve_http_credentials
 from app.paths import configure_playwright_browsers
+from app.settings import load_settings
 from app.playwright_lifecycle import release_playwright_session
 from app.picker_script import PICKER_INSTALL_SCRIPT, PICKER_UNINSTALL_SCRIPT
 from app.player import PlayResult, highlight_selector, remove_highlight, reset_highlight_cleanup_state, run_scenario_on_page, setup_highlight_cleanup, validate_scenario_on_page
@@ -86,6 +88,7 @@ class ScenarioRecorder:
         self._pick_cancel_requested = False
         self._shutdown_requested = False
         self._session_releasing = False
+        self._context_auth_key: tuple[str, str] | None = None
 
         self._enqueue(_Command.PREWARM, {})
 
@@ -521,15 +524,30 @@ class ScenarioRecorder:
         if self._playwright is None:
             self._playwright = sync_playwright().start()
 
-    def _ensure_playwright(self) -> None:
+    def _auth_key_for_url(self, start_url: str) -> tuple[str, str] | None:
+        return auth_key(resolve_http_credentials(start_url, load_settings()))
+
+    def _ensure_playwright(self, start_url: str = "") -> None:
         configure_playwright_browsers()
+        wanted_key = self._auth_key_for_url(start_url)
+        if (
+            self._browser is not None
+            and self._browser.is_connected()
+            and start_url.strip()
+            and wanted_key != self._context_auth_key
+        ):
+            self._close_session(keep_playwright=True)
+
         if self._playwright is None:
             self._emit_status("Инициализация Playwright...")
             self._playwright = sync_playwright().start()
+
         if self._browser is None or not self._browser.is_connected():
             self._emit_status("Запуск Chromium...")
             self._browser = self._playwright.chromium.launch(headless=False, args=BROWSER_LAUNCH_ARGS)
-            self._context = self._browser.new_context(**BROWSER_CONTEXT_OPTIONS)
+            context_options = browser_context_options(start_url)
+            self._context = self._browser.new_context(**context_options)
+            self._context_auth_key = wanted_key
             self._context.on("page", setup_highlight_cleanup)
             self._page = self._context.new_page()
             setup_highlight_cleanup(self._page)
@@ -625,6 +643,9 @@ class ScenarioRecorder:
 
     def _navigate_if_needed(self, start_url: str) -> None:
         assert self._page is not None
+        from app.http_auth import strip_url_credentials
+
+        start_url = strip_url_credentials(start_url)
         if not start_url:
             return
         current_url = self._page.url
@@ -634,13 +655,16 @@ class ScenarioRecorder:
 
     def _handle_open(self, start_url: str) -> None:
         self._emit_status("Запуск браузера...")
-        self._ensure_playwright()
+        self._ensure_playwright(start_url)
         self._navigate_if_needed(start_url)
         self._emit_status("Браузер открыт. Перейдите на нужную страницу и нажмите «Начать запись».")
 
     def _handle_start_recording(self, start_url: str) -> str:
         self._emit_status("Подготовка записи...")
-        self._ensure_playwright()
+        self._ensure_playwright(start_url)
+        from app.http_auth import strip_url_credentials
+
+        start_url = strip_url_credentials(start_url)
         page = self._get_active_page()
         current_url = page.url
         is_blank = not current_url or current_url == "about:blank"
@@ -925,7 +949,7 @@ class ScenarioRecorder:
         self._close_session()
         self._emit_status("Браузер закрыт.")
 
-    def _close_session(self) -> None:
+    def _close_session(self, *, keep_playwright: bool = False) -> None:
         if self._session_releasing:
             return
         self._session_releasing = True
@@ -942,15 +966,18 @@ class ScenarioRecorder:
         reset_highlight_cleanup_state()
         self._browser_open = False
         self._watchers_attached = False
+        self._context_auth_key = None
         try:
             release_playwright_session(
                 playwright=playwright,
                 browser=browser,
                 context=context,
+                stop_driver=not keep_playwright,
                 before_close=lambda: self._uninstall_picker_on_page(page),
             )
         finally:
-            self._playwright = None
+            if not keep_playwright:
+                self._playwright = None
             self._session_releasing = False
 
     def _uninstall_picker_on_page(self, page: Page | None) -> None:

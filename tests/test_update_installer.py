@@ -41,3 +41,4 @@ def test_prepare_update_script_waits_for_exe_and_logs(tmp_path: Path) -> None:
     assert str(staging_dir.resolve()) in text
     assert "if %RC% GEQ 8" in text
     assert 'start "" "%TARGET%\\Scenaria.exe"' in text
+    assert "exit /b 0" in text

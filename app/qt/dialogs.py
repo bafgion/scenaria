@@ -143,6 +143,56 @@ def prompt_email_code(
     return code_edit.text()
 
 
+def prompt_http_auth(
+    parent: QWidget | None,
+    *,
+    host: str,
+    username: str = "",
+    password: str = "",
+) -> tuple[str, str, str] | None:
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("HTTP-авторизация")
+    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+    dialog.setMinimumWidth(420)
+
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(
+        QLabel(
+            "Логин и пароль для HTTP Basic Auth (окно «Войти» в браузере).\n"
+            "Данные сохраняются локально для указанного домена."
+        )
+    )
+
+    host_edit = QLineEdit(host)
+    host_edit.setPlaceholderText("stage.example.com")
+    layout.addWidget(QLabel("Сайт"))
+    layout.addWidget(host_edit)
+
+    user_edit = QLineEdit(username)
+    user_edit.setPlaceholderText("Имя пользователя")
+    layout.addWidget(QLabel("Имя пользователя"))
+    layout.addWidget(user_edit)
+
+    password_edit = QLineEdit(password)
+    password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+    password_edit.setPlaceholderText("Пароль")
+    layout.addWidget(QLabel("Пароль"))
+    layout.addWidget(password_edit)
+
+    buttons = ok_cancel_button_box()
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    host_edit.returnPressed.connect(dialog.accept)
+    user_edit.returnPressed.connect(dialog.accept)
+    password_edit.returnPressed.connect(dialog.accept)
+    host_edit.setFocus()
+
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return host_edit.text().strip(), user_edit.text(), password_edit.text()
+
+
 def pick_picker_insert_mode(parent: QWidget | None, selector: str) -> PickerInsertMode | None:
     preview = selector if len(selector) <= 120 else selector[:117] + "..."
     box = QMessageBox(parent)

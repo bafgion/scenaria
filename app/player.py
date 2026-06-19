@@ -11,13 +11,13 @@ from typing import Any, Callable, TypedDict
 
 from playwright.sync_api import Page, sync_playwright
 
-from app.browser_config import BROWSER_CONTEXT_OPTIONS, BROWSER_LAUNCH_ARGS
+from app.browser_config import browser_context_options, BROWSER_LAUNCH_ARGS
 from app.run_variables import RunContext, normalize_generator_name
 from app.paths import configure_playwright_browsers, screenshots_dir, traces_dir
 from app.play_log import format_click_log, format_fill_generated_log, format_fill_log, step_log_target
 from app.playwright_lifecycle import release_playwright_session
 from app.selector_picker import SelectorPickerSession
-from app.selector_resolve import resolve_chained_locator
+from app.selector_resolve import resolve_chained_locator, resolve_hover_locator
 from app.signature_draw import draw_signature_on_canvas
 from app.steps import NAV_TIMEOUT_MS, NAV_WAIT_UNTIL, normalize_steps, urls_match
 
@@ -581,8 +581,10 @@ def _hover_element(page: Page, selector: str, on_log: LogCallback, index: int, *
     if not selector:
         return False
     try:
-        page.locator(selector).first.hover(timeout=5000, force=True)
-        page.wait_for_timeout(280)
+        locator = resolve_hover_locator(page, selector)
+        locator.scroll_into_view_if_needed(timeout=3000)
+        locator.hover(timeout=5000, force=True)
+        page.wait_for_timeout(400)
         on_log(f"{index}. {label} → {selector}")
         return True
     except Exception:
@@ -599,33 +601,23 @@ def _prepare_click_target(page: Page, step: dict, on_log: LogCallback, index: in
 
 
 def _reveal_hover_menu(page: Page, selector: str, on_log: LogCallback, index: int) -> bool:
-    fragments = _extract_text_fragments(selector)
-    if not fragments:
-        return False
+    targets: list[str] = []
+    if " >> " in selector:
+        targets.append(selector.split(" >> ", 1)[0].strip())
+    for text in _extract_text_fragments(selector):
+        targets.append(f'div:has-text("{text}")')
+        targets.append(f'a:has-text("{text}")')
 
-    hovered = False
-    for text in fragments:
-        candidates = (
-            f'nav a:has-text("{text}")',
-            f'nav button:has-text("{text}")',
-            f'[role="menuitem"]:has-text("{text}")',
-            f'a:has-text("{text}")',
-            f'button:has-text("{text}")',
-        )
-        for candidate in candidates:
-            locator = page.locator(candidate).first
-            try:
-                if locator.count() == 0:
-                    continue
-                locator.hover(timeout=2500, force=True)
-                page.wait_for_timeout(220)
-                hovered = True
-                break
-            except Exception:
-                continue
-        if hovered:
-            break
-    return hovered
+    for target in targets:
+        try:
+            locator = resolve_hover_locator(page, target)
+            locator.scroll_into_view_if_needed(timeout=3000)
+            locator.hover(timeout=2500, force=True)
+            page.wait_for_timeout(400)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def capture_failure_trace(context, scenario_name: str, step_index: int) -> str | None:
@@ -870,8 +862,10 @@ def execute_step(
     if action == "hover":
         on_log(f"{index}. Наведение → {step_log_target(step, selector)}")
         _maybe_highlight(page, selector, enabled=highlight, pause_ms=200)
-        page.locator(selector).first.hover(timeout=15000, force=True)
-        page.wait_for_timeout(280)
+        locator = resolve_hover_locator(page, selector)
+        locator.scroll_into_view_if_needed(timeout=5000)
+        locator.hover(timeout=15000, force=True)
+        page.wait_for_timeout(400)
         remove_highlight(page)
         return
 
@@ -1478,7 +1472,11 @@ class ScenarioPlayer:
                 slow_mo=slow_mo_ms,
                 args=BROWSER_LAUNCH_ARGS if not headless else None,
             )
-            context = browser.new_context(**({} if headless else BROWSER_CONTEXT_OPTIONS))
+            start_url = scenario.get("startUrl") or ""
+            steps = scenario.get("steps") or []
+            if not start_url and steps and steps[0].get("action") == "goto":
+                start_url = str(steps[0].get("url") or "")
+            context = browser.new_context(**browser_context_options(start_url, headless=headless))
             page = context.new_page()
             self._playwright = playwright
             self._browser = browser

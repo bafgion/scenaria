@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from app.qt import icons
@@ -30,7 +30,8 @@ class QuickToolBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("role", "quick-toolbar")
-        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 2, 6, 2)
@@ -50,7 +51,6 @@ class QuickToolBar(QWidget):
         self._default_tooltips: dict[str, str] = {}
         self._button_labels: dict[str, str] = {}
         self._compact = False
-        self._compact_threshold = 980
 
         self._add_btn(
             primary_row,
@@ -187,12 +187,34 @@ class QuickToolBar(QWidget):
         root.addLayout(primary_row)
         root.addLayout(secondary_row)
 
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        compact = self.width() < self._compact_threshold
-        if compact != self._compact:
-            self._compact = compact
-            self._apply_layout_mode()
+        self._compact_layout_width = self._measure_layout_width(compact=True)
+        self._full_layout_width = self._measure_layout_width(compact=False)
+
+    def set_compact(self, compact: bool) -> None:
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._apply_layout_mode()
+
+    def full_layout_min_width(self) -> int:
+        return self._full_layout_width
+
+    def compact_layout_min_width(self) -> int:
+        return self._compact_layout_width
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = super().minimumSizeHint()
+        width = self._compact_layout_width if self._compact else self._full_layout_width
+        return QSize(width, hint.height())
+
+    def _measure_layout_width(self, *, compact: bool) -> int:
+        saved = self._compact
+        self._compact = compact
+        self._apply_layout_mode()
+        width = super().minimumSizeHint().width()
+        self._compact = saved
+        self._apply_layout_mode()
+        return width
 
     def _apply_layout_mode(self) -> None:
         for key, btn in self._buttons.items():
@@ -255,6 +277,7 @@ class QuickToolBar(QWidget):
         unapplied: bool = False,
         batch_running: bool = False,
         picking: bool = False,
+        editor_active: bool = True,
         disable_reasons: dict[str, str] | None = None,
     ) -> None:
         if not recorder_browser_open:
@@ -271,20 +294,24 @@ class QuickToolBar(QWidget):
         self._buttons["browser"].setEnabled(not browser_open and not recording and not batch_running)
         self._buttons["focus_browser"].setEnabled(browser_open or playing)
         self._buttons["record"].setEnabled(
-            recorder_browser_open and not recording and not playing and not batch_running
+            editor_active and recorder_browser_open and not recording and not playing and not batch_running
         )
-        self._buttons["quick_record"].setEnabled(not recording and not playing and not batch_running)
+        self._buttons["quick_record"].setEnabled(
+            editor_active and not recording and not playing and not batch_running
+        )
         self._buttons["stop"].setEnabled(
             recording or playing or batch_running or player_browser_open or picking
         )
         self._buttons["pause"].setEnabled(recording)
-        can_play = not recording and not playing and has_steps and not batch_running
+        can_play = editor_active and not recording and not playing and has_steps and not batch_running
         self._buttons["play"].setEnabled(can_play and not unapplied)
-        self._buttons["validate"].setEnabled(not recording and not playing and not batch_running)
+        self._buttons["validate"].setEnabled(
+            editor_active and not recording and not playing and not batch_running
+        )
         if not recorder_browser_open:
             recorder_browser_open = browser_open and not player_browser_open
         can_picker = False
-        if not recording and not batch_running and not picking:
+        if editor_active and not recording and not batch_running and not picking:
             if playing:
                 can_picker = player_browser_open
             else:

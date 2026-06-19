@@ -86,9 +86,10 @@ class ScenarioModel(QObject):
         self.status_message.emit(f"Загружен сценарий «{path.stem}»", "success")
 
     def new_scenario(self) -> None:
+        preserved_start_url = self._start_url
         self._feature_path = None
         self._name = ""
-        self._start_url = ""
+        self._start_url = preserved_start_url
         self._steps = []
         self._source_text = ""
         self._saved_snapshot = self._snapshot()

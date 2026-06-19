@@ -618,6 +618,7 @@ class RecordingController(QObject):
         if start_url and start_url not in {"", "about:blank"}:
             self._scenario.set_start_url(start_url)
             self.log.emit(f"Стартовый URL из вкладки: {start_url}", "info")
+        self.switch_tab.emit("editor")
         self.status.emit("Запись активна — выполняйте действия в браузере", "recording")
         self.log.emit("Запись активна", "success")
         self._emit_session()
