@@ -19,6 +19,17 @@ class UpdateAsset:
     url: str
     size: int
     sha256: str | None = None
+    alternate_urls: tuple[str, ...] = ()
+
+    @property
+    def all_urls(self) -> tuple[str, ...]:
+        urls: list[str] = []
+        seen: set[str] = set()
+        for candidate in (self.url, *self.alternate_urls):
+            if candidate and candidate not in seen:
+                urls.append(candidate)
+                seen.add(candidate)
+        return tuple(urls)
 
 
 @dataclass(frozen=True)
@@ -68,15 +79,40 @@ def _normalize_tag(tag: str) -> str:
     return tag.strip().lstrip("v")
 
 
-def _asset_from_release(entry: dict[str, Any]) -> UpdateAsset | None:
+def _direct_release_url(tag: str, name: str) -> str:
+    return f"https://github.com/{github_repo()}/releases/download/{tag}/{name}"
+
+
+def _asset_urls_for_release(release: dict[str, Any], name: str) -> tuple[str, ...]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for entry in release.get("assets", []):
+        if entry.get("name") != name:
+            continue
+        url = str(entry.get("browser_download_url", ""))
+        if url and url not in seen:
+            urls.append(url)
+            seen.add(url)
+    tag = str(release.get("tag_name", "")).strip()
+    if tag:
+        direct = _direct_release_url(tag, name)
+        if direct not in seen:
+            urls.append(direct)
+    return tuple(urls)
+
+
+def _asset_from_release(entry: dict[str, Any], release: dict[str, Any]) -> UpdateAsset | None:
     name = str(entry.get("name", ""))
-    url = str(entry.get("browser_download_url", ""))
-    if not name or not url:
+    if not name:
+        return None
+    urls = _asset_urls_for_release(release, name)
+    if not urls:
         return None
     return UpdateAsset(
         name=name,
-        url=url,
+        url=urls[0],
         size=int(entry.get("size", 0) or 0),
+        alternate_urls=urls[1:],
     )
 
 
@@ -97,28 +133,27 @@ def _manifest_assets(release: dict[str, Any]) -> tuple[UpdateAsset | None, Updat
         portable_asset = None
         update_asset = None
         if portable.get("name"):
+            portable_name = str(portable["name"])
+            portable_urls = _asset_urls_for_release(release, portable_name)
             portable_asset = UpdateAsset(
-                name=str(portable["name"]),
-                url=_find_asset_url(release, str(portable["name"])),
+                name=portable_name,
+                url=portable_urls[0] if portable_urls else "",
                 size=int(portable.get("size", 0) or 0),
                 sha256=str(portable.get("sha256", "")) or None,
+                alternate_urls=portable_urls[1:],
             )
         if update.get("name"):
+            update_name = str(update["name"])
+            update_urls = _asset_urls_for_release(release, update_name)
             update_asset = UpdateAsset(
-                name=str(update["name"]),
-                url=_find_asset_url(release, str(update["name"])),
+                name=update_name,
+                url=update_urls[0] if update_urls else "",
                 size=int(update.get("size", 0) or 0),
                 sha256=str(update.get("sha256", "")) or None,
+                alternate_urls=update_urls[1:],
             )
         return portable_asset, update_asset
     return None, None
-
-
-def _find_asset_url(release: dict[str, Any], name: str) -> str:
-    for entry in release.get("assets", []):
-        if entry.get("name") == name:
-            return str(entry.get("browser_download_url", ""))
-    return ""
 
 
 def _pick_assets(release: dict[str, Any]) -> tuple[UpdateAsset | None, UpdateAsset | None]:
@@ -129,7 +164,7 @@ def _pick_assets(release: dict[str, Any]) -> tuple[UpdateAsset | None, UpdateAss
     portable_asset = None
     update_asset = None
     for entry in release.get("assets", []):
-        asset = _asset_from_release(entry)
+        asset = _asset_from_release(entry, release)
         if asset is None:
             continue
         if asset.name == PORTABLE_ZIP:

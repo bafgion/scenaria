@@ -6,12 +6,13 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
     QFormLayout,
     QLabel,
     QLineEdit,
     QWidget,
 )
+
+from app.qt.dialogs import BTN_OK, ok_cancel_button_box
 
 from app.step_display import ACTION_ICONS
 
@@ -39,13 +40,12 @@ class StepEditorDialog(QDialog):
         if not field_specs:
             layout.addRow(QLabel("Этот шаг не редактируется из диалога."))
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = ok_cancel_button_box()
+        ok_btn = next(btn for btn in buttons.buttons() if btn.text() == BTN_OK)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         if not field_specs:
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+            ok_btn.setEnabled(False)
         layout.addRow(buttons)
 
     def edited_step(self, original: dict[str, Any]) -> dict[str, Any] | None:

@@ -9,13 +9,14 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 import zipfile
 from pathlib import Path
 
 from app.brand import BRAND_NAME, EXE_NAME
 from app.paths import app_root
+from app.release_info import github_repo
 from app.update.checker import UpdateAsset, UpdateCheckError
+from app.update.http_download import download_url_resilient
 
 _STAGING_DIR_NAME = "_update_staging"
 _LOG_NAME = "_apply_update.log"
@@ -31,31 +32,32 @@ def _sha256_file(path: Path) -> str:
 
 
 def download_asset(asset: UpdateAsset, destination: Path, on_progress=None) -> Path:
-    if not asset.url:
+    urls = asset.all_urls
+    if not urls:
         raise UpdateCheckError(f"Нет ссылки на файл {asset.name}")
 
-    request = urllib.request.Request(asset.url, headers={"User-Agent": BRAND_NAME})
     destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            total = int(response.headers.get("Content-Length", "0") or 0)
-            read = 0
-            with destination.open("wb") as handle:
-                while True:
-                    chunk = response.read(1024 * 256)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-                    read += len(chunk)
-                    if on_progress and total > 0:
-                        on_progress(read, total)
-    except urllib.error.URLError as exc:
-        raise UpdateCheckError(f"Не удалось скачать {asset.name}: {exc.reason}") from exc
-    except OSError as exc:
+    last_error: UpdateCheckError | None = None
+    for index, url in enumerate(urls):
+        if index > 0:
+            destination.unlink(missing_ok=True)
+        try:
+            download_url_resilient(
+                url,
+                destination,
+                total_hint=asset.size,
+                on_progress=on_progress,
+            )
+            break
+        except UpdateCheckError as exc:
+            last_error = exc
+    else:
+        manual = f"https://github.com/{github_repo()}/releases/latest"
+        detail = str(last_error) if last_error else asset.name
         raise UpdateCheckError(
-            f"Не удалось скачать {asset.name}: {exc}. "
-            "Если браузер не открывает файлы с GitHub, попробуйте VPN или скачайте ZIP вручную."
-        ) from exc
+            f"Не удалось скачать {asset.name}: {detail}. "
+            f"Попробуйте VPN или скачайте вручную: {manual}"
+        ) from last_error
 
     if asset.sha256 and _sha256_file(destination) != asset.sha256.lower():
         destination.unlink(missing_ok=True)

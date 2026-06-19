@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.gherkin_picker import PickerStepChoice, picker_step_choices
+from app.qt.dialogs import ok_cancel_button_box
 from app.qt.fonts import editor_font_css
 from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_TEXT
 
@@ -96,9 +96,7 @@ class PickerStepDialog(QDialog):
         row.addLayout(preview_box, stretch=3)
         layout.addLayout(row, stretch=1)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = ok_cancel_button_box()
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -8,13 +8,31 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
     QVBoxLayout,
     QWidget,
 )
+
+BTN_OK = "ОК"
+BTN_CANCEL = "Отмена"
+BTN_YES = "Да"
+BTN_NO = "Нет"
+BTN_CLOSE = "Закрыть"
+
+
+def ok_cancel_button_box() -> QDialogButtonBox:
+    box = QDialogButtonBox()
+    box.addButton(BTN_OK, QDialogButtonBox.ButtonRole.AcceptRole)
+    box.addButton(BTN_CANCEL, QDialogButtonBox.ButtonRole.RejectRole)
+    return box
+
+
+def close_button_box() -> QDialogButtonBox:
+    box = QDialogButtonBox()
+    box.addButton(BTN_CLOSE, QDialogButtonBox.ButtonRole.RejectRole)
+    return box
 
 
 class PickerInsertMode(str, Enum):
@@ -25,18 +43,24 @@ class PickerInsertMode(str, Enum):
 
 
 def alert(parent: QWidget | None, title: str, message: str) -> None:
-    QMessageBox.warning(parent, title, message)
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setText(message)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.addButton(BTN_OK, QMessageBox.ButtonRole.AcceptRole)
+    box.exec()
 
 
 def confirm(parent: QWidget | None, title: str, message: str) -> bool:
-    result = QMessageBox.question(
-        parent,
-        title,
-        message,
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        QMessageBox.StandardButton.No,
-    )
-    return result == QMessageBox.StandardButton.Yes
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setText(message)
+    box.setIcon(QMessageBox.Icon.Question)
+    yes = box.addButton(BTN_YES, QMessageBox.ButtonRole.YesRole)
+    no = box.addButton(BTN_NO, QMessageBox.ButtonRole.NoRole)
+    box.setDefaultButton(no)
+    box.exec()
+    return box.clickedButton() == yes
 
 
 def prompt_text(
@@ -46,10 +70,26 @@ def prompt_text(
     *,
     initial: str = "",
 ) -> str | None:
-    text, ok = QInputDialog.getText(parent, title, label, text=initial)
-    if not ok:
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel(label))
+    edit = QLineEdit(initial)
+    edit.setClearButtonEnabled(True)
+    layout.addWidget(edit)
+
+    buttons = ok_cancel_button_box()
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    edit.returnPressed.connect(dialog.accept)
+    edit.setFocus()
+
+    if dialog.exec() != QDialog.DialogCode.Accepted:
         return None
-    return text
+    return edit.text()
 
 
 def prompt_email_code(
@@ -87,9 +127,7 @@ def prompt_email_code(
     code_edit.setClearButtonEnabled(True)
     layout.addWidget(code_edit)
 
-    buttons = QDialogButtonBox(
-        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-    )
+    buttons = ok_cancel_button_box()
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
     layout.addWidget(buttons)

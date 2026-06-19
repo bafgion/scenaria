@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
 from app.feature_store import get_root, resolve_project_root
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
-from app.qt.dialogs import alert, confirm, prompt_text
+from app.qt.dialogs import BTN_OK, alert, confirm, prompt_text
 from app.qt.sync_prompts import install_prompt_service
 from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.widgets.browser_overlay import BrowserOverlayPanel
@@ -23,6 +23,7 @@ from app.qt.widgets.zone_divider import zone_divider
 from app.qt.widgets.ide_splitter import IdeSplitter, HIT_SIZE
 from app.qt.worker_bridge import WorkerBridge
 from app.recent import recent_features, recent_projects, remember_feature, remember_project
+from app.release_info import github_repo
 from app.scenario_hints import gherkin_template_text
 from app.qt.branding import about_text, brand_mark_pixmap
 from app.brand import BRAND_NAME
@@ -931,6 +932,7 @@ class MainWindow(QMainWindow):
         else:
             box.setIcon(QMessageBox.Icon.Information)
         box.setText(f"{about_text()}\n\nВерсия {current_version_label()}")
+        box.addButton("ОК", QMessageBox.ButtonRole.AcceptRole)
         box.exec()
 
     def _maybe_check_updates_on_startup(self) -> None:
@@ -943,19 +945,42 @@ class MainWindow(QMainWindow):
     def _check_updates_manual(self) -> None:
         self._check_updates(silent=False)
 
+    def _cancel_update_check(self) -> None:
+        self._update_check_token = getattr(self, "_update_check_token", 0) + 1
+        self._update_check_running = False
+        self._stop_update_check_watchdog()
+
+    def _dismiss_download_progress(self) -> None:
+        progress = getattr(self, "_download_progress", None)
+        self._download_progress = None
+        if progress is None:
+            return
+        progress.hide()
+        progress.setVisible(False)
+        progress.close()
+        progress.deleteLater()
+
     def _check_updates(self, *, silent: bool, skip_version: str = "") -> None:
+        if getattr(self, "_download_runner", None) is not None:
+            if not silent:
+                alert(self, BRAND_NAME, "Загрузка обновления уже выполняется…")
+            return
         if getattr(self, "_update_check_running", False):
             if not silent:
                 alert(self, BRAND_NAME, "Проверка обновлений уже выполняется…")
             return
 
+        self._update_check_token = getattr(self, "_update_check_token", 0) + 1
+        token = self._update_check_token
         self._update_check_running = True
         if not silent:
             self.status_bar.set_message("Проверка обновлений…", "info")
 
         self._update_runner = UpdateCheckRunner(self)
         self._update_runner.finished.connect(
-            lambda info, error: self._on_update_check_finished(info, error, silent=silent, skip_version=skip_version)
+            lambda info, error: self._on_update_check_finished(
+                info, error, token=token, silent=silent, skip_version=skip_version
+            )
         )
         if not silent:
             self._update_check_watchdog = QTimer(self)
@@ -976,6 +1001,7 @@ class MainWindow(QMainWindow):
     def _on_update_check_timeout(self, *, silent: bool) -> None:
         if silent or not getattr(self, "_update_check_running", False):
             return
+        self._cancel_update_check()
         alert(
             self,
             BRAND_NAME,
@@ -983,7 +1009,17 @@ class MainWindow(QMainWindow):
             "Проверьте доступ к github.com и повторите попытку.",
         )
 
-    def _on_update_check_finished(self, info, error: str | None, *, silent: bool, skip_version: str) -> None:
+    def _on_update_check_finished(
+        self,
+        info,
+        error: str | None,
+        *,
+        token: int,
+        silent: bool,
+        skip_version: str,
+    ) -> None:
+        if token != getattr(self, "_update_check_token", 0):
+            return
         self._update_check_running = False
         self._update_runner = None
         self._stop_update_check_watchdog()
@@ -1027,12 +1063,14 @@ class MainWindow(QMainWindow):
 
     def _start_update_download(self, info) -> None:
         if getattr(self, "_download_runner", None) is not None:
+            alert(self, BRAND_NAME, "Загрузка обновления уже выполняется…")
             return
 
         progress = QMessageBox(self)
         progress.setWindowTitle("Загрузка обновления")
         progress.setText("Скачивание и установка…")
         progress.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        progress.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         progress.show()
 
         self._download_progress = progress
@@ -1042,20 +1080,42 @@ class MainWindow(QMainWindow):
         self._download_runner.start()
 
     def _on_update_download_progress(self, done: int, total: int) -> None:
-        if not getattr(self, "_download_progress", None):
+        progress = getattr(self, "_download_progress", None)
+        if progress is None:
             return
         percent = int(done * 100 / total) if total else 0
-        self._download_progress.setText(f"Скачивание… {percent}%")
+        progress.setText(f"Скачивание… {percent}%")
 
     def _on_update_download_finished(self, error: str | None) -> None:
+        runner = self._download_runner
         self._download_runner = None
-        if getattr(self, "_download_progress", None):
-            self._download_progress.close()
-            self._download_progress = None
+        if runner is not None:
+            try:
+                runner.progress.disconnect(self._on_update_download_progress)
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                runner.finished.disconnect(self._on_update_download_finished)
+            except (RuntimeError, TypeError):
+                pass
+        self._dismiss_download_progress()
         if error:
-            alert(self, BRAND_NAME, error)
+            self._show_update_download_error(error)
+
+    def _show_update_download_error(self, message: str) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle(BRAND_NAME)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(message)
+        open_page = box.addButton("Открыть страницу загрузки", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(BTN_OK, QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
+        if box.clickedButton() == open_page:
+            QDesktopServices.openUrl(QUrl(f"https://github.com/{github_repo()}/releases/latest"))
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        self._dismiss_download_progress()
+        self._cancel_update_check()
         self._browser_watch_timer.stop()
         self._browser_overlay.hide()
         editor_text = self.workspace.prepare_shutdown()

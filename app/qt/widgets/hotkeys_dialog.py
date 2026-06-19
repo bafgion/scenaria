@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QPlainTextEdit, QVBoxLayout
+
+from app.qt.dialogs import close_button_box
 
 HOTKEYS_TEXT = """Горячие клавиши
 
@@ -41,7 +43,7 @@ class HotkeysDialog(QDialog):
         editor.setPlainText(HOTKEYS_TEXT)
         layout.addWidget(editor)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons = close_button_box()
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
