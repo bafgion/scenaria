@@ -593,7 +593,7 @@ class RecordingController(QObject):
         self._session.recording = False
         self._session.paused = False
         self._picking = False
-        if not self._batch_running and not self._player.worker_alive:
+        if not self._batch_running:
             self._session.playing = False
         self._set_pending(False)
         self.status.emit("Браузер закрыт", "normal")
@@ -724,6 +724,9 @@ class RecordingController(QObject):
         finally:
             self._session.playing = False
             self._sync_player_browser_state()
+            self.sync_browser_state()
+            if not self._session.browser_session_active():
+                self._picking = False
             self._set_pending(False)
             self._emit_session()
 

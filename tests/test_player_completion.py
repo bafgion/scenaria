@@ -49,7 +49,7 @@ def test_player_calls_on_done_while_worker_still_alive_for_visible_browser() -> 
     assert not player.worker_alive
 
 
-def test_player_worker_not_alive_after_failure() -> None:
+def test_player_worker_stays_alive_after_failure_until_stopped() -> None:
     player = ScenarioPlayer()
     done = threading.Event()
     results: list[dict] = []
@@ -70,8 +70,9 @@ def test_player_worker_not_alive_after_failure() -> None:
     player.play(scenario, lambda _msg: None, on_done, headless=False, slow_mo_ms=0)
     assert done.wait(timeout=60), "on_done was not called"
     assert results and not results[0]["success"]
-    assert not player.worker_alive
+    assert player.worker_alive
     player.stop()
+    assert not player.worker_alive
 
 
 def test_player_can_restart_after_failure() -> None:
@@ -103,6 +104,8 @@ def test_player_can_restart_after_failure() -> None:
     )
     assert fail_done.wait(timeout=60)
     assert outcomes[-1] is False
+    assert player.worker_alive
+    player.stop()
     assert not player.worker_alive
 
     player.play(

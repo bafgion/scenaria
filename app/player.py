@@ -17,6 +17,7 @@ from app.paths import configure_playwright_browsers, screenshots_dir, traces_dir
 from app.play_log import format_click_log, format_fill_generated_log, format_fill_log, step_log_target
 from app.playwright_lifecycle import release_playwright_session
 from app.selector_picker import SelectorPickerSession
+from app.selector_resolve import resolve_chained_locator
 from app.signature_draw import draw_signature_on_canvas
 from app.steps import NAV_TIMEOUT_MS, NAV_WAIT_UNTIL, normalize_steps, urls_match
 
@@ -878,12 +879,12 @@ def execute_step(
         on_log(format_click_log(index, step))
         _maybe_highlight(page, selector, enabled=highlight, pause_ms=200)
         _prepare_click_target(page, step, on_log, index)
-        locator = page.locator(selector).first
+        locator = resolve_chained_locator(page, selector)
         try:
             locator.click(timeout=9000)
         except Exception:
             if _reveal_hover_menu(page, selector, on_log, index):
-                locator.click(timeout=9000)
+                resolve_chained_locator(page, selector).click(timeout=9000)
             else:
                 raise
         remove_highlight(page)
@@ -1535,6 +1536,9 @@ class ScenarioPlayer:
             on_log(
                 "Тест завершён с ошибкой. Браузер остаётся открытым — исправьте шаги и запустите снова."
             )
+            self._idle_loop(page)
+            if not session_closed and not self.browser_open:
+                close_session()
             return
 
         on_log(

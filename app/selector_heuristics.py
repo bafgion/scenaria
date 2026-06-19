@@ -118,6 +118,23 @@ SELECTOR_HEURISTICS_JS = """
     return role === 'listitem' || role === 'article';
   }
 
+  function containerSelectorFor(node) {
+    if (!node || node.nodeType !== 1) return 'div';
+    const tag = node.tagName.toLowerCase();
+    const cls = (node.getAttribute('class') || '').trim();
+    if (!cls) return tag;
+    const tokens = cls.split(/\\s+/).filter(Boolean);
+    for (const token of tokens) {
+      if (/^(card|tile|panel|option|choice|plan|package|column)$/i.test(token)) {
+        return `${tag}.${cssEscape(token)}`;
+      }
+    }
+    if (looksLikeCardContainer(node) && tokens.length === 1) {
+      return `${tag}.${cssEscape(tokens[0])}`;
+    }
+    return tag;
+  }
+
   function clickLabelMatches(el, label) {
     if (!el || el.nodeType !== 1) return false;
     const normalized = visibleText(el).trim();
@@ -193,11 +210,11 @@ SELECTOR_HEURISTICS_JS = """
         node = node.parentElement;
         continue;
       }
-      const containerTag = looksLikeCardContainer(node) ? node.tagName.toLowerCase() : 'div';
+      const containerSel = containerSelectorFor(node);
       const escapedCaption = caption.replace(/"/g, '\\\\"');
       const escapedLabel = label.replace(/"/g, '\\\\"');
       const btnTag = buttonTagForSelector(target);
-      return `${containerTag}:has-text("${escapedCaption}") >> ${btnTag}:has-text("${escapedLabel}")`;
+      return `${containerSel}:has-text("${escapedCaption}") >> ${btnTag}:has-text("${escapedLabel}")`;
     }
     return null;
   }

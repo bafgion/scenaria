@@ -605,6 +605,8 @@ class MainWindow(QMainWindow):
             rec.stop_recording()
         elif session.playing:
             rec.stop_playback()
+        elif session.player_browser:
+            rec.close_player_browser()
 
     def _prepare_batch_run(self) -> bool:
         self.workspace.persist_current_tab()
@@ -739,6 +741,9 @@ class MainWindow(QMainWindow):
     def _sync_browser_overlay(self) -> None:
         s = self._controller.session
         rec = self._controller.recording
+        if not s.browser_session_active():
+            self._browser_overlay.hide()
+            return
         self._browser_overlay.sync_state(
             visible=s.browser_session_active(),
             recording=s.recording,
@@ -825,8 +830,12 @@ class MainWindow(QMainWindow):
     def _start_browser_watch_timer(self) -> None:
         self._browser_watch_timer = QTimer(self)
         self._browser_watch_timer.setInterval(400)
-        self._browser_watch_timer.timeout.connect(self._controller.recording.sync_browser_state)
+        self._browser_watch_timer.timeout.connect(self._refresh_browser_chrome)
         self._browser_watch_timer.start()
+
+    def _refresh_browser_chrome(self) -> None:
+        self._controller.recording.sync_browser_state()
+        self._sync_browser_overlay()
 
     def _autosave_draft(self) -> None:
         settings = load_settings()

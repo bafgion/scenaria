@@ -168,11 +168,11 @@ def test_selector_probe_duplicate_vybrat_buttons() -> None:
         no_contract_selector = page.evaluate(SELECTOR_PROBE_FN, ".card:nth-of-type(3) button")
         assert (
             sz_selector
-            == 'div:has-text("Договор с самозанятым") >> button:has-text("Выбрать")'
+            == 'div.card:has-text("Договор с самозанятым") >> button:has-text("Выбрать")'
         )
         assert (
             no_contract_selector
-            == 'div:has-text("Без договора") >> button:has-text("Выбрать")'
+            == 'div.card:has-text("Без договора") >> button:has-text("Выбрать")'
         )
         assert sz_selector != no_contract_selector
         browser.close()
