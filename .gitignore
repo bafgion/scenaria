@@ -28,3 +28,8 @@ Desktop.ini
 
 # Local release override (copy from release.json.example)
 release.json
+
+# Local planning docs (not shared in repo)
+docs/ROADMAP.md
+docs/ROADMAP_TASKS.md
+docs/VERSIONING.md
