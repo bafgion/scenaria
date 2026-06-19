@@ -109,16 +109,16 @@ def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     layout.addWidget(splitter)
 
     workspace_min = workspace.minimumSizeHint().width()
-    host_width = workspace_min + 700
-    splitter.setSizes([280, host_width - 280])
+    host_width = max(2600, workspace_min + 1000)
+    splitter.setSizes([320, host_width - 320])
     host.resize(host_width, 700)
     host.show()
     qapp.processEvents()
-    _expand_workspace_until_full_toolbar(workspace, qapp, start=host_width - 280)
+    _expand_workspace_until_full_toolbar(workspace, qapp, start=host_width - 320)
 
-    target_sidebar = 280 + min(220, max(80, (host_width - workspace_min) // 2))
+    before = splitter.sizes()[0]
+    target_sidebar = before + 180
     splitter.setSizes([target_sidebar, host_width - target_sidebar])
     qapp.processEvents()
-    sizes = splitter.sizes()
 
-    assert sizes[0] > 260
+    assert splitter.sizes()[0] > before
