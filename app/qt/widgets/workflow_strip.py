@@ -106,15 +106,15 @@ class WorkflowStrip(QWidget):
         tips = {
             0: "Откройте браузер на стартовом URL",
             1: "Запишите действия в браузере",
-            2: "Запустите тест или проверьте селекторы",
-            3: "Примените Gherkin и сохраните файл",
+            2: "Запустите сценарий или проверьте элементы на странице",
+            3: "Сохраните файл сценария",
         }
         for index, (_label, btn, _signal) in enumerate(self._steps):
             extra = tips.get(index, "")
             if index == 1 and not browser_open:
                 btn.setToolTip("Сначала откройте браузер")
             elif index == 2 and unapplied:
-                btn.setToolTip("Сначала примените Gherkin (Ctrl+Shift+S)")
+                btn.setToolTip("Исправьте ошибки в тексте сценария")
             elif index == 2 and not has_steps:
                 btn.setToolTip("Нет шагов — запишите или введите сценарий")
             else:

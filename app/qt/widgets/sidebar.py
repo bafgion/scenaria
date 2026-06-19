@@ -37,7 +37,7 @@ class Sidebar(QWidget):
         header_layout.setContentsMargins(8, 6, 8, 6)
         header_layout.setSpacing(4)
 
-        title = QLabel("ПРОВОДНИК")
+        title = QLabel("СЦЕНАРИИ")
         title.setProperty("role", "zone-title")
         header_layout.addWidget(title)
 

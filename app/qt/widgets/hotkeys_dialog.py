@@ -12,13 +12,13 @@ HOTKEYS_TEXT = """Горячие клавиши
   Ctrl+S          Сохранить
 
 Редактор
-  Ctrl+Shift+S    Применить Gherkin
+  Ctrl+Shift+S    Обновить сценарий
   Ctrl+Space      Автодополнение шагов
 
 Запуск
   Ctrl+B          Открыть браузер
   Ctrl+R          Запись
-  Ctrl+Enter      Запустить тест
+  Ctrl+Enter      Запустить сценарий
   Escape          Стоп / закрыть браузер
 
 Панели

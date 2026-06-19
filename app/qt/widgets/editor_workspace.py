@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QStackedWidget, QTabBar, QToolButton, QVBoxLayout, QWidget
 
 from app.gherkin_ru import GherkinParseError, gherkin_to_steps
@@ -23,6 +24,7 @@ from app.qt.widgets.post_record_banner import PostRecordBanner
 from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.recording_modes_bar import RecordingModesBar
 from app.qt.widgets.steps_strip import StepsStrip
+from app.qt.widgets.empty_editor_panel import EmptyEditorPanel
 from app.qt.widgets.welcome_panel import WelcomePanel
 from app.scenario_hints import find_suspicious_menu_clicks
 from app.settings import load_settings, save_settings
@@ -30,6 +32,8 @@ from app.brand import BRAND_NAME
 
 _PAGE_WELCOME = 0
 _PAGE_EDITOR = 1
+_PAGE_EMPTY = 2
+_WELCOME_KEY = "__welcome__"
 
 
 @dataclass
@@ -41,9 +45,14 @@ class _EditorTab:
     unapplied: bool = False
     unsaved: bool = False
 
+    @property
+    def is_welcome(self) -> bool:
+        return self.key == _WELCOME_KEY
+
 
 class EditorWorkspace(QWidget):
     state_changed = Signal(str)
+    welcome_activated = Signal()
 
     def __init__(self, controller: AppController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -74,7 +83,8 @@ class EditorWorkspace(QWidget):
         self.tab_bar.setTabsClosable(False)
         self.tab_bar.setExpanding(False)
         self.tab_bar.setDrawBase(True)
-        self.tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
+        self.tab_bar.setUsesScrollButtons(True)
+        self.tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
         self.tab_bar.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tab_bar)
 
@@ -139,9 +149,12 @@ class EditorWorkspace(QWidget):
         self._steps_panel_layout_done = False
 
         self.stack.addWidget(editor_page)
+
+        self.empty_panel = EmptyEditorPanel(self.stack)
+        self.stack.addWidget(self.empty_panel)
+
         layout.addWidget(self.stack, stretch=1)
 
-        self.dirty_banner.apply_clicked.connect(self.gherkin_panel._apply)
         self.dirty_banner.discard_clicked.connect(self.gherkin_panel.discard_changes)
         self.steps_strip.step_selected.connect(self.gherkin_panel.focus_step)
         self.steps_strip.fix_menu_clicked.connect(self._fix_menu_for_step)
@@ -161,7 +174,6 @@ class EditorWorkspace(QWidget):
         self.gherkin_panel.dirty_changed.connect(self._on_editor_dirty_changed)
         self.gherkin_panel.applied.connect(self._on_gherkin_applied)
         self._sync_state()
-        self._show_welcome_if_needed()
 
     @property
     def quick_toolbar(self):
@@ -179,18 +191,51 @@ class EditorWorkspace(QWidget):
         from app.feature_store import get_root
 
         if get_root() is None:
-            self.show_welcome()
+            self.ensure_welcome_tab(activate=True)
+
+    def ensure_welcome_tab(self, *, activate: bool = False) -> None:
+        for index, tab in enumerate(self._tabs):
+            if tab.is_welcome:
+                self.tab_bar.setVisible(True)
+                if activate:
+                    self._activate_tab(index)
+                return
+
+        welcome = _EditorTab(key=_WELCOME_KEY, path=None, title="Старт", text="")
+        self._tabs.insert(0, welcome)
+        self._insert_tab_bar_tab(0, welcome)
+        if self._current_index >= 0:
+            self._current_index += 1
+        self.tab_bar.setVisible(True)
+        if activate:
+            self._activate_tab(0)
+        elif self._current_index >= 0:
+            self.tab_bar.setCurrentIndex(self._current_index)
 
     def show_welcome(self) -> None:
-        self.tab_bar.setVisible(False)
-        self.stack.setCurrentIndex(_PAGE_WELCOME)
+        self.ensure_welcome_tab(activate=True)
 
     def show_editor(self) -> None:
+        if not self._tabs:
+            self._show_empty_workspace()
+            return
+        if self._current_index >= 0 and self._current_index < len(self._tabs):
+            tab = self._tabs[self._current_index]
+            if tab.is_welcome:
+                for index, candidate in enumerate(self._tabs):
+                    if not candidate.is_welcome:
+                        self._activate_tab(index)
+                        return
+                self.open_untitled()
+                return
         self.tab_bar.setVisible(bool(self._tabs))
         self.stack.setCurrentIndex(_PAGE_EDITOR)
 
     def has_open_tabs(self) -> bool:
         return bool(self._tabs)
+
+    def has_editor_tabs(self) -> bool:
+        return any(not tab.is_welcome for tab in self._tabs)
 
     def current_tab(self) -> _EditorTab | None:
         if self._current_index < 0 or self._current_index >= len(self._tabs):
@@ -270,6 +315,8 @@ class EditorWorkspace(QWidget):
         if self._current_index < 0:
             return True
         tab = self._tabs[self._current_index]
+        if tab.is_welcome:
+            return True
         dirty = self.gherkin_panel.is_dirty
         if not dirty and not tab.unapplied and not tab.unsaved:
             return True
@@ -277,7 +324,7 @@ class EditorWorkspace(QWidget):
         if not dirty and not unsaved_on_disk:
             tab.unapplied = False
             tab.unsaved = False
-            self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+            self._update_tab_bar_item(self._current_index)
             return True
         return self.gherkin_panel.prepare_open(unsaved_to_disk=not dirty and unsaved_on_disk)
 
@@ -298,7 +345,7 @@ class EditorWorkspace(QWidget):
             raw = ""
         tab = _EditorTab(key=key, path=resolved, title=resolved.name, text=raw)
         self._tabs.append(tab)
-        self._add_tab_bar_tab(self._tab_label(tab))
+        self._add_tab_bar_tab(tab)
         return self._activate_tab(len(self._tabs) - 1)
 
     def open_untitled(self, *, initial_text: str = "") -> bool:
@@ -310,7 +357,7 @@ class EditorWorkspace(QWidget):
         key = f"untitled:{self._untitled_counter}"
         tab = _EditorTab(key=key, path=None, title=title, text=initial_text)
         self._tabs.append(tab)
-        self._add_tab_bar_tab(self._tab_label(tab))
+        self._add_tab_bar_tab(tab)
         return self._activate_tab(len(self._tabs) - 1)
 
     def restore_session_tab(self) -> None:
@@ -333,7 +380,7 @@ class EditorWorkspace(QWidget):
         title = "Черновик"
         tab = _EditorTab(key=key, path=None, title=title, text=draft_text, unsaved=True)
         self._tabs.append(tab)
-        self._add_tab_bar_tab(self._tab_label(tab))
+        self._add_tab_bar_tab(tab)
         self._activate_tab(len(self._tabs) - 1)
 
     def persist_session(self) -> None:
@@ -341,6 +388,8 @@ class EditorWorkspace(QWidget):
         settings = load_settings()
         payload: list[dict[str, object]] = []
         for tab in self._tabs:
+            if tab.is_welcome:
+                continue
             payload.append(
                 {
                     "path": str(tab.path.resolve()) if tab.path is not None else "",
@@ -359,7 +408,9 @@ class EditorWorkspace(QWidget):
         self.persist_session()
         self.flush_all_tabs_to_disk()
         self._persist_current_tab()
-        if not self.has_open_tabs():
+        if not self.has_editor_tabs():
+            return None
+        if self._current_index >= 0 and self._tabs[self._current_index].is_welcome:
             return None
         return self.gherkin_panel.get_text()
 
@@ -402,6 +453,8 @@ class EditorWorkspace(QWidget):
             text = str(item.get("text", "") or "")
             title = str(item.get("title", "") or "")
             key = str(item.get("key", "") or "")
+            if key == _WELCOME_KEY:
+                continue
             unapplied = bool(item.get("unapplied"))
             unsaved = bool(item.get("unsaved"))
             if path is not None:
@@ -425,15 +478,21 @@ class EditorWorkspace(QWidget):
                 unsaved=unsaved,
             )
             self._tabs.append(tab)
-            self._add_tab_bar_tab(self._tab_label(tab))
+            self._add_tab_bar_tab(tab)
         if not self._tabs:
             return False
         index = min(max(0, active_index), len(self._tabs) - 1)
         self._activate_tab(index)
         return True
 
-    def _add_tab_bar_tab(self, label: str) -> int:
-        index = self.tab_bar.addTab(label)
+    def _add_tab_bar_tab(self, tab: _EditorTab) -> int:
+        return self._insert_tab_bar_tab(self.tab_bar.count(), tab)
+
+    def _insert_tab_bar_tab(self, index: int, tab: _EditorTab) -> int:
+        if index >= self.tab_bar.count():
+            index = self.tab_bar.addTab("")
+        else:
+            self.tab_bar.insertTab(index, "")
         close = QToolButton(self.tab_bar)
         close.setIcon(icons.icon("close", size=12))
         close.setIconSize(icons.icon_size(12))
@@ -444,7 +503,21 @@ class EditorWorkspace(QWidget):
         close.setProperty("tab-close", True)
         close.clicked.connect(self._on_close_button_clicked)
         self.tab_bar.setTabButton(index, QTabBar.ButtonPosition.RightSide, close)
+        self._update_tab_bar_item(index)
         return index
+
+    def _update_tab_bar_item(self, index: int) -> None:
+        if index < 0 or index >= len(self._tabs):
+            return
+        tab = self._tabs[index]
+        if tab.is_welcome:
+            self.tab_bar.setTabIcon(index, icons.welcome_tab_icon())
+            self.tab_bar.setTabText(index, tab.title)
+            self.tab_bar.setTabToolTip(index, "Стартовая страница")
+            return
+        self.tab_bar.setTabIcon(index, QIcon())
+        self.tab_bar.setTabText(index, self._tab_label(tab))
+        self.tab_bar.setTabToolTip(index, str(tab.path) if tab.path is not None else tab.title)
 
     def _on_close_button_clicked(self) -> None:
         button = self.sender()
@@ -465,10 +538,12 @@ class EditorWorkspace(QWidget):
         if self._current_index < 0 or self._current_index >= len(self._tabs):
             return
         tab = self._tabs[self._current_index]
+        if tab.is_welcome:
+            return
         tab.text = self.gherkin_panel.get_text()
         tab.unapplied = self.gherkin_panel.is_dirty
         tab.unsaved = self._is_file_unsaved()
-        self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+        self._update_tab_bar_item(self._current_index)
         self._update_run_target()
 
     def persist_current_tab(self) -> None:
@@ -528,6 +603,26 @@ class EditorWorkspace(QWidget):
     def _activate_tab(self, index: int) -> bool:
         if index < 0 or index >= len(self._tabs):
             return False
+        tab = self._tabs[index]
+        if tab.is_welcome:
+            if index == self._current_index and self.stack.currentIndex() == _PAGE_WELCOME:
+                return True
+            self._switching = True
+            self._persist_current_tab()
+            self._current_index = index
+            self.tab_bar.setCurrentIndex(index)
+            self.tab_bar.setVisible(True)
+            self.stack.setCurrentIndex(_PAGE_WELCOME)
+            self.editor_action_bar.set_run_target(
+                title="Старт",
+                path=None,
+                unapplied=False,
+                unsaved=False,
+            )
+            self._switching = False
+            self.welcome_activated.emit()
+            return True
+
         if index == self._current_index and self.stack.currentIndex() == _PAGE_EDITOR:
             return True
 
@@ -554,7 +649,7 @@ class EditorWorkspace(QWidget):
             return
         if index < 0:
             if not self._tabs:
-                self.show_welcome()
+                self._show_empty_workspace()
             return
         if not self._prepare_leave_current_tab():
             self._switching = True
@@ -571,7 +666,7 @@ class EditorWorkspace(QWidget):
             return False
         tab = self._tabs[index]
         is_current = index == self._current_index
-        if not force:
+        if not force and not tab.is_welcome:
             if is_current and self.gherkin_panel.is_dirty:
                 if not confirm(
                     self,
@@ -599,9 +694,7 @@ class EditorWorkspace(QWidget):
         self._tabs.pop(index)
         if not self._tabs:
             self._current_index = -1
-            self._scenario_controller.new_scenario()
-            self.gherkin_panel.set_text("", clean=True)
-            self.show_welcome()
+            self._show_empty_workspace()
         elif is_current:
             new_index = min(index, len(self._tabs) - 1)
             self._current_index = -1
@@ -611,14 +704,32 @@ class EditorWorkspace(QWidget):
         self._switching = False
         return True
 
+    def _show_empty_workspace(self) -> None:
+        self.tab_bar.setVisible(False)
+        self._current_index = -1
+        self._scenario_controller.new_scenario()
+        self.gherkin_panel.set_text("", clean=True)
+        self.steps_strip.set_steps([])
+        self.dirty_banner.set_visible(False)
+        self.post_record_banner.hide_banner()
+        self.stack.setCurrentIndex(_PAGE_EMPTY)
+        self.editor_action_bar.set_run_target(
+            title="—",
+            path=None,
+            unapplied=False,
+            unsaved=False,
+        )
+
     def _on_editor_dirty_changed(self, dirty: bool) -> None:
         if self._current_index < 0 or self._current_index >= len(self._tabs):
             return
         tab = self._tabs[self._current_index]
+        if tab.is_welcome:
+            return
         tab.unapplied = dirty
         tab.text = self.gherkin_panel.get_text()
         tab.unsaved = self._is_file_unsaved()
-        self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+        self._update_tab_bar_item(self._current_index)
         self.dirty_banner.set_visible(dirty and not self._session.recording)
         self._update_run_target()
 
@@ -630,7 +741,7 @@ class EditorWorkspace(QWidget):
             tab.text = self.gherkin_panel.get_text()
             tab.unapplied = False
             tab.unsaved = self._is_file_unsaved(tab)
-            self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+            self._update_tab_bar_item(self._current_index)
             self._update_run_target()
 
     def sync_after_recording(self) -> None:
@@ -642,7 +753,7 @@ class EditorWorkspace(QWidget):
             tab.text = self.gherkin_panel.get_text()
             tab.unapplied = False
             tab.unsaved = self._is_file_unsaved()
-            self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+            self._update_tab_bar_item(self._current_index)
         self._update_run_target()
 
     def apply_before_action(self) -> bool:
@@ -659,7 +770,7 @@ class EditorWorkspace(QWidget):
             tab = self._tabs[self._current_index]
             tab.text = self.gherkin_panel.get_text()
             tab.unsaved = self._is_file_unsaved(tab)
-            self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+            self._update_tab_bar_item(self._current_index)
             self._update_run_target()
 
     def _refresh_steps_strip(self) -> None:
@@ -769,7 +880,7 @@ class EditorWorkspace(QWidget):
             tab.text = text
             tab.unapplied = False
             tab.unsaved = self._is_file_unsaved(tab)
-            self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+            self._update_tab_bar_item(self._current_index)
         if select_row is not None:
             self.steps_strip.select_row(select_row)
         self._update_run_target()
@@ -806,7 +917,7 @@ class EditorWorkspace(QWidget):
             tab.text = self.gherkin_panel.get_text()
         tab.unapplied = False
         tab.unsaved = False
-        self.tab_bar.setTabText(self._current_index, self._tab_label(tab))
+        self._update_tab_bar_item(self._current_index)
         current = self.gherkin_panel.get_text()
         if feature_texts_equivalent(current, tab.text):
             self.gherkin_panel.mark_clean()

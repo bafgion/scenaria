@@ -35,6 +35,7 @@ class RecordingController(QObject):
     save_prompt = Signal(int)  # step count after recording
     picker_done = Signal(str)  # selected selector
     batch_results = Signal(dict, int)  # payload, duration_ms
+    browser_raise = Signal(str)  # page title hint for OS-level focus on UI thread
 
     def __init__(
         self,
@@ -207,13 +208,17 @@ class RecordingController(QObject):
 
         if self._recorder.browser_open:
             self._recorder.focus_browser(
-                on_complete=lambda _: self.status.emit("Браузер на переднем плане", "normal"),
+                on_complete=self._on_browser_focused,
                 on_error=lambda exc: self.log.emit(str(exc), "error"),
             )
         elif player_focused:
-            self.status.emit("Браузер на переднем плане", "normal")
+            self._on_browser_focused("")
         else:
             self.status.emit("Браузер ещё запускается…", "normal")
+
+    def _on_browser_focused(self, title: str) -> None:
+        self.browser_raise.emit(title or "")
+        self.status.emit("Браузер на переднем плане", "normal")
 
     def start_recording(self, url: str) -> None:
         bridge = self._bridge_ref()

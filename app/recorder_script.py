@@ -218,6 +218,7 @@ RECORDER_INIT_SCRIPT = (
       action: 'click',
       selector,
       text: visibleText(clickRoot).slice(0, 120),
+      contextText: clickContextCaption(clickRoot).slice(0, 120),
     };
     if (hover) {
       payload.hoverSelector = hover.selector;

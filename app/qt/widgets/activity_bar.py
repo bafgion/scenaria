@@ -26,7 +26,7 @@ class ActivityBar(QWidget):
 
         self.explorer_btn = self._make_button(
             icons.explorer_icon(active=True),
-            "Проводник",
+            "Сценарии",
             checked=True,
         )
         self._group.addButton(self.explorer_btn)

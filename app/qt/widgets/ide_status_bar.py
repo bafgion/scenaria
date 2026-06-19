@@ -151,7 +151,7 @@ class IdeStatusBar(QWidget):
             tooltip="Состояние окна браузера для записи и тестов",
         )
         self._steps = _StatusSegment("0 шагов", tooltip="Число шагов в применённом сценарии")
-        self._gherkin = _StatusSegment("Gherkin не применён", tooltip="Есть правки в редакторе без Apply")
+        self._gherkin = _StatusSegment("Ошибка в сценарии", tooltip="В тексте сценария есть синтаксические ошибки")
         self._panel = _StatusSegment(
             "Журнал",
             icon_name="log",
@@ -223,7 +223,7 @@ class IdeStatusBar(QWidget):
         self._steps.set_muted(step_count == 0)
 
         if gherkin_unapplied:
-            self._gherkin.set_text("Gherkin ●")
+            self._gherkin.set_text("Ошибка в сценарии")
             self._gherkin.set_warning()
             self._gherkin.show()
         else:

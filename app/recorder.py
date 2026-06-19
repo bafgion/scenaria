@@ -11,7 +11,7 @@ from typing import Callable
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
 from app.browser_config import BROWSER_CONTEXT_OPTIONS, BROWSER_LAUNCH_ARGS
-from app.browser_focus import focus_browser_context
+from app.browser_focus import focus_browser_context_with_title
 from app.paths import configure_playwright_browsers
 from app.playwright_lifecycle import release_playwright_session
 from app.picker_script import PICKER_INSTALL_SCRIPT, PICKER_UNINSTALL_SCRIPT
@@ -697,10 +697,11 @@ class ScenarioRecorder:
         page = self._get_active_page()
         return page.url
 
-    def _handle_focus_browser(self) -> bool:
+    def _handle_focus_browser(self) -> str:
         if self._context is None or not self._browser or not self._browser.is_connected():
             raise RuntimeError("Браузер не открыт")
-        return focus_browser_context(self._context)
+        _ok, title = focus_browser_context_with_title(self._context)
+        return title
 
     def _handle_highlight(self, selector: str) -> None:
         if not self._browser or not self._browser.is_connected():

@@ -26,7 +26,7 @@ class GherkinHintsBar(QWidget):
         row.setSpacing(4)
 
         self._summary = QLabel(
-            "Шаги Gherkin · hover-меню: «навожу» перед «нажимаю» · Ctrl+Space"
+            "Шаги сценария · для выпадающего меню: «навожу» перед «нажимаю» · Ctrl+Space"
         )
         self._summary.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
         row.addWidget(self._summary, stretch=1)

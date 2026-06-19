@@ -300,10 +300,10 @@ def apply_dark_theme(app: QApplication) -> None:
         QTabBar[role="editor-tabs"]::tab {{
             background: {COLOR_TAB_INACTIVE};
             color: {COLOR_MUTED};
-            padding: 2px 22px 2px 8px;
+            padding: 2px 20px 2px 8px;
             margin-right: 0;
             border-right: 1px solid {COLOR_DIVIDER};
-            min-width: 48px;
+            min-width: 56px;
             max-height: 22px;
             font-size: 8pt;
         }}
@@ -428,6 +428,22 @@ def apply_dark_theme(app: QApplication) -> None:
             border: 1px solid {COLOR_DIVIDER};
             border-radius: 8px;
             max-width: 520px;
+        }}
+        QWidget[role="empty-editor"] {{
+            background: {COLOR_WORKSPACE};
+        }}
+        QWidget[role="empty-editor-card"] {{
+            background: #252526;
+            border: 1px solid {COLOR_DIVIDER};
+            border-radius: 8px;
+            max-width: 420px;
+            min-width: 320px;
+        }}
+        QLabel[role="empty-editor-tips"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+            padding-top: 8px;
+            line-height: 140%;
         }}
         QWidget[role="panel"] {{
             background: {COLOR_PANEL};

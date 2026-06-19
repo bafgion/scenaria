@@ -32,7 +32,7 @@ class StepEditorDialog(QDialog):
         for key, label in field_specs:
             edit = QLineEdit(str(step.get(key, "") or ""))
             if key == "selector":
-                edit.setPlaceholderText("CSS-селектор или :has-text(...)")
+                edit.setPlaceholderText("Элемент на странице, например кнопка «Выбрать»")
             layout.addRow(label, edit)
             self._fields[key] = edit
 

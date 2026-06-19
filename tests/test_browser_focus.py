@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 from app.browser_focus import focus_browser_context
@@ -29,3 +30,11 @@ def test_focus_browser_context_without_pages() -> None:
     context.pages = []
 
     assert focus_browser_context(context) is False
+
+
+def test_activate_browser_window_ui_thread_non_windows() -> None:
+    from app.browser_focus import activate_browser_window_ui_thread
+
+    if sys.platform == "win32":
+        return
+    assert activate_browser_window_ui_thread("Example") is False

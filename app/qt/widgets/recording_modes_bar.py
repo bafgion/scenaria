@@ -35,8 +35,8 @@ class RecordingModesBar(QWidget):
         self._nav_only.toggled.connect(self._on_nav_only)
         layout.addWidget(self._nav_only)
 
-        self._headless = QCheckBox("Headless")
-        self._headless.setToolTip("Запуск теста без видимого окна браузера")
+        self._headless = QCheckBox("Без окна браузера")
+        self._headless.setToolTip("Запускать тест без видимого окна браузера")
         self._headless.toggled.connect(self.headless_toggled.emit)
         layout.addWidget(self._headless)
 

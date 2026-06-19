@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -56,6 +56,11 @@ class GherkinPanel(QWidget):
         self.editor.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.editor)
 
+        self._auto_apply_timer = QTimer(self)
+        self._auto_apply_timer.setSingleShot(True)
+        self._auto_apply_timer.setInterval(400)
+        self._auto_apply_timer.timeout.connect(self._auto_apply_if_valid)
+
         self._model.changed.connect(self._on_model_changed)
 
     @property
@@ -100,7 +105,37 @@ class GherkinPanel(QWidget):
     def _on_text_changed(self) -> None:
         if self._block:
             return
-        self._set_dirty(True)
+        self._auto_apply_timer.start()
+
+    def _auto_apply_if_valid(self) -> None:
+        if self._block:
+            return
+        raw = self.editor.toPlainText()
+        stripped = raw.strip()
+        if not stripped:
+            if self._dirty or self._model.steps:
+                self._controller.set_steps([])
+                self._model.set_source_text(raw)
+                self._set_dirty(False)
+                self.applied.emit()
+            return
+        try:
+            steps = gherkin_to_steps(raw)
+        except GherkinParseError:
+            self._set_dirty(True)
+            return
+        source = self._model.source_text
+        if (
+            not self._dirty
+            and source is not None
+            and self._texts_equivalent(raw, source)
+            and len(steps) == len(self._model.steps)
+        ):
+            return
+        self._controller.set_steps(steps)
+        self._model.set_source_text(raw)
+        self._set_dirty(False)
+        self.applied.emit()
 
     def _set_dirty(self, dirty: bool) -> None:
         if dirty == self._dirty:
@@ -108,7 +143,7 @@ class GherkinPanel(QWidget):
         self._dirty = dirty
         self.dirty_changed.emit(dirty)
         if dirty:
-            self._emit_status("Изменения не применены", COLOR_WARNING)
+            self._emit_status("Исправьте ошибки в тексте сценария", COLOR_WARNING)
         else:
             self._emit_status("")
 
@@ -204,7 +239,7 @@ class GherkinPanel(QWidget):
             self._controller.set_steps([])
             self._model.set_source_text(raw)
             self._set_dirty(False)
-            self._emit_status("Применено: пустой сценарий", COLOR_SUCCESS)
+            self._emit_status("Сценарий очищен", COLOR_SUCCESS)
             self.applied.emit()
             return
         try:
@@ -220,7 +255,7 @@ class GherkinPanel(QWidget):
         self._controller.set_steps(steps)
         self._model.set_source_text(raw)
         self._set_dirty(False)
-        self._emit_status(f"Применено: {len(steps)} шагов", COLOR_SUCCESS)
+        self._emit_status(f"Сценарий обновлён: {len(steps)} шагов", COLOR_SUCCESS)
         self.applied.emit()
 
     def discard_changes(self) -> None:
@@ -234,7 +269,7 @@ class GherkinPanel(QWidget):
             message = (
                 "Есть несохранённые изменения на диске.\nСбросить и открыть другой файл?"
                 if unsaved_to_disk and not self._dirty
-                else "В Gherkin есть неприменённые изменения.\nСбросить и открыть другой файл?"
+                else "В тексте сценария есть ошибки.\nСбросить и открыть другой файл?"
             )
             if not confirm(
                 self,
@@ -277,12 +312,12 @@ class GherkinPanel(QWidget):
         if choice.label == "Только селектор":
             self.editor.insert_quoted_text(selector)
             self._set_dirty(True)
-            self._emit_status("Селектор вставлен — допишите шаг Gherkin", COLOR_SUCCESS)
+            self._emit_status("Селектор вставлен — допишите шаг сценария", COLOR_SUCCESS)
             return
 
         self.editor.insert_step_line(choice.step_body)
         self._set_dirty(True)
-        self._emit_status(f"Добавлен шаг «{choice.label}» — нажмите «Применить Gherkin»", COLOR_SUCCESS)
+        self._emit_status(f"Добавлен шаг «{choice.label}»", COLOR_SUCCESS)
 
     def insert_hover_step(self) -> None:
         """Insert a hover step at the cursor (for dropdown menus)."""
@@ -301,7 +336,7 @@ class GherkinPanel(QWidget):
             return
         self.editor.insert_step_line(f'навожу "{selector}"')
         self._set_dirty(True)
-        self._emit_status("Добавлен шаг наведения — нажмите «Применить Gherkin»", COLOR_SUCCESS)
+        self._emit_status("Добавлен шаг наведения", COLOR_SUCCESS)
 
     def fix_menu_click_at_cursor(self) -> None:
         """Insert hover before the click step under the cursor."""
@@ -354,4 +389,4 @@ class GherkinPanel(QWidget):
         cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(f'{indent}{click_keyword} нажимаю "{new_click}"')
         self._set_dirty(True)
-        self._emit_status("Добавлено наведение перед кликом — примените Gherkin", COLOR_SUCCESS)
+        self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)

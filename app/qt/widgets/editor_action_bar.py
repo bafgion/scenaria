@@ -24,7 +24,7 @@ class EditorActionBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("role", "editor-action-bar")
-        self.setFixedHeight(32)
+        self.setMinimumHeight(56)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -145,10 +145,12 @@ class EditorActionBar(QWidget):
             badges += " *"
         self._file_name.setText(f"{title}{badges}")
         if path is not None:
-            self._file_hint.setText(path.parent.name)
+            self._file_hint.hide()
+            self._file_hint.setText("")
             self._file_name.setToolTip(str(path))
         else:
             self._file_hint.setText("не сохранён")
+            self._file_hint.show()
             self._file_name.setToolTip("Файл ещё не сохранён на диск")
 
     def set_url(self, url: str) -> None:
@@ -188,8 +190,9 @@ class EditorActionBar(QWidget):
         self._next_step.setEnabled(True)
 
         if unapplied:
-            self._next_action = "apply"
-            self._set_next_step_label("Далее: Применить Gherkin", f"color: {COLOR_WARNING}; font-size: 8pt;")
+            self._next_action = ""
+            self._next_step.setEnabled(False)
+            self._set_next_step_label("Исправьте сценарий", f"color: {COLOR_WARNING}; font-size: 8pt;")
             return
 
         if not has_steps:
@@ -203,4 +206,4 @@ class EditorActionBar(QWidget):
             return
 
         self._next_action = "play"
-        self._set_next_step_label("Далее: Запустить тест", f"color: {COLOR_PRIMARY}; font-size: 8pt;")
+        self._set_next_step_label("Далее: Запустить", f"color: {COLOR_PRIMARY}; font-size: 8pt;")

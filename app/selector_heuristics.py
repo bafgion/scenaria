@@ -107,7 +107,110 @@ SELECTOR_HEURISTICS_JS = """
 
   function looksLikeButtonClass(el) {
     const cls = (el.getAttribute('class') || '').toLowerCase();
-    return /\\b(btn|button|cta|choice|option|select|card-btn|action)\\b/.test(cls);
+    return /\\b(btn|button|cta|choice|option|select|card-btn|action|card)\\b/.test(cls);
+  }
+
+  function looksLikeCardContainer(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const cls = (el.getAttribute('class') || '').toLowerCase();
+    if (/\\b(card|tile|panel|option|choice|plan|package|column)\\b/.test(cls)) return true;
+    const role = el.getAttribute('role');
+    return role === 'listitem' || role === 'article';
+  }
+
+  function clickLabelMatches(el, label) {
+    if (!el || el.nodeType !== 1) return false;
+    const normalized = visibleText(el).trim();
+    return normalized === label;
+  }
+
+  function countMatchingClickables(doc, label) {
+    if (!doc || !label) return 0;
+    let count = 0;
+    const nodes = doc.querySelectorAll('button, a, [role="button"], [role="link"]');
+    for (const node of nodes) {
+      if (clickLabelMatches(node, label)) count++;
+    }
+    return count;
+  }
+
+  function cardContextCaption(container, clickEl) {
+    if (!container || !clickEl || container.nodeType !== 1) return '';
+    for (const tag of ['H1', 'H2', 'H3', 'H4', 'H5', 'H6']) {
+      const headings = container.querySelectorAll(tag);
+      for (const heading of headings) {
+        if (clickEl.contains(heading)) continue;
+        const text = normalizeCaption(visibleText(heading));
+        if (text.length >= 4 && text.length <= 120) return text;
+      }
+    }
+    for (const child of Array.from(container.children)) {
+      if (child === clickEl || clickEl.contains(child)) continue;
+      if (child.contains(clickEl)) {
+        const nested = cardContextCaption(child, clickEl);
+        if (nested) return nested;
+        continue;
+      }
+      if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT', 'SCRIPT', 'STYLE', 'SVG'].includes(child.tagName)) {
+        continue;
+      }
+      const text = normalizeCaption(visibleText(child));
+      if (text.length >= 8 && text.length <= 120) return text;
+    }
+    return '';
+  }
+
+  function buttonTagForSelector(target) {
+    if (!target) return 'button';
+    if (target.tagName === 'A') return 'a';
+    if (target.tagName === 'BUTTON') return 'button';
+    const role = target.getAttribute('role');
+    if (role === 'link') return 'a';
+    if (role === 'button' || role === 'menuitem' || role === 'tab') return 'button';
+    return target.tagName.toLowerCase();
+  }
+
+  function buildContextualClickSelector(target) {
+    if (!target || target.nodeType !== 1) return null;
+    const label = visibleText(target).trim();
+    if (!label || label.length > 40) return null;
+    const doc = target.ownerDocument;
+    if (countMatchingClickables(doc, label) <= 1) return null;
+
+    let node = target.parentElement;
+    for (let depth = 0; node && depth < 12; depth++) {
+      const caption = cardContextCaption(node, target);
+      if (!caption || caption.length < 6 || caption === label) {
+        node = node.parentElement;
+        continue;
+      }
+      const clickables = node.querySelectorAll('button, a, [role="button"], [role="link"]');
+      let matchCount = 0;
+      for (const candidate of clickables) {
+        if (clickLabelMatches(candidate, label)) matchCount++;
+      }
+      if (matchCount !== 1) {
+        node = node.parentElement;
+        continue;
+      }
+      const containerTag = looksLikeCardContainer(node) ? node.tagName.toLowerCase() : 'div';
+      const escapedCaption = caption.replace(/"/g, '\\\\"');
+      const escapedLabel = label.replace(/"/g, '\\\\"');
+      const btnTag = buttonTagForSelector(target);
+      return `${containerTag}:has-text("${escapedCaption}") >> ${btnTag}:has-text("${escapedLabel}")`;
+    }
+    return null;
+  }
+
+  function clickContextCaption(clickEl) {
+    if (!clickEl || clickEl.nodeType !== 1) return '';
+    let node = clickEl.parentElement;
+    for (let depth = 0; node && depth < 12; depth++) {
+      const caption = cardContextCaption(node, clickEl);
+      if (caption && caption.length >= 6) return caption;
+      node = node.parentElement;
+    }
+    return '';
   }
 
   function clickableAncestor(el) {
@@ -147,6 +250,9 @@ SELECTOR_HEURISTICS_JS = """
 
     const aria = target.getAttribute('aria-label');
     if (aria && aria.trim()) return `[aria-label="${cssEscape(aria.trim())}"]`;
+
+    const contextual = buildContextualClickSelector(target);
+    if (contextual) return contextual;
 
     const textSelector = hasTextSelectorForElement(target, '', 2);
     if (textSelector) return textSelector;

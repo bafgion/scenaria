@@ -36,10 +36,10 @@ class PostRecordBanner(QWidget):
         self._fix_btn.clicked.connect(self.fix_hover_clicked.emit)
         layout.addWidget(self._fix_btn)
 
-        apply_btn = QPushButton("Применить и проверить")
-        apply_btn.setProperty("primary", True)
-        apply_btn.clicked.connect(self.apply_and_test_clicked.emit)
-        layout.addWidget(apply_btn)
+        test_btn = QPushButton("Проверить")
+        test_btn.setProperty("primary", True)
+        test_btn.clicked.connect(self.apply_and_test_clicked.emit)
+        layout.addWidget(test_btn)
 
         save_btn = QPushButton("Сохранить")
         save_btn.clicked.connect(self.save_clicked.emit)

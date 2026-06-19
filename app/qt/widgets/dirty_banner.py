@@ -1,4 +1,4 @@
-"""Banner for unapplied Gherkin edits."""
+"""Banner when scenario text has parse errors."""
 
 from __future__ import annotations
 
@@ -25,16 +25,14 @@ class DirtyBanner(QWidget):
         icon.setStyleSheet(f"color: {COLOR_WARNING};")
         layout.addWidget(icon)
 
-        text = QLabel("Изменения не применены — тест пойдёт по старой версии сценария")
+        text = QLabel(
+            "В тексте сценария есть ошибки — тест пойдёт по последней рабочей версии"
+        )
         text.setWordWrap(True)
         layout.addWidget(text, stretch=1)
 
-        apply_btn = QPushButton("Применить")
-        apply_btn.setProperty("primary", True)
-        apply_btn.clicked.connect(self.apply_clicked.emit)
-        layout.addWidget(apply_btn)
-
         discard_btn = QPushButton("Сбросить")
+        discard_btn.setToolTip("Вернуть последнюю рабочую версию сценария")
         discard_btn.clicked.connect(self.discard_clicked.emit)
         layout.addWidget(discard_btn)
 

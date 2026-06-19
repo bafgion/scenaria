@@ -127,10 +127,9 @@ class MainWindow(QMainWindow):
                 self._controller.catalog.set_features_root(root)
             self.status_bar.set_message(str(root))
             self.workspace.restore_session_tab()
-            if not self.workspace.has_open_tabs():
-                self.workspace.show_welcome()
+            self.workspace.ensure_welcome_tab(activate=not self.workspace.has_editor_tabs())
         else:
-            self.workspace.show_welcome()
+            self.workspace.ensure_welcome_tab(activate=True)
             self.status_bar.set_message("Файл → Открыть проект…", "info")
         self._update_run_selection_menu()
         self._update_window_title()
@@ -143,6 +142,7 @@ class MainWindow(QMainWindow):
     def _wire_signals(self) -> None:
         rec = self._controller.recording
 
+        rec.browser_raise.connect(self._raise_browser_window)
         rec.status.connect(self._on_status)
         rec.log.connect(self.bottom_panel.log_panel.append)
         rec.switch_tab.connect(self._on_switch_tab)
@@ -176,6 +176,13 @@ class MainWindow(QMainWindow):
         self.workspace.welcome_panel.open_recent_project.connect(self._open_recent_project)
         self.workspace.welcome_panel.quick_start.connect(self._quick_start)
         self.workspace.welcome_panel.insert_template.connect(self._new_scenario_with_template)
+        self.workspace.welcome_activated.connect(self._refresh_welcome_recents)
+        self.workspace.empty_panel.show_start.connect(
+            lambda: self.workspace.ensure_welcome_tab(activate=True)
+        )
+        self.workspace.empty_panel.open_project.connect(self._open_project)
+        self.workspace.empty_panel.create_feature.connect(self._new_scenario)
+        self.workspace.empty_panel.open_feature.connect(self._open_feature_file)
         self.workspace.state_changed.connect(self.status_bar.set_session_state)
 
         ws = self.workspace
@@ -206,7 +213,6 @@ class MainWindow(QMainWindow):
         tb.play_clicked.connect(self._play_with_apply)
         tb.validate_clicked.connect(self._validate_with_apply)
         tb.picker_clicked.connect(rec.pick_selector)
-        tb.apply_clicked.connect(self.workspace.gherkin_panel._apply)
         tb.check_clicked.connect(self.workspace.gherkin_panel._validate)
         tb.url_clicked.connect(self._edit_start_url)
         tb.undo_step_clicked.connect(rec.undo_last_step)
@@ -294,7 +300,8 @@ class MainWindow(QMainWindow):
     def _on_project_changed(self, root: object) -> None:
         if root is None:
             self.status_bar.set_message("Проект не открыт", "info")
-            self.workspace.show_welcome()
+            if not self.workspace.has_editor_tabs():
+                self.workspace.ensure_welcome_tab(activate=True)
         else:
             self.status_bar.set_message(str(root))
 
@@ -312,8 +319,8 @@ class MainWindow(QMainWindow):
                 remember_project(root)
                 self._refresh_welcome_recents()
                 self.status_bar.set_message(str(root))
-            if not self.workspace.has_open_tabs():
-                self.workspace.show_welcome()
+            if not self.workspace.has_editor_tabs():
+                self.workspace.ensure_welcome_tab(activate=True)
 
     def _new_scenario(self) -> None:
         self.workspace.open_untitled()
@@ -323,7 +330,10 @@ class MainWindow(QMainWindow):
         self.workspace.open_untitled(initial_text=text)
 
     def _save_current(self) -> None:
-        if not self.workspace.has_open_tabs():
+        if not self.workspace.has_editor_tabs():
+            return
+        tab = self.workspace.current_tab()
+        if tab is None or tab.is_welcome:
             return
         if not self.workspace.apply_before_action():
             return
@@ -387,7 +397,7 @@ class MainWindow(QMainWindow):
             remember_project(path)
             self._refresh_welcome_recents()
             self.status_bar.set_message(str(path.resolve()))
-            self.workspace.show_welcome()
+            self.workspace.ensure_welcome_tab(activate=not self.workspace.has_editor_tabs())
 
     def _quick_start(self, url: str) -> None:
         if url and not url.startswith("http"):
@@ -395,7 +405,7 @@ class MainWindow(QMainWindow):
             return
         if url:
             self._controller.scenario.set_start_url(url)
-        if not self.workspace.has_open_tabs():
+        if not self.workspace.has_editor_tabs():
             self.workspace.open_untitled(initial_text=gherkin_template_text(url=url or self._start_url()))
         else:
             self.workspace.show_editor()
@@ -449,10 +459,10 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         edit_menu = bar.addMenu("Правка")
-        edit_menu.addAction("Применить Gherkin", self.workspace.gherkin_panel._apply).setShortcut(
+        edit_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
             QKeySequence("Ctrl+Shift+S")
         )
-        edit_menu.addAction("Проверить Gherkin", self.workspace.gherkin_panel._validate)
+        edit_menu.addAction("Проверить текст сценария", self.workspace.gherkin_panel._validate)
         edit_menu.addSeparator()
         edit_menu.addAction(
             "Наведение для меню…",
@@ -484,16 +494,16 @@ class MainWindow(QMainWindow):
         run_menu.addAction(self._act_stop)
         run_menu.addAction("Пауза", rec.toggle_pause)
         run_menu.addSeparator()
-        self._act_play = QAction("Запустить тест", self)
+        self._act_play = QAction("Запустить", self)
         self._act_play.setShortcut(QKeySequence("Ctrl+Return"))
         self._act_play.triggered.connect(self._play_with_apply)
         run_menu.addAction(self._act_play)
-        run_menu.addAction("Проверить селекторы", self._validate_with_apply)
+        run_menu.addAction("Проверить элементы", self._validate_with_apply)
         self._act_run_selected = QAction("Запустить выбранные", self)
         self._act_run_selected.triggered.connect(self._run_selected_features)
         run_menu.addAction(self._act_run_selected)
         run_menu.addAction("Запустить все сценарии проекта", rec.run_project_suite)
-        run_menu.addAction("Выбрать элемент…", rec.pick_selector)
+        run_menu.addAction("Указать элемент…", rec.pick_selector)
         run_menu.addAction("Быстрая запись", lambda: rec.quick_record(self._start_url()))
         run_menu.addSeparator()
         self._act_filter = QAction("Только важные", self)
@@ -506,14 +516,15 @@ class MainWindow(QMainWindow):
         self._act_nav_only.setChecked(self._controller.session.nav_only_recording)
         self._act_nav_only.toggled.connect(self._on_nav_only_toggled)
         run_menu.addAction(self._act_nav_only)
-        self._act_headless = QAction("Headless", self)
+        self._act_headless = QAction("Без окна браузера", self)
         self._act_headless.setCheckable(True)
         self._act_headless.setChecked(self._controller.session.headless)
         self._act_headless.toggled.connect(self._on_headless_toggled)
         run_menu.addAction(self._act_headless)
 
         view_menu = bar.addMenu("Вид")
-        view_menu.addAction("Проводник", lambda: self.activity_bar.explorer_btn.setChecked(True))
+        view_menu.addAction("Старт", lambda: self.workspace.ensure_welcome_tab(activate=True))
+        view_menu.addAction("Сценарии", lambda: self.activity_bar.explorer_btn.setChecked(True))
         view_menu.addAction("Журнал", lambda: self._show_bottom_panel("log"))
         view_menu.addAction("Результаты", lambda: self._show_bottom_panel("results"))
         view_menu.addAction("Ошибка", lambda: self._show_bottom_panel("error"))
@@ -568,6 +579,11 @@ class MainWindow(QMainWindow):
         elif action == "play":
             self._play_with_apply()
 
+    def _raise_browser_window(self, title_hint: str) -> None:
+        from app.browser_focus import activate_browser_window_ui_thread
+
+        activate_browser_window_ui_thread(title_hint)
+
     def _play_with_apply(self) -> None:
         if not self.workspace.apply_before_action():
             return
@@ -595,7 +611,7 @@ class MainWindow(QMainWindow):
             if not confirm(
                 self,
                 BRAND_NAME,
-                "В редакторе есть неприменённые изменения.\n"
+                "В тексте сценария есть ошибки.\n"
                 "Пакетный запуск читает файлы с диска — продолжить?",
             ):
                 return False
@@ -665,6 +681,7 @@ class MainWindow(QMainWindow):
                 and has_steps
                 and not batch_running
                 and not self._controller.recording.player_worker_active
+                and not unapplied
             )
             self._act_save.setEnabled(not s.recording)
         self._act_stop.setEnabled(
@@ -777,12 +794,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(title)
 
     def _post_record_apply_and_test(self) -> None:
-        self.workspace.gherkin_panel._apply()
-        if not self.workspace.gherkin_panel.is_dirty:
-            self._controller.recording.play()
+        if self.workspace.gherkin_panel.is_dirty:
+            return
+        self._controller.recording.play()
 
     def _post_record_save(self) -> None:
-        self.workspace.gherkin_panel._apply()
         self._save_current()
         self.workspace.hide_post_record()
 
@@ -815,7 +831,10 @@ class MainWindow(QMainWindow):
         settings = load_settings()
         if not settings.get("autosave_enabled", True):
             return
-        if not self.workspace.has_open_tabs():
+        if not self.workspace.has_editor_tabs():
+            return
+        tab = self.workspace.current_tab()
+        if tab is None or tab.is_welcome:
             return
         scenario = self._controller.scenario
         if scenario.feature_path is not None:

@@ -1,9 +1,9 @@
-"""Horizontal quick-access toolbar (IDE style)."""
+"""Two-row toolbar: primary actions with labels and secondary tools."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from app.qt import icons
 from app.qt.theme import COLOR_BORDER
@@ -30,72 +30,217 @@ class QuickToolBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("role", "quick-toolbar")
-        self.setFixedHeight(32)
         self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 2, 6, 2)
-        layout.setSpacing(2)
-        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(6, 2, 6, 2)
+        root.setSpacing(2)
+
+        primary_row = QHBoxLayout()
+        primary_row.setContentsMargins(0, 0, 0, 0)
+        primary_row.setSpacing(4)
+        primary_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        secondary_row = QHBoxLayout()
+        secondary_row.setContentsMargins(0, 0, 0, 0)
+        secondary_row.setSpacing(4)
+        secondary_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self._buttons: dict[str, QToolButton] = {}
         self._default_tooltips: dict[str, str] = {}
+        self._button_labels: dict[str, str] = {}
+        self._compact = False
+        self._compact_threshold = 980
 
-        self._add_btn("play", icons.play_icon(), "Запустить тест (Ctrl+Enter)", self.play_clicked)
-        self._add_btn("record", icons.record_icon(), "Запись (Ctrl+R)", self.record_clicked)
-        self._add_btn("stop", icons.stop_icon(), "Стоп", self.stop_clicked)
-        self._add_btn("pause", icons.pause_icon(), "Пауза", self.pause_clicked)
-        self._add_separator()
-        self._add_btn("browser", icons.toolbar_icon("browser"), "Браузер (Ctrl+B)", self.browser_clicked)
         self._add_btn(
+            primary_row,
+            "browser",
+            icons.toolbar_icon("browser"),
+            "Браузер",
+            "Открыть браузер на стартовом адресе (Ctrl+B)",
+            self.browser_clicked,
+            primary=True,
+        )
+        self._add_btn(
+            primary_row,
+            "record",
+            icons.record_icon(),
+            "Запись",
+            "Начать запись действий на сайте (Ctrl+R)",
+            self.record_clicked,
+            primary=True,
+        )
+        self._add_btn(
+            primary_row,
+            "stop",
+            icons.stop_icon(),
+            "Стоп",
+            "Остановить запись, тест или браузер",
+            self.stop_clicked,
+            primary=True,
+        )
+        self._add_btn(
+            primary_row,
+            "play",
+            icons.play_icon(),
+            "Запустить",
+            "Прогнать сценарий в браузере (Ctrl+Enter)",
+            self.play_clicked,
+            primary=True,
+        )
+        self._add_btn(
+            primary_row,
+            "save",
+            icons.toolbar_icon("save"),
+            "Сохранить",
+            "Сохранить файл сценария (Ctrl+S)",
+            self.save_clicked,
+            primary=True,
+        )
+        primary_row.addStretch()
+
+        self._add_btn(
+            secondary_row,
+            "pause",
+            icons.pause_icon(),
+            "Пауза",
+            "Приостановить запись",
+            self.pause_clicked,
+            primary=False,
+        )
+        self._add_separator(secondary_row)
+        self._add_btn(
+            secondary_row,
             "focus_browser",
             icons.toolbar_icon("browser_focus"),
             "Показать браузер",
+            "Переключиться на окно браузера",
             self.focus_browser_clicked,
+            primary=False,
         )
-        self._add_btn("validate", icons.toolbar_icon("validate"), "Проверить селекторы", self.validate_clicked)
         self._add_btn(
+            secondary_row,
+            "validate",
+            icons.toolbar_icon("validate"),
+            "Проверить элементы",
+            "Убедиться, что все элементы сценария находятся на странице",
+            self.validate_clicked,
+            primary=False,
+        )
+        self._add_btn(
+            secondary_row,
             "picker",
             icons.toolbar_icon("picker"),
-            "Указать элемент на странице (селектор)",
+            "Указать элемент",
+            "Выбрать элемент на странице для шага сценария",
             self.picker_clicked,
+            primary=False,
         )
         self._add_btn(
+            secondary_row,
             "quick_record",
             icons.quick_record_icon(),
-            "Быстрая запись: открыть браузер и сразу записать",
+            "Быстрая запись",
+            "Открыть браузер и сразу начать запись",
             self.quick_record_clicked,
+            primary=False,
         )
-        self._add_separator()
-        self._add_btn("save", icons.toolbar_icon("save"), "Сохранить (Ctrl+S)", self.save_clicked)
-        self._add_btn("apply", icons.toolbar_icon("apply"), "Применить Gherkin (Ctrl+Shift+S)", self.apply_clicked)
-        self._add_btn("check", icons.toolbar_icon("check"), "Проверить Gherkin", self.check_clicked)
-        self._add_btn("undo", icons.toolbar_icon("undo"), "Отменить шаг записи", self.undo_step_clicked)
-        self._add_separator()
-        self._add_btn("log", icons.toolbar_icon("log"), "Журнал", self.log_clicked)
-        self._add_btn("results", icons.toolbar_icon("results"), "Результаты", self.results_clicked)
+        self._add_btn(
+            secondary_row,
+            "check",
+            icons.toolbar_icon("check"),
+            "Проверить текст",
+            "Проверить синтаксис текста сценария",
+            self.check_clicked,
+            primary=False,
+        )
+        self._add_btn(
+            secondary_row,
+            "undo",
+            icons.toolbar_icon("undo"),
+            "Отменить шаг",
+            "Убрать последний записанный шаг",
+            self.undo_step_clicked,
+            primary=False,
+        )
+        self._add_separator(secondary_row)
+        self._add_btn(
+            secondary_row,
+            "log",
+            icons.toolbar_icon("log"),
+            "Журнал",
+            "Открыть журнал выполнения",
+            self.log_clicked,
+            primary=False,
+        )
+        self._add_btn(
+            secondary_row,
+            "results",
+            icons.toolbar_icon("results"),
+            "Результаты",
+            "Показать результаты последнего теста",
+            self.results_clicked,
+            primary=False,
+        )
+        secondary_row.addStretch()
 
-    def _add_btn(self, key: str, qicon, tooltip: str, signal) -> QToolButton:
+        root.addLayout(primary_row)
+        root.addLayout(secondary_row)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        compact = self.width() < self._compact_threshold
+        if compact != self._compact:
+            self._compact = compact
+            self._apply_layout_mode()
+
+    def _apply_layout_mode(self) -> None:
+        for key, btn in self._buttons.items():
+            label = self._button_labels[key]
+            is_primary = bool(btn.property("toolbar-primary"))
+            if self._compact and not is_primary:
+                btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+                btn.setText("")
+            else:
+                btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+                btn.setText(label)
+
+    def _add_btn(
+        self,
+        layout: QHBoxLayout,
+        key: str,
+        qicon,
+        label: str,
+        tooltip: str,
+        signal,
+        *,
+        primary: bool,
+    ) -> QToolButton:
         btn = QToolButton(self)
         btn.setIcon(qicon)
-        btn.setIconSize(icons.icon_size())
-        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        btn.setText(label)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        btn.setIconSize(icons.icon_size(16 if primary else 14))
         btn.setToolTip(tooltip)
         btn.setAutoRaise(True)
-        btn.setProperty("toolbar-icon", True)
-        btn.setFixedSize(icons.TOOLBAR_BTN, icons.TOOLBAR_BTN)
+        btn.setProperty("toolbar-primary" if primary else "toolbar-secondary", True)
+        if primary:
+            btn.setMinimumHeight(26)
+        else:
+            btn.setMinimumHeight(22)
         btn.clicked.connect(signal.emit)
-        self.layout().addWidget(btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignVCenter)
         self._buttons[key] = btn
+        self._button_labels[key] = label
         self._default_tooltips[key] = tooltip
         return btn
 
-    def _add_separator(self) -> None:
+    def _add_separator(self, layout: QHBoxLayout) -> None:
         line = QFrame(self)
         line.setFrameShape(QFrame.Shape.VLine)
         line.setStyleSheet(f"color: {COLOR_BORDER};")
-        line.setFixedSize(1, 18)
-        self.layout().addWidget(line, 0, Qt.AlignmentFlag.AlignVCenter)
+        line.setFixedSize(1, 16)
+        layout.addWidget(line, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def sync_states(
         self,
@@ -134,7 +279,7 @@ class QuickToolBar(QWidget):
         )
         self._buttons["pause"].setEnabled(recording)
         can_play = not recording and not playing and has_steps and not batch_running
-        self._buttons["play"].setEnabled(can_play)
+        self._buttons["play"].setEnabled(can_play and not unapplied)
         self._buttons["validate"].setEnabled(not recording and not playing and not batch_running)
         if not recorder_browser_open:
             recorder_browser_open = browser_open and not player_browser_open
@@ -148,6 +293,6 @@ class QuickToolBar(QWidget):
         self._buttons["undo"].setEnabled(recording)
 
         if not can_play and not has_steps:
-            self._buttons["play"].setToolTip("Нет шагов — запишите или введите сценарий")
-        elif can_play and unapplied:
-            self._buttons["play"].setToolTip("Запуск (Gherkin будет применён автоматически)")
+            self._buttons["play"].setToolTip("Нет шагов — запишите действия или введите сценарий")
+        elif unapplied:
+            self._buttons["play"].setToolTip("Исправьте ошибки в тексте сценария")

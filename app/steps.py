@@ -31,6 +31,7 @@ def normalize_steps(steps: list[dict]) -> list[dict]:
     merged = [_upgrade_checkbox_selector(step) for step in merged]
     merged = [_upgrade_canvas_step(step) for step in merged]
     merged = [_upgrade_click_selector(step) for step in merged]
+    merged = [_disambiguate_click_selector(step) for step in merged]
     merged = _collapse_duplicate_hovers(merged)
     merged = _collapse_duplicate_clicks(merged)
     merged = _drop_spurious_midform_gotos(merged)
@@ -187,16 +188,28 @@ def _selector_is_fragile(selector: str) -> bool:
     return False
 
 
+def _contextual_button_selector(context: str, label: str) -> str:
+    context_snippet = context[:60] if len(context) > 80 else context
+    label_snippet = label[:40] if len(label) > 60 else label
+    escaped_ctx = context_snippet.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_label = label_snippet.replace("\\", "\\\\").replace('"', '\\"')
+    return f'div:has-text("{escaped_ctx}") >> button:has-text("{escaped_label}")'
+
+
 def _upgrade_click_selector(step: dict) -> dict:
     if step.get("action") != "click":
         return step
     selector = str(step.get("selector", ""))
     if "canvas" in selector.lower():
         return step
-    if not _selector_is_fragile(selector):
-        return step
+    context = str(step.get("contextText", "")).strip()
     text = str(step.get("text", "")).strip().replace("\n", " ")
     text = re.sub(r"\s+", " ", text)
+    label = text
+    if len(label) >= 2 and len(context) >= 6:
+        return {**step, "selector": _contextual_button_selector(context, label)}
+    if not _selector_is_fragile(selector):
+        return step
     if len(text) < 2:
         return step
     snippet = text[:40] if len(text) > 60 else text
@@ -204,6 +217,22 @@ def _upgrade_click_selector(step: dict) -> dict:
         return step
     escaped = snippet.replace("\\", "\\\\").replace('"', '\\"')
     return {**step, "selector": f'button:has-text("{escaped}")'}
+
+
+def _disambiguate_click_selector(step: dict) -> dict:
+    if step.get("action") != "click":
+        return step
+    selector = str(step.get("selector", ""))
+    if " >> " in selector:
+        return step
+    match = re.match(r'^button:has-text\("((?:[^"\\]|\\.)*)"\)$', selector)
+    if not match:
+        return step
+    context = str(step.get("contextText", "")).strip()
+    if len(context) < 6:
+        return step
+    label = match.group(1).replace('\\"', '"')
+    return {**step, "selector": _contextual_button_selector(context, label)}
 
 
 def _upgrade_checkbox_selector(step: dict) -> dict:

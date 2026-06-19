@@ -99,6 +99,37 @@ def icon_size(size: int = SIZE_TB) -> QSize:
     return QSize(size, size)
 
 
+# Lucide "house" icon (MIT) — https://lucide.dev/icons/house
+_LUCIDE_HOUSE_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+    'stroke="{stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>'
+    '<path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999'
+    'A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
+    "</svg>"
+)
+
+
+@lru_cache(maxsize=32)
+def _svg_icon(svg_template: str, color_hex: str, size: int) -> QIcon:
+    from PySide6.QtSvg import QSvgRenderer
+    from PySide6.QtWidgets import QApplication
+
+    svg = svg_template.format(stroke=color_hex)
+    renderer = QSvgRenderer(svg.encode("utf-8"))
+    app = QApplication.instance()
+    dpr = float(app.devicePixelRatio()) if app is not None else 1.0
+    px = max(1, int(round(size * dpr)))
+    pixmap = QPixmap(px, px)
+    pixmap.setDevicePixelRatio(dpr)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    renderer.render(painter)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def _draw_explorer(p: QPainter, size: int, color: QColor) -> None:
     pen = QPen(color, 1.4)
     p.setPen(pen)
@@ -421,6 +452,10 @@ def explorer_icon(*, active: bool = False) -> QIcon:
 
 def panel_icon(*, active: bool = False) -> QIcon:
     return icon("panel", color=COLOR_TEXT if active else COLOR_MUTED, size=SIZE_MD)
+
+
+def welcome_tab_icon() -> QIcon:
+    return _svg_icon(_LUCIDE_HOUSE_SVG, COLOR_TEXT, 16)
 
 
 def play_icon() -> QIcon:

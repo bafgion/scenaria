@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-FEATURE_FILTER = "Gherkin Feature (*.feature);;Текст (*.txt)"
+FEATURE_FILTER = "Сценарий (*.feature);;Текст (*.txt)"
 ZIP_FILTER = "ZIP (*.zip)"
 JSON_FILTER = "JSON (*.json)"
 PLAYWRIGHT_TS_FILTER = "Playwright TypeScript (*.spec.ts)"

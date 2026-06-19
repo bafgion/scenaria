@@ -37,9 +37,8 @@ class BrowserOverlayPanel(QWidget):
                 border-radius: 8px;
             }}
             QPushButton {{
-                min-width: 36px;
                 min-height: 32px;
-                padding: 4px 8px;
+                padding: 4px 10px;
                 border: 1px solid {COLOR_BORDER};
                 border-radius: 6px;
             }}
@@ -64,33 +63,33 @@ class BrowserOverlayPanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        self._btn_record = QPushButton()
+        self._btn_record = QPushButton("Запись")
         self._btn_record.setIcon(icons.record_icon())
-        self._btn_record.setToolTip("Старт записи")
+        self._btn_record.setToolTip("Начать запись действий на сайте")
         self._btn_record.clicked.connect(self.record_clicked.emit)
         row.addWidget(self._btn_record)
 
-        self._btn_pause = QPushButton()
+        self._btn_pause = QPushButton("Пауза")
         self._btn_pause.setIcon(icons.pause_icon())
-        self._btn_pause.setToolTip("Пауза записи")
+        self._btn_pause.setToolTip("Приостановить запись")
         self._btn_pause.clicked.connect(self.pause_clicked.emit)
         row.addWidget(self._btn_pause)
 
-        self._btn_stop = QPushButton()
+        self._btn_stop = QPushButton("Стоп")
         self._btn_stop.setIcon(icons.stop_icon())
-        self._btn_stop.setToolTip("Стоп")
+        self._btn_stop.setToolTip("Остановить запись или тест")
         self._btn_stop.clicked.connect(self.stop_clicked.emit)
         row.addWidget(self._btn_stop)
 
-        self._btn_focus = QPushButton()
+        self._btn_focus = QPushButton("Браузер")
         self._btn_focus.setIcon(icons.toolbar_icon("browser_focus"))
-        self._btn_focus.setToolTip("Показать браузер")
+        self._btn_focus.setToolTip("Показать окно браузера")
         self._btn_focus.clicked.connect(self.focus_browser_clicked.emit)
         row.addWidget(self._btn_focus)
 
-        self._btn_picker = QPushButton()
+        self._btn_picker = QPushButton("Указать элемент")
         self._btn_picker.setIcon(icons.toolbar_icon("picker"))
-        self._btn_picker.setToolTip("Исследователь — выбрать элемент на странице")
+        self._btn_picker.setToolTip("Выбрать элемент на странице для шага сценария")
         self._btn_picker.clicked.connect(self.picker_clicked.emit)
         row.addWidget(self._btn_picker)
 
@@ -137,10 +136,10 @@ class BrowserOverlayPanel(QWidget):
 
         if recording:
             color = "#cca700" if paused else COLOR_RECORDING
-            self._title.setText("● Запись" if not paused else "⏸ Пауза")
+            self._title.setText("● Идёт запись" if not paused else "⏸ Запись на паузе")
             self._title.setStyleSheet(f"color: {color}; font-size: 8pt; font-weight: 600;")
         elif playing:
-            self._title.setText("▶ Тест")
+            self._title.setText("▶ Идёт тест")
             self._title.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 8pt; font-weight: 600;")
         else:
             self._title.setText(f"{BRAND_NAME} — перетащите панель")
