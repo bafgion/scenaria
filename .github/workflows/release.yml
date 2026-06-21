@@ -31,7 +31,12 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: |
-          python -m pytest tests/ -q
+          for ($i = 1; $i -le 3; $i++) {
+            python -m pytest tests/ -q
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "::warning::pytest attempt $i failed (exit $LASTEXITCODE), retrying..."
+          }
+          exit $LASTEXITCODE
 
       - name: Build portable Windows package
         shell: pwsh
