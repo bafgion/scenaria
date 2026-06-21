@@ -47,6 +47,16 @@ def test_parse_keywords_and_escaped_quotes() -> None:
     assert steps == [{"action": "fill", "value": 'say "hi"', "selector": "textarea.msg"}]
 
 
+def test_parse_fill_with_guillemets_inside_value() -> None:
+    text = f'{TAB}И ввожу "АО «Тинькофф Банк»" в "label:has-text(\\"Наименование банка\\")"'
+    steps = gherkin_to_steps(text)
+    assert steps[-1] == {
+        "action": "fill",
+        "value": "АО «Тинькофф Банк»",
+        "selector": 'label:has-text("Наименование банка")',
+    }
+
+
 def test_parse_invalid_step_raises() -> None:
     with pytest.raises(GherkinParseError) as exc:
         gherkin_to_steps(f"{TAB}И кликаю по кнопке")

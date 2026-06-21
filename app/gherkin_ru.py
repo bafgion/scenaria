@@ -827,8 +827,6 @@ def normalize_gherkin_text(text: str) -> str:
     for fancy, plain in (
         ("\u201c", '"'),
         ("\u201d", '"'),
-        ("\u00ab", '"'),
-        ("\u00bb", '"'),
         ("\u2018", "'"),
         ("\u2019", "'"),
     ):

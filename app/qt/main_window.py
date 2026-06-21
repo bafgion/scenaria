@@ -1517,7 +1517,6 @@ class MainWindow(QMainWindow):
         escape.setContext(Qt.ShortcutContext.ApplicationShortcut)
         escape.activated.connect(self._controller.recording.handle_escape)
         QShortcut(QKeySequence("Ctrl+`"), self, lambda: self.activity_bar.panel_btn.toggle())
-        QShortcut(QKeySequence("Shift+F1"), self, self._show_hotkeys)
         palette = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
         palette.setContext(Qt.ShortcutContext.ApplicationShortcut)
         palette.activated.connect(self._open_command_palette)
