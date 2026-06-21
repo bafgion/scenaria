@@ -12,7 +12,7 @@ from app.feature_store import get_root, resolve_project_root
 from app.plugins.installer import PluginInstallError, install_from_zip, install_plugin
 from app.plugins.registry import get_registry
 from app.progress_state import ProgressState
-from app.qt.plugin_host import RunMenuHost
+from app.qt.plugin_host import PluginsMenuHost
 from app.qt.drag_drop import classify_drop_paths, paths_from_drop_urls
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
         self.status_bar = IdeStatusBar(root)
         self.status_bar.panel_clicked.connect(lambda: self._show_bottom_panel("log"))
         self.status_bar.project_clicked.connect(self._open_project)
+        self.status_bar.runner_clicked.connect(self._pick_default_runner)
         self.status_bar.progress_cancelled.connect(self._on_progress_cancelled)
         root_layout.addWidget(self.status_bar)
 
@@ -124,6 +125,7 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._wire_signals()
         self._bind_hotkeys()
+        self._apply_toolbar_compact(bool(load_settings().get("toolbar_compact")))
         self.setAcceptDrops(True)
         self._start_autosave_timer()
         self._start_browser_watch_timer()
@@ -134,6 +136,7 @@ class MainWindow(QMainWindow):
 
     def _on_startup(self) -> None:
         self._refresh_welcome_recents()
+        self._apply_toolbar_compact(bool(load_settings().get("toolbar_compact")))
         root = resolve_project_root()
         if root is not None:
             if self._controller.catalog.features_root != root:
@@ -143,7 +146,7 @@ class MainWindow(QMainWindow):
             self.workspace.ensure_welcome_tab(activate=not self.workspace.has_editor_tabs())
         else:
             self.workspace.ensure_welcome_tab(activate=True)
-            self.status_bar.set_message("Файл → Открыть проект…", "info")
+            self.status_bar.set_message("Проект → Открыть проект…", "info")
         self._update_run_selection_menu()
         self._update_window_title()
         if updates_supported():
@@ -185,6 +188,10 @@ class MainWindow(QMainWindow):
         self.sidebar.run_selected_requested.connect(self._run_selected_features)
         self.sidebar.run_folder_requested.connect(self._run_folder_features)
         self.sidebar.run_history_requested.connect(self._show_run_history)
+        self.sidebar.run_file_requested.connect(self._run_single_feature)
+        self.sidebar.run_vanessa_file_requested.connect(self._run_vanessa_file)
+        self.sidebar.run_vanessa_folder_requested.connect(self._run_vanessa_folder)
+        self.sidebar.run_folder_history_requested.connect(self._show_folder_run_history)
         self._controller.catalog.run_selection_changed.connect(self._update_run_selection_menu)
         self.workspace.welcome_panel.open_project.connect(self._open_project)
         self.workspace.welcome_panel.create_feature.connect(self._new_scenario)
@@ -331,7 +338,8 @@ class MainWindow(QMainWindow):
                 self.workspace.ensure_welcome_tab(activate=True)
         else:
             self.status_bar.set_message(str(root))
-        self._refresh_runner_menu()
+        self._refresh_plugins_menu()
+        self._sync_menu_states()
 
     def _require_project(self) -> bool:
         if get_root() is not None:
@@ -451,130 +459,132 @@ class MainWindow(QMainWindow):
         sc = self._controller.scenario_controller
         rec = self._controller.recording
 
-        file_menu = bar.addMenu("Файл")
-        file_menu.addAction("Открыть проект…", self._open_project)
-        file_menu.addSeparator()
-        self._act_new = QAction("Новый", self)
-        self._act_new.setShortcut(QKeySequence.StandardKey.New)
-        self._act_new.triggered.connect(self._new_scenario)
-        file_menu.addAction(self._act_new)
-        self._act_open_file = QAction("Открыть…", self)
-        self._act_open_file.setShortcut(QKeySequence.StandardKey.Open)
-        self._act_open_file.triggered.connect(self._open_feature_file)
-        file_menu.addAction(self._act_open_file)
-        self._act_save = QAction("Сохранить", self)
-        self._act_save.setShortcut(QKeySequence.StandardKey.Save)
-        self._act_save.triggered.connect(self._save_current)
-        file_menu.addAction(self._act_save)
-        file_menu.addSeparator()
-        file_menu.addAction("Экспорт .feature…", self._export_with_apply(sc.export_feature_file))
-        file_menu.addAction("Экспорт Playwright (TypeScript)…", self._export_with_apply(sc.export_playwright_file))
-        file_menu.addAction(
-            "Экспорт Playwright (Python)…",
-            self._export_with_apply(lambda: sc.export_playwright_file(python=True)),
-        )
-        file_menu.addAction("Экспорт ZIP…", self._export_with_apply(sc.export_zip_file))
-        file_menu.addAction("Экспорт JSON…", self._export_with_apply(sc.export_json_file))
-        file_menu.addAction("Импорт…", sc.import_feature_file)
-        file_menu.addAction("Импорт JSON…", sc.import_json_file)
-        file_menu.addSeparator()
-        file_menu.addAction("Дублировать", sc.duplicate_selected_feature)
-        file_menu.addAction("Удалить", self._delete_selected_feature)
-        file_menu.addSeparator()
+        project_menu = bar.addMenu("Проект")
+        project_menu.addAction("Открыть проект…", self._open_project)
+        project_menu.addSeparator()
         quit_action = QAction("Выход", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
+        project_menu.addAction(quit_action)
 
-        edit_menu = bar.addMenu("Правка")
-        find_action = edit_menu.addAction("Найти и заменить…", self._open_find_replace)
+        scenario_menu = bar.addMenu("Сценарий")
+        self._scenario_menu = scenario_menu
+        self._act_new = QAction("Новый", self)
+        self._act_new.setShortcut(QKeySequence.StandardKey.New)
+        self._act_new.triggered.connect(self._new_scenario)
+        scenario_menu.addAction(self._act_new)
+        self._act_open_file = QAction("Открыть…", self)
+        self._act_open_file.setShortcut(QKeySequence.StandardKey.Open)
+        self._act_open_file.triggered.connect(self._open_feature_file)
+        scenario_menu.addAction(self._act_open_file)
+        self._act_save = QAction("Сохранить", self)
+        self._act_save.setShortcut(QKeySequence.StandardKey.Save)
+        self._act_save.triggered.connect(self._save_current)
+        scenario_menu.addAction(self._act_save)
+        scenario_menu.addAction("Дублировать", sc.duplicate_selected_feature)
+        scenario_menu.addAction("Удалить", self._delete_selected_feature)
+        scenario_menu.addSeparator()
+        scenario_menu.addAction("Экспорт .feature…", self._export_with_apply(sc.export_feature_file))
+        scenario_menu.addAction("Экспорт Playwright (TypeScript)…", self._export_with_apply(sc.export_playwright_file))
+        scenario_menu.addAction(
+            "Экспорт Playwright (Python)…",
+            self._export_with_apply(lambda: sc.export_playwright_file(python=True)),
+        )
+        scenario_menu.addAction("Экспорт ZIP…", self._export_with_apply(sc.export_zip_file))
+        scenario_menu.addAction("Экспорт JSON…", self._export_with_apply(sc.export_json_file))
+        scenario_menu.addAction("Импорт…", sc.import_feature_file)
+        scenario_menu.addAction("Импорт JSON…", sc.import_json_file)
+        scenario_menu.addSeparator()
+        find_action = scenario_menu.addAction("Найти и заменить…", self._open_find_replace)
         find_action.setShortcut(QKeySequence("Ctrl+H"))
-        edit_menu.addAction("Замена по проекту…", self._open_project_replace)
-        refactor_menu = edit_menu.addMenu("Рефакторинг")
+        scenario_menu.addAction("Замена по проекту…", self._open_project_replace)
+        refactor_menu = scenario_menu.addMenu("Рефакторинг")
         refactor_menu.addAction("Обновить стартовый URL…", self._refactor_update_start_urls)
         refactor_menu.addAction("Нормализовать отступы шагов", self._refactor_normalize_indents)
         refactor_menu.addAction("Удалить пустые строки между шагами", self._refactor_collapse_blank_lines)
-        palette_action = edit_menu.addAction("Палитра сниппетов…", self._open_snippet_palette)
+        palette_action = scenario_menu.addAction("Палитра сниппетов…", self._open_snippet_palette)
         palette_action.setShortcut(QKeySequence("Ctrl+Shift+Space"))
-        edit_menu.addSeparator()
-        edit_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
+        scenario_menu.addSeparator()
+        scenario_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
             QKeySequence("Ctrl+Shift+S")
         )
-        edit_menu.addAction("Проверить текст сценария", self.workspace.gherkin_panel._validate)
-        edit_menu.addSeparator()
-        edit_menu.addAction(
+        scenario_menu.addAction("Проверить текст сценария", self.workspace.gherkin_panel._validate)
+        scenario_menu.addSeparator()
+        scenario_menu.addAction(
             "Наведение для меню…",
             self.workspace.gherkin_panel.insert_hover_step,
         )
-        edit_menu.addAction(
+        scenario_menu.addAction(
             "Починить клик с hover-меню…",
             self.workspace.gherkin_panel.fix_menu_click_at_cursor,
         )
-        edit_menu.addSeparator()
-        edit_menu.addAction("Теги сценария…", self._edit_scenario_tags)
-        edit_menu.addSeparator()
-        edit_menu.addAction("Отменить шаг записи", rec.undo_last_step)
+        scenario_menu.addSeparator()
+        scenario_menu.addAction("Теги сценария…", self._edit_scenario_tags)
 
-        run_menu = bar.addMenu("Запуск")
-        self._run_menu = run_menu
-        self._runner_menu_actions: list[QAction] = []
-        self._runner_menu_separator: QAction | None = None
+        record_test_menu = bar.addMenu("Запись и тест")
+        self._record_test_menu = record_test_menu
         self._act_browser = QAction("Браузер", self)
         self._act_browser.setShortcut(QKeySequence("Ctrl+B"))
         self._act_browser.triggered.connect(lambda: rec.open_browser(self._start_url()))
-        run_menu.addAction(self._act_browser)
-        run_menu.addAction("Закрыть браузер", rec.close_browser)
-        run_menu.addSeparator()
-        run_menu.addAction("Стартовый URL…", self._edit_start_url)
-        run_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
-        run_menu.addAction("Сессии браузера…", self._edit_browser_sessions)
-        run_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
-        run_menu.addSeparator()
+        record_test_menu.addAction(self._act_browser)
+        record_test_menu.addAction("Закрыть браузер", rec.close_browser)
+        record_test_menu.addSeparator()
+        record_test_menu.addAction("Стартовый URL…", self._edit_start_url)
+        record_test_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
+        record_test_menu.addAction("Сессии браузера…", self._edit_browser_sessions)
+        record_test_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
+        record_test_menu.addSeparator()
         self._act_record = QAction("Запись", self)
         self._act_record.setShortcut(QKeySequence("Ctrl+R"))
         self._act_record.triggered.connect(lambda: rec.start_recording(self._start_url()))
-        run_menu.addAction(self._act_record)
+        record_test_menu.addAction(self._act_record)
         self._act_stop = QAction("Стоп", self)
         self._act_stop.triggered.connect(self._stop_active_run)
-        run_menu.addAction(self._act_stop)
-        run_menu.addAction("Пауза", rec.toggle_pause)
-        run_menu.addSeparator()
+        record_test_menu.addAction(self._act_stop)
+        record_test_menu.addAction("Пауза", rec.toggle_pause)
+        record_test_menu.addAction("Отменить шаг записи", rec.undo_last_step)
+        record_test_menu.addSeparator()
         self._act_play = QAction("Запустить", self)
         self._act_play.setShortcut(QKeySequence("Ctrl+Return"))
         self._act_play.triggered.connect(self._play_with_apply)
-        run_menu.addAction(self._act_play)
-        run_menu.addAction("Проверить элементы", self._validate_with_apply)
+        record_test_menu.addAction(self._act_play)
+        record_test_menu.addAction("Проверить элементы", self._validate_with_apply)
         self._act_run_selected = QAction("Запустить выбранные", self)
         self._act_run_selected.triggered.connect(self._run_selected_features)
-        run_menu.addAction(self._act_run_selected)
-        run_menu.addAction("Запустить все сценарии проекта", rec.run_project_suite)
-        run_menu.addAction("Запустить сценарии с тегом…", self._run_project_tag)
-        run_menu.addAction("Указать элемент…", rec.pick_selector)
-        run_menu.addAction("Быстрая запись", lambda: rec.quick_record(self._start_url()))
-        run_menu.addSeparator()
+        record_test_menu.addAction(self._act_run_selected)
+        record_test_menu.addAction("Запустить все сценарии проекта", rec.run_project_suite)
+        record_test_menu.addAction("Запустить сценарии с тегом…", self._run_project_tag)
+        record_test_menu.addAction("Указать элемент…", rec.pick_selector)
+        record_test_menu.addAction("Быстрая запись", lambda: rec.quick_record(self._start_url()))
+        record_test_menu.addSeparator()
         self._act_filter = QAction("Только важные", self)
         self._act_filter.setCheckable(True)
         self._act_filter.setChecked(self._controller.session.filter_recording)
         self._act_filter.toggled.connect(self._on_filter_toggled)
-        run_menu.addAction(self._act_filter)
+        record_test_menu.addAction(self._act_filter)
         self._act_nav_only = QAction("Только ссылки", self)
         self._act_nav_only.setCheckable(True)
         self._act_nav_only.setChecked(self._controller.session.nav_only_recording)
         self._act_nav_only.toggled.connect(self._on_nav_only_toggled)
-        run_menu.addAction(self._act_nav_only)
+        record_test_menu.addAction(self._act_nav_only)
         self._act_headless = QAction("Без окна браузера", self)
         self._act_headless.setCheckable(True)
         self._act_headless.setChecked(self._controller.session.headless)
         self._act_headless.toggled.connect(self._on_headless_toggled)
-        run_menu.addAction(self._act_headless)
+        record_test_menu.addAction(self._act_headless)
         self._act_saved_session = QAction("Использовать сохранённую сессию", self)
         self._act_saved_session.setCheckable(True)
         self._act_saved_session.setChecked(bool(load_settings().get("use_saved_browser_session", True)))
         self._act_saved_session.toggled.connect(self._on_saved_session_toggled)
-        run_menu.addAction(self._act_saved_session)
-        run_menu.addSeparator()
-        run_menu.addAction("Запись и селекторы…", self._open_recording_settings)
-        self._refresh_runner_menu()
+        record_test_menu.addAction(self._act_saved_session)
+        record_test_menu.addSeparator()
+        record_test_menu.addAction("Запись и селекторы…", self._open_recording_settings)
+        record_test_menu.addAction("Открыть последний отчёт", self._open_latest_report)
+
+        self._plugins_menu = bar.addMenu("Плагины")
+        self._plugins_menu_actions: list[QAction] = []
+        self._plugins_menu_separator: QAction | None = None
+        self._refresh_plugins_menu()
 
         view_menu = bar.addMenu("Вид")
         view_menu.addAction("Старт", lambda: self.workspace.ensure_welcome_tab(activate=True))
@@ -583,6 +593,13 @@ class MainWindow(QMainWindow):
         view_menu.addAction("Результаты", lambda: self._show_bottom_panel("results"))
         view_menu.addAction("Проверка элементов", lambda: self._show_bottom_panel("validate"))
         view_menu.addAction("Ошибка", lambda: self._show_bottom_panel("error"))
+        view_menu.addSeparator()
+        view_menu.addAction("Сбросить макет окон", self._reset_layout)
+        self._act_toolbar_compact = QAction("Компактная панель инструментов", self)
+        self._act_toolbar_compact.setCheckable(True)
+        self._act_toolbar_compact.setChecked(bool(load_settings().get("toolbar_compact")))
+        self._act_toolbar_compact.toggled.connect(self._on_toolbar_compact_toggled)
+        view_menu.addAction(self._act_toolbar_compact)
 
         help_menu = bar.addMenu("Справка")
         help_menu.addAction("Шаги…", self._open_step_help).setShortcut("F1")
@@ -591,17 +608,16 @@ class MainWindow(QMainWindow):
             help_menu.addAction("Проверить обновления…", self._check_updates_manual)
         help_menu.addAction("О программе", self._show_about)
 
-    def _refresh_runner_menu(self) -> None:
-        for action in self._runner_menu_actions:
-            self._run_menu.removeAction(action)
-        self._runner_menu_actions.clear()
-        if self._runner_menu_separator is not None:
-            self._run_menu.removeAction(self._runner_menu_separator)
-            self._runner_menu_separator = None
+    def _refresh_plugins_menu(self) -> None:
+        for action in self._plugins_menu_actions:
+            self._plugins_menu.removeAction(action)
+        self._plugins_menu_actions.clear()
+        if self._plugins_menu_separator is not None:
+            self._plugins_menu.removeAction(self._plugins_menu_separator)
+            self._plugins_menu_separator = None
 
         registry = get_registry()
         registry.reload(project_root=get_root())
-        extra_actions: list[QAction] = []
         for info in registry.runner_infos():
             if info.id == "playwright":
                 continue
@@ -612,7 +628,8 @@ class MainWindow(QMainWindow):
                     self._run_batch_with_runner(runner_id)
 
                 action.triggered.connect(_run_batch)
-                extra_actions.append(action)
+                self._plugins_menu.addAction(action)
+                self._plugins_menu_actions.append(action)
             elif not info.installed:
                 action = QAction(f"Установить {info.label}…", self)
 
@@ -620,19 +637,21 @@ class MainWindow(QMainWindow):
                     self._install_runner_addon(plugin_id)
 
                 action.triggered.connect(_install)
-                extra_actions.append(action)
+                self._plugins_menu.addAction(action)
+                self._plugins_menu_actions.append(action)
 
-        if not extra_actions:
-            host = RunMenuHost(self)
-            registry.contribute_menus(host)
-            return
-        self._runner_menu_separator = self._run_menu.addSeparator()
-        for action in extra_actions:
-            self._run_menu.addAction(action)
-            self._runner_menu_actions.append(action)
-
-        host = RunMenuHost(self)
+        host = PluginsMenuHost(self)
         registry.contribute_menus(host)
+
+        if not self._plugins_menu_actions:
+            placeholder = QAction("Нет установленных плагинов", self)
+            placeholder.setEnabled(False)
+            self._plugins_menu.addAction(placeholder)
+            self._plugins_menu_actions.append(placeholder)
+
+    def _refresh_runner_menu(self) -> None:
+        """Backward-compatible alias."""
+        self._refresh_plugins_menu()
 
     def _is_plugin_installed(self, plugin_id: str) -> bool:
         return get_registry().get_runner(plugin_id) is not None
@@ -668,7 +687,7 @@ class MainWindow(QMainWindow):
                 except PluginInstallError as exc2:
                     alert(self, BRAND_NAME, str(exc2))
                     return False
-            self._refresh_runner_menu()
+            self._refresh_plugins_menu()
             alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
             return self._is_plugin_installed(plugin_id)
 
@@ -685,7 +704,7 @@ class MainWindow(QMainWindow):
         except PluginInstallError as exc:
             alert(self, BRAND_NAME, str(exc))
             return False
-        self._refresh_runner_menu()
+        self._refresh_plugins_menu()
         alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
         return self._is_plugin_installed(plugin_id)
 
@@ -939,6 +958,172 @@ class MainWindow(QMainWindow):
             return
         self._controller.recording.run_selected_features(paths)
 
+    def _run_single_feature(self, path: object) -> None:
+        from pathlib import Path
+
+        if not isinstance(path, Path):
+            return
+        if not self._prepare_batch_run():
+            return
+        self._controller.recording.run_selected_features([path])
+
+    def _run_vanessa_file(self, path: object) -> None:
+        from pathlib import Path
+
+        if not isinstance(path, Path):
+            return
+        if not self._is_plugin_installed("vanessa"):
+            if not self._install_runner_addon("vanessa"):
+                return
+        self._run_vanessa_paths([path])
+
+    def _run_vanessa_folder(self, folder: object) -> None:
+        from pathlib import Path
+
+        from app.mvc.models.catalog_model import collect_feature_paths_under
+
+        if not isinstance(folder, Path):
+            return
+        if not self._is_plugin_installed("vanessa"):
+            if not self._install_runner_addon("vanessa"):
+                return
+        paths = collect_feature_paths_under(folder)
+        if not paths:
+            alert(self, BRAND_NAME, "В этой папке нет .feature сценариев")
+            return
+        self._run_vanessa_paths(paths)
+
+    def _run_vanessa_paths(self, paths: list[Path]) -> None:
+        if not paths:
+            return
+        if not self._prepare_batch_run():
+            return
+        if len(paths) == 1:
+            label = f"Прогон Vanessa — {paths[0].name}"
+        else:
+            label = f"Прогон Vanessa ({len(paths)} файлов)"
+        self._controller.recording.run_features_with_runner(
+            paths,
+            runner_id="vanessa",
+            label=label,
+        )
+
+    def _show_folder_run_history(self, folder: object) -> None:
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QInputDialog
+
+        from app.mvc.models.catalog_model import collect_feature_paths_under
+        from app.run_status_store import get_run_history
+
+        if not isinstance(folder, Path):
+            return
+        paths = [item for item in collect_feature_paths_under(folder) if get_run_history(item)]
+        if not paths:
+            alert(self, BRAND_NAME, "В папке нет сохранённой истории прогонов.")
+            return
+        if len(paths) == 1:
+            self._show_run_history(paths[0])
+            return
+        root = get_root()
+        labels = []
+        for item in paths:
+            if root is not None:
+                try:
+                    labels.append(str(item.resolve().relative_to(root.resolve())))
+                except ValueError:
+                    labels.append(item.name)
+            else:
+                labels.append(item.name)
+        choice, ok = QInputDialog.getItem(
+            self,
+            "История прогонов папки",
+            "Выберите сценарий:",
+            labels,
+            editable=False,
+        )
+        if not ok or not choice:
+            return
+        index = labels.index(str(choice))
+        self._show_run_history(paths[index])
+
+    def _reset_layout(self) -> None:
+        self.activity_bar.explorer_btn.setChecked(True)
+        self._toggle_explorer(True)
+        self._sidebar_width = 260
+        splitter = self._side_splitter
+        total = sum(splitter.sizes()) or max(splitter.width(), 1000)
+        splitter.setHandleWidth(HIT_SIZE)
+        splitter.setSizes([260, max(1, total - 260)])
+        self._toggle_bottom_panel(False)
+        self.workspace.reset_editor_layout()
+        self.status_bar.set_message("Макет окон сброшен", "success")
+
+    def _apply_toolbar_compact(self, enabled: bool) -> None:
+        self.workspace.editor_action_bar.set_toolbar_simple_mode(enabled)
+        if hasattr(self, "_act_toolbar_compact"):
+            blocked = self._act_toolbar_compact.blockSignals(True)
+            self._act_toolbar_compact.setChecked(enabled)
+            self._act_toolbar_compact.blockSignals(blocked)
+
+    def _on_toolbar_compact_toggled(self, checked: bool) -> None:
+        settings = load_settings()
+        settings["toolbar_compact"] = checked
+        save_settings(settings)
+        self._apply_toolbar_compact(checked)
+
+    def _collect_palette_commands(self):
+        from app.qt.widgets.command_palette import PaletteCommand, normalize_menu_label, shortcut_text
+
+        commands: list[PaletteCommand] = []
+        seen: set[str] = set()
+
+        def walk_menu(menu, prefix: str = "") -> None:
+            for action in menu.actions():
+                if action.isSeparator():
+                    continue
+                sub = action.menu()
+                if sub is not None:
+                    part = normalize_menu_label(action.text())
+                    next_prefix = f"{prefix}{part} → " if part else prefix
+                    walk_menu(sub, next_prefix)
+                    continue
+                label = normalize_menu_label(action.text())
+                if not label:
+                    continue
+                full_label = f"{prefix}{label}" if prefix else label
+                if full_label in seen:
+                    continue
+                seen.add(full_label)
+                commands.append(
+                    PaletteCommand(
+                        id=full_label.lower(),
+                        label=full_label,
+                        shortcut=shortcut_text(action),
+                        run=action.trigger,
+                    )
+                )
+
+        for top in self.menuBar().actions():
+            menu = top.menu()
+            if menu is not None:
+                walk_menu(menu)
+        return sorted(commands, key=lambda item: item.label.lower())
+
+    def _open_command_palette(self) -> None:
+        from app.qt.widgets.command_palette import open_command_palette
+
+        commands = self._collect_palette_commands()
+        settings = load_settings()
+        recent = list(settings.get("palette_recent_commands") or [])
+        selected = open_command_palette(self, commands, recent_ids=recent)
+        if selected is None:
+            return
+        recent = [selected.id] + [item for item in recent if item != selected.id]
+        settings["palette_recent_commands"] = recent[:5]
+        save_settings(settings)
+        selected.run()
+
     def _run_project_tag(self) -> None:
         from app.mvc.models.catalog_model import parse_catalog_filter
 
@@ -1065,7 +1250,93 @@ class MainWindow(QMainWindow):
             gherkin_unapplied=unapplied,
             project_label=project,
         )
+        self._sync_status_runner()
         self._sync_browser_overlay()
+
+    def _resolve_active_runner_id(self) -> str:
+        from app.project_config import default_runner
+
+        s = self._controller.session
+        rec = self._controller.recording
+        if s.vanessa_running:
+            return "vanessa"
+        if rec.is_batch_running:
+            return rec.batch_runner_id
+        if s.playing:
+            return "playwright"
+        return default_runner(get_root())
+
+    def _runner_label(self, runner_id: str) -> str:
+        for info in get_registry().runner_infos():
+            if info.id == runner_id:
+                return info.label
+        return runner_id
+
+    def _sync_status_runner(self) -> None:
+        root = get_root()
+        if root is None:
+            self.status_bar.set_runner(None)
+            return
+        runner_id = self._resolve_active_runner_id()
+        label = self._runner_label(runner_id)
+        s = self._controller.session
+        rec = self._controller.recording
+        active = s.vanessa_running or rec.is_batch_running or s.playing
+        if active:
+            tooltip = f"Сейчас выполняется прогон через {label}"
+        elif runner_id == "vanessa":
+            tooltip = "Пакетный запуск 1С через Vanessa Automation. Нажмите, чтобы сменить runner."
+        else:
+            tooltip = "Встроенный прогон Playwright в браузере. Нажмите, чтобы сменить runner."
+        self.status_bar.set_runner(f"Runner · {label}", tooltip=tooltip)
+
+    def _pick_default_runner(self) -> None:
+        from PySide6.QtWidgets import QMenu
+
+        from app.project_config import default_runner, set_default_runner
+
+        root = get_root()
+        if root is None:
+            alert(self, BRAND_NAME, "Сначала откройте проект.")
+            return
+        menu = QMenu(self)
+        current = default_runner(root)
+        for info in get_registry().runner_infos():
+            if info.id != "playwright" and not info.installed:
+                continue
+            action = menu.addAction(info.label)
+            action.setCheckable(True)
+            action.setChecked(info.id == current)
+            enabled = info.id == "playwright" or info.available
+            action.setEnabled(enabled)
+            if not enabled:
+                action.setToolTip(info.reason or "Runner недоступен")
+
+            def _select(checked: bool = False, runner_id: str = info.id) -> None:
+                set_default_runner(root, runner_id)
+                self._sync_menu_states()
+
+            action.triggered.connect(_select)
+        menu.exec(self.status_bar.mapToGlobal(self.status_bar.rect().bottomRight()))
+
+    def _open_latest_report(self) -> None:
+        from app.report_locator import find_latest_report
+
+        hints = self.bottom_panel.results_panel.latest_report_hints()
+        target = find_latest_report(hints=hints, project_root=get_root())
+        if target is None:
+            alert(self, BRAND_NAME, "Отчётов пока нет.\nЗапустите сценарий или пакетный прогон.")
+            return
+        self._open_report_target(target)
+
+    def _open_report_target(self, target) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        if target.kind == "html":
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.path.resolve())))
+            return
+        self._open_allure_results(target.path)
 
     def _sync_browser_overlay(self) -> None:
         s = self._controller.session
@@ -1247,6 +1518,9 @@ class MainWindow(QMainWindow):
         escape.activated.connect(self._controller.recording.handle_escape)
         QShortcut(QKeySequence("Ctrl+`"), self, lambda: self.activity_bar.panel_btn.toggle())
         QShortcut(QKeySequence("Shift+F1"), self, self._show_hotkeys)
+        palette = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
+        palette.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        palette.activated.connect(self._open_command_palette)
 
     def _on_switch_tab(self, name: str) -> None:
         if name == "log":
@@ -1348,7 +1622,7 @@ class MainWindow(QMainWindow):
         if root is not None:
             self.status_bar.set_message(str(root))
         else:
-            self.status_bar.set_message("Файл → Открыть проект…", "info")
+            self.status_bar.set_message("Проект → Открыть проект…", "info")
 
     def _on_play_step(self, index: int) -> None:
         self.workspace.clear_play_highlight()
@@ -1412,19 +1686,26 @@ class MainWindow(QMainWindow):
         self._maybe_open_html_report(payload)
 
     def _maybe_open_html_report(self, payload: dict) -> None:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
-
         from app.settings import load_settings
 
         if not load_settings().get("open_html_report_after_run", False):
             return
-        report_path = payload.get("html_report_path") or payload.get("suite_html_index")
-        if not report_path:
-            return
-        path = Path(str(report_path))
-        if path.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
+        from app.report_locator import ReportTarget, find_latest_report
+
+        hints = {
+            "html_report_path": payload.get("html_report_path"),
+            "suite_html_index": payload.get("suite_html_index"),
+            "allure_dir": payload.get("allure_dir"),
+        }
+        target = find_latest_report(hints=hints, project_root=get_root())
+        if target is None:
+            report_path = payload.get("html_report_path") or payload.get("suite_html_index")
+            if report_path:
+                path = Path(str(report_path))
+                if path.is_file():
+                    target = ReportTarget("html", path)
+        if target is not None:
+            self._open_report_target(target)
 
     def _on_save_prompt(self, count: int) -> None:
         _ = count

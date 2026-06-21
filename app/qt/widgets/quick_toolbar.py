@@ -51,7 +51,6 @@ class QuickToolBar(QWidget):
         self._buttons: dict[str, QToolButton] = {}
         self._default_tooltips: dict[str, str] = {}
         self._button_labels: dict[str, str] = {}
-        self._compact = False
 
         self._add_btn(
             primary_row,
@@ -194,17 +193,41 @@ class QuickToolBar(QWidget):
         )
         secondary_row.addStretch()
 
-        root.addLayout(primary_row)
-        root.addLayout(secondary_row)
+        self._secondary_wrap = QWidget(self)
+        self._secondary_wrap.setLayout(secondary_row)
 
-        self._compact_layout_width = self._measure_layout_width(compact=True)
-        self._full_layout_width = self._measure_layout_width(compact=False)
+        root.addLayout(primary_row)
+        root.addWidget(self._secondary_wrap)
+
+        self._simple_mode = False
+        self._auto_compact = False
+        self._compact_layout_width = self._measure_layout_width(simple=True, auto_compact=False)
+        self._full_layout_width = self._measure_layout_width(simple=False, auto_compact=False)
+
+    def set_simple_mode(self, enabled: bool) -> None:
+        if enabled == self._simple_mode:
+            return
+        self._simple_mode = enabled
+        self._secondary_wrap.setVisible(not enabled)
+        self._apply_layout_mode()
+        self.updateGeometry()
+
+    def is_simple_mode(self) -> bool:
+        return self._simple_mode
 
     def set_compact(self, compact: bool) -> None:
-        if compact == self._compact:
+        """Auto-compact secondary buttons to icons when horizontal space is tight."""
+        self.set_auto_compact(compact)
+
+    def set_auto_compact(self, compact: bool) -> None:
+        if compact == self._auto_compact:
             return
-        self._compact = compact
+        self._auto_compact = compact
         self._apply_layout_mode()
+        self.updateGeometry()
+
+    def is_auto_compact(self) -> bool:
+        return self._auto_compact
 
     def full_layout_min_width(self) -> int:
         return self._full_layout_width
@@ -212,17 +235,30 @@ class QuickToolBar(QWidget):
     def compact_layout_min_width(self) -> int:
         return self._compact_layout_width
 
+    def simple_layout_min_width(self) -> int:
+        return self._measure_layout_width(simple=True, auto_compact=False)
+
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         hint = super().minimumSizeHint()
-        width = self._compact_layout_width if self._compact else self._full_layout_width
+        if self._simple_mode:
+            width = self.simple_layout_min_width()
+        elif self._auto_compact:
+            width = self._compact_layout_width
+        else:
+            width = self._full_layout_width
         return QSize(width, hint.height())
 
-    def _measure_layout_width(self, *, compact: bool) -> int:
-        saved = self._compact
-        self._compact = compact
+    def _measure_layout_width(self, *, simple: bool, auto_compact: bool) -> int:
+        saved_simple = self._simple_mode
+        saved_auto = self._auto_compact
+        self._simple_mode = simple
+        self._auto_compact = auto_compact
+        self._secondary_wrap.setVisible(not simple)
         self._apply_layout_mode()
         width = super().minimumSizeHint().width()
-        self._compact = saved
+        self._simple_mode = saved_simple
+        self._auto_compact = saved_auto
+        self._secondary_wrap.setVisible(not self._simple_mode)
         self._apply_layout_mode()
         return width
 
@@ -230,7 +266,11 @@ class QuickToolBar(QWidget):
         for key, btn in self._buttons.items():
             label = self._button_labels[key]
             is_primary = bool(btn.property("toolbar-primary"))
-            if self._compact and not is_primary:
+            if self._simple_mode:
+                btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+                btn.setText(label)
+                continue
+            if self._auto_compact and not is_primary:
                 btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 btn.setText("")
             else:

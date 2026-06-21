@@ -903,6 +903,10 @@ class EditorWorkspace(QWidget):
         self._editor_splitter.setHandleWidth(HIT_SIZE)
         self._save_steps_panel_settings()
 
+    def reset_editor_layout(self) -> None:
+        self._steps_panel_visible = False
+        self._collapse_steps_panel()
+
     def _collapse_steps_panel(self) -> None:
         sizes = self._editor_splitter.sizes()
         if len(sizes) >= 2 and sizes[1] > 0:

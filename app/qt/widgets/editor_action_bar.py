@@ -111,8 +111,16 @@ class EditorActionBar(QWidget):
 
         self._next_action = "browser"
         self._density_chrome_width = 0
+        self._user_simple_toolbar = False
         self._reserve_chrome_layout()
         self._sync_toolbar_density()
+
+    def set_toolbar_simple_mode(self, enabled: bool) -> None:
+        self._user_simple_toolbar = enabled
+        self._sync_toolbar_density()
+
+    def is_toolbar_simple_mode(self) -> bool:
+        return self._user_simple_toolbar
 
     def _reserve_chrome_layout(self) -> None:
         """Keep right-side chrome width stable when labels change."""
@@ -157,18 +165,25 @@ class EditorActionBar(QWidget):
         return self._density_chrome_width
 
     def _minimum_width(self, *, compact_toolbar: bool) -> int:
-        toolbar_w = (
-            self.toolbar.compact_layout_min_width()
-            if compact_toolbar
-            else self.toolbar.full_layout_min_width()
-        )
+        toolbar = self.toolbar
+        if self._user_simple_toolbar:
+            toolbar_w = toolbar.simple_layout_min_width()
+        elif compact_toolbar:
+            toolbar_w = toolbar.compact_layout_min_width()
+        else:
+            toolbar_w = toolbar.full_layout_min_width()
         return self._measured_chrome_width() + toolbar_w
 
     def _sync_toolbar_density(self) -> None:
         if self.width() <= 0:
             return
+        if self._user_simple_toolbar:
+            self.toolbar.set_simple_mode(True)
+            self.toolbar.set_auto_compact(False)
+            return
+        self.toolbar.set_simple_mode(False)
         available = self.width() - self._fixed_chrome_width()
-        self.toolbar.set_compact(available < self.toolbar.full_layout_min_width())
+        self.toolbar.set_auto_compact(available < self.toolbar.full_layout_min_width())
 
     def _separator(self) -> QFrame:
         line = QFrame()

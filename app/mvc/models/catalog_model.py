@@ -203,7 +203,7 @@ def build_catalog_view_state(root: Path | None, filter_text: str) -> CatalogView
         return CatalogViewState(
             tree=None,
             empty_title="Проект не открыт",
-            empty_hint="Откройте папку с .feature сценариями.\nФайл → Открыть проект…",
+            empty_hint="Откройте папку с .feature сценариями.\nПроект → Открыть проект…",
             empty_kind="no_project",
         )
     if not root.exists():
@@ -226,7 +226,7 @@ def build_catalog_view_state(root: Path | None, filter_text: str) -> CatalogView
             empty_title="Нет сценариев",
             empty_hint=(
                 f"В «{root.name}» пока нет .feature файлов.\n"
-                "Нажмите + или Файл → Новый сценарий."
+                "Нажмите + или Сценарий → Новый."
             ),
             empty_kind="no_files",
         )

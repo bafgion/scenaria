@@ -1,4 +1,4 @@
-"""Run menu host for plugin menu contributions."""
+"""Plugins menu host for runner add-on menu contributions."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 from app.feature_store import get_root
 
 
-class RunMenuHost:
+class PluginsMenuHost:
     def __init__(self, window) -> None:
         self._window = window
         self._plugin_actions: list[QAction] = []
@@ -24,8 +24,12 @@ class RunMenuHost:
     def selected_feature_paths(self) -> list[Path]:
         return list(self._window._controller.catalog.run_selection_paths)
 
+    def refresh_plugins_menu(self) -> None:
+        self._window._refresh_plugins_menu()
+
     def refresh_runner_menu(self) -> None:
-        self._window._refresh_runner_menu()
+        """Backward-compatible alias for add-ons."""
+        self.refresh_plugins_menu()
 
     def ensure_plugin_installed(self, plugin_id: str) -> bool:
         if self._window._is_plugin_installed(plugin_id):
@@ -61,12 +65,12 @@ class RunMenuHost:
     def add_menu_action(self, label: str, callback) -> None:
         action = QAction(label, self._window)
         action.triggered.connect(callback)
-        menu: QMenu = self._window._run_menu
-        if self._window._runner_menu_separator is None:
-            self._window._runner_menu_separator = menu.addSeparator()
+        menu: QMenu = self._window._plugins_menu
+        if self._window._plugins_menu_separator is None:
+            self._window._plugins_menu_separator = menu.addSeparator()
         menu.addAction(action)
         self._plugin_actions.append(action)
-        self._window._runner_menu_actions.append(action)
+        self._window._plugins_menu_actions.append(action)
 
     def add_run_action(self, label: str, runner_id: str, callback) -> None:
         self.add_menu_action(label, callback)
@@ -75,7 +79,11 @@ class RunMenuHost:
         self.add_menu_action(label, callback)
 
     def clear_plugin_actions(self) -> None:
-        menu: QMenu = self._window._run_menu
+        menu: QMenu = self._window._plugins_menu
         for action in self._plugin_actions:
             menu.removeAction(action)
         self._plugin_actions.clear()
+
+
+# Backward-compatible alias for imports and add-ons.
+RunMenuHost = PluginsMenuHost

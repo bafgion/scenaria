@@ -114,10 +114,10 @@ def test_toolbar_density_stable_when_switching_to_welcome(qapp) -> None:
     qapp.processEvents()
     window.workspace.gherkin_panel.apply_to_model()
     qapp.processEvents()
-    compact_before = window.workspace.editor_action_bar.toolbar._compact
+    compact_before = window.workspace.editor_action_bar.toolbar.is_auto_compact()
 
     window.workspace.ensure_welcome_tab(activate=True)
     qapp.processEvents()
     window._sync_menu_states()
 
-    assert window.workspace.editor_action_bar.toolbar._compact == compact_before
+    assert window.workspace.editor_action_bar.toolbar.is_auto_compact() == compact_before

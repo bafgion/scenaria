@@ -1,4 +1,4 @@
-"""Attach Vanessa items to the core Run menu."""
+"""Attach Vanessa items to the core Plugins menu."""
 
 from __future__ import annotations
 

@@ -48,3 +48,9 @@ def default_runner(project_root: Path | None) -> str:
     if value in {"", "ask"}:
         return "playwright"
     return value
+
+
+def set_default_runner(project_root: Path, runner_id: str) -> None:
+    config = load_project_config(project_root)
+    config["default_runner"] = runner_id
+    save_project_config(project_root, config)

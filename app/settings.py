@@ -33,6 +33,8 @@ DEFAULTS: dict[str, Any] = {
     "plugins": {},
     "parallel_workers": 1,
     "max_loop_iterations": 100,
+    "palette_recent_commands": [],
+    "toolbar_compact": False,
 }
 
 

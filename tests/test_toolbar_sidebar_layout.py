@@ -23,18 +23,28 @@ def qapp():
     return app
 
 
+def _expand_until_full_toolbar(bar: EditorActionBar, qapp, *, start: int = 1200, step: int = 200, limit: int = 4200) -> int:
+    width = start
+    while width <= limit:
+        bar.resize(width, bar.sizeHint().height())
+        qapp.processEvents()
+        if not bar.toolbar.is_auto_compact():
+            return width
+        width += step
+    pytest.fail(f"toolbar stayed compact up to {limit}px wide")
+
+
 def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
-    bar.resize(1400, bar.sizeHint().height())
-    qapp.processEvents()
-    wide_toolbar_hint = bar.toolbar.sizeHint().width()
+    full_width = _expand_until_full_toolbar(bar, qapp)
+    assert bar.toolbar._buttons["validate"].text() == "Проверить элементы"
 
-    bar.resize(820, bar.sizeHint().height())
+    bar.resize(max(400, full_width - 500), bar.sizeHint().height())
     qapp.processEvents()
 
-    assert bar.toolbar._compact
-    assert bar.toolbar.sizeHint().width() < wide_toolbar_hint
+    assert bar.toolbar.is_auto_compact()
+    assert bar.toolbar._buttons["validate"].text() == ""
 
 
 def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
@@ -45,17 +55,6 @@ def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     assert bar._file_hint.width() > 0
     assert bar._next_step.width() > 0
     assert bar.minimumSizeHint().width() > bar.toolbar.compact_layout_min_width()
-
-
-def _expand_until_full_toolbar(bar: EditorActionBar, qapp, *, start: int = 1200, step: int = 200, limit: int = 4200) -> int:
-    width = start
-    while width <= limit:
-        bar.resize(width, bar.sizeHint().height())
-        qapp.processEvents()
-        if not bar.toolbar._compact:
-            return width
-        width += step
-    pytest.fail(f"toolbar stayed compact up to {limit}px wide")
 
 
 def _expand_workspace_until_full_toolbar(
@@ -70,7 +69,7 @@ def _expand_workspace_until_full_toolbar(
     while width <= limit:
         workspace.resize(width, 700)
         qapp.processEvents()
-        if not workspace.editor_action_bar.toolbar._compact:
+        if not workspace.editor_action_bar.toolbar.is_auto_compact():
             return width
         width += step
     pytest.fail(f"workspace toolbar stayed compact up to {limit}px wide")

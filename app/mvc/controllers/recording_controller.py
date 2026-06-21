@@ -105,6 +105,10 @@ class RecordingController(QObject):
     def is_batch_running(self) -> bool:
         return self._batch_running
 
+    @property
+    def batch_runner_id(self) -> str:
+        return self._batch_runner_id
+
     def stop_batch(self) -> None:
         if not self._batch_running:
             return

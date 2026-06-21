@@ -15,6 +15,10 @@ class Sidebar(QWidget):
     run_selected_requested = Signal()
     run_folder_requested = Signal(object)  # Path
     run_history_requested = Signal(object)  # Path
+    run_file_requested = Signal(object)  # Path
+    run_vanessa_file_requested = Signal(object)  # Path
+    run_vanessa_folder_requested = Signal(object)  # Path
+    run_folder_history_requested = Signal(object)  # Path
 
     def __init__(
         self,
@@ -91,6 +95,10 @@ class Sidebar(QWidget):
         self.catalog_panel.tree.set_toggle_run_selection_handler(controller.toggle_run_selection)
         self.catalog_panel.tree.run_folder_requested.connect(self.run_folder_requested.emit)
         self.catalog_panel.tree.run_history_requested.connect(self.run_history_requested.emit)
+        self.catalog_panel.tree.run_file_requested.connect(self.run_file_requested.emit)
+        self.catalog_panel.tree.run_vanessa_file_requested.connect(self.run_vanessa_file_requested.emit)
+        self.catalog_panel.tree.run_vanessa_folder_requested.connect(self.run_vanessa_folder_requested.emit)
+        self.catalog_panel.tree.run_folder_history_requested.connect(self.run_folder_history_requested.emit)
         self.catalog_panel.tree.add_folder_to_selection_requested.connect(
             controller.add_folder_to_run_selection
         )

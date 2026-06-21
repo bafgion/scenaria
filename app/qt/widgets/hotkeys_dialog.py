@@ -8,7 +8,7 @@ from app.qt.dialogs import close_button_box
 
 HOTKEYS_TEXT = """Горячие клавиши
 
-Файл
+Сценарий
   Ctrl+N          Новый сценарий
   Ctrl+O          Открыть файл
   Ctrl+S          Сохранить
@@ -20,7 +20,7 @@ HOTKEYS_TEXT = """Горячие клавиши
   F1              Справка по шагу (в редакторе)
   Ctrl+H          Найти и заменить
 
-Запуск
+Запись и тест
   Ctrl+B          Открыть браузер
   Ctrl+R          Запись
   Ctrl+Enter      Запустить сценарий

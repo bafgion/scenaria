@@ -124,6 +124,7 @@ class _StatusSegment(QWidget):
 class IdeStatusBar(QWidget):
     panel_clicked = Signal()
     project_clicked = Signal()
+    runner_clicked = Signal()
     progress_cancelled = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -169,6 +170,11 @@ class IdeStatusBar(QWidget):
             led=True,
             tooltip="Состояние окна браузера для записи и тестов",
         )
+        self._runner = _StatusSegment(
+            "Runner · Playwright",
+            clickable=True,
+            tooltip="Runner по умолчанию для пакетного запуска",
+        )
         self._steps = _StatusSegment("0 шагов", tooltip="Число шагов в применённом сценарии")
         self._gherkin = _StatusSegment("Ошибка в сценарии", tooltip="В тексте сценария есть синтаксические ошибки")
         self._panel = _StatusSegment(
@@ -186,13 +192,23 @@ class IdeStatusBar(QWidget):
 
         self._panel.clicked.connect(self.panel_clicked.emit)
         self._project.clicked.connect(self.project_clicked.emit)
+        self._runner.clicked.connect(self.runner_clicked.emit)
 
-        for segment in (self._session, self._browser, self._steps, self._gherkin, self._panel, self._project):
+        for segment in (
+            self._session,
+            self._browser,
+            self._runner,
+            self._steps,
+            self._gherkin,
+            self._panel,
+            self._project,
+        ):
             right_layout.addWidget(segment)
 
         root.addWidget(right)
         self._session.hide()
         self._gherkin.hide()
+        self._runner.hide()
 
     def set_message(self, text: str, tone: str = "normal") -> None:
         self._message.setText(text)
@@ -232,6 +248,16 @@ class IdeStatusBar(QWidget):
         recording = "Запись" in text or "Пауза" in text
         playing = text == "Тест"
         self._session.set_accent(recording=recording, playing=playing)
+
+    def set_runner(self, label: str | None, *, tooltip: str = "") -> None:
+        if not label:
+            self._runner.hide()
+            return
+        self._runner.show()
+        self._runner.set_text(label)
+        self._runner.set_muted(False)
+        if tooltip:
+            self._runner.setToolTip(tooltip)
 
     def sync(
         self,

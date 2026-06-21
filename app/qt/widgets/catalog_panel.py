@@ -18,6 +18,10 @@ class CatalogTreeView(QTreeView):
     run_folder_requested = Signal(object)  # Path
     add_folder_to_selection_requested = Signal(object)  # Path
     run_history_requested = Signal(object)  # Path
+    run_file_requested = Signal(object)  # Path
+    run_vanessa_file_requested = Signal(object)  # Path
+    run_vanessa_folder_requested = Signal(object)  # Path
+    run_folder_history_requested = Signal(object)  # Path
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -138,6 +142,9 @@ class CatalogTreeView(QTreeView):
         path, kind = info
         menu = QMenu(self)
         if kind == "file":
+            menu.addAction("Запустить сценарий", lambda: self.run_file_requested.emit(path))
+            self._add_vanessa_actions(menu, paths=[path])
+            menu.addSeparator()
             selected = str(path.resolve()) in self._run_selection
             if selected:
                 toggle = menu.addAction("Убрать из запуска")
@@ -146,18 +153,48 @@ class CatalogTreeView(QTreeView):
             toggle.triggered.connect(
                 lambda: self._on_toggle_run_selection(path) if self._on_toggle_run_selection else None
             )
+            menu.addSeparator()
             menu.addAction(
                 "История прогонов",
                 lambda: self.run_history_requested.emit(path),
             )
         elif kind in {"root", "dir"}:
             menu.addAction("Запустить сценарии в папке", lambda: self.run_folder_requested.emit(path))
+            self._add_vanessa_actions(menu, paths=None, folder=path)
+            menu.addAction(
+                "История прогонов папки",
+                lambda: self.run_folder_history_requested.emit(path),
+            )
             menu.addAction(
                 "Добавить папку в выбор",
                 lambda: self.add_folder_to_selection_requested.emit(path),
             )
         if menu.actions():
             menu.exec(self.viewport().mapToGlobal(point))
+
+    def _add_vanessa_actions(self, menu: QMenu, *, paths: list[Path] | None = None, folder: Path | None = None) -> None:
+        from app.plugins.registry import get_registry
+
+        info = next((item for item in get_registry().runner_infos() if item.id == "vanessa"), None)
+        if info is None:
+            return
+        if info.available:
+            if paths is not None:
+                menu.addAction(
+                    "Запустить через Vanessa…",
+                    lambda: self.run_vanessa_file_requested.emit(paths[0]),
+                )
+            elif folder is not None:
+                menu.addAction(
+                    "Запустить через Vanessa…",
+                    lambda: self.run_vanessa_folder_requested.emit(folder),
+                )
+        elif not info.installed:
+            label = "Установить Vanessa…"
+            if paths is not None:
+                menu.addAction(label, lambda: self.run_vanessa_file_requested.emit(paths[0]))
+            elif folder is not None:
+                menu.addAction(label, lambda: self.run_vanessa_folder_requested.emit(folder))
 
     @staticmethod
     def _strip_run_mark(text: str) -> str:

@@ -189,6 +189,15 @@ class ResultsPanel(QWidget):
         if self._on_rerun_failed:
             self._on_rerun_failed()
 
+    def latest_report_hints(self) -> dict[str, str | None]:
+        html = str(self._html_report_path) if self._html_report_path and self._html_report_path.is_file() else None
+        allure = str(self._allure_dir) if self._allure_dir and self._allure_dir.is_dir() else None
+        return {
+            "html_report_path": html,
+            "suite_html_index": html,
+            "allure_dir": allure,
+        }
+
     def show_results(self, payload: dict, *, has_failed_step: bool) -> None:
         self._live_mode = False
         report_path = payload.get("html_report_path")
