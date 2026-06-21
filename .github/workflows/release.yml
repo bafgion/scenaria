@@ -31,8 +31,7 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: |
-          python -m pytest tests/ -q -m integration
-          python -m pytest tests/ -q -m "not integration"
+          python -m pytest tests/ -q
 
       - name: Build portable Windows package
         shell: pwsh
