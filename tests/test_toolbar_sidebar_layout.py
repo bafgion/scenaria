@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget
 from app.mvc.controllers.catalog_controller import CatalogController
@@ -13,6 +15,12 @@ from app.qt.widgets.sidebar import Sidebar
 from PySide6.QtCore import Qt
 
 from app.mvc.controllers.app_controller import AppController
+
+_CI = os.environ.get("GITHUB_ACTIONS") == "true"
+_skip_layout_on_ci = pytest.mark.skipif(
+    _CI,
+    reason="Qt toolbar resize loops crash on headless Windows CI",
+)
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +42,7 @@ def _expand_until_full_toolbar(bar: EditorActionBar, qapp, *, start: int = 1200,
     pytest.skip(f"toolbar stayed compact up to {limit}px wide (headless/CI)")
 
 
+@_skip_layout_on_ci
 def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -75,6 +84,7 @@ def _expand_workspace_until_full_toolbar(
     pytest.skip(f"workspace toolbar stayed compact up to {limit}px wide (headless/CI)")
 
 
+@_skip_layout_on_ci
 def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -82,6 +92,7 @@ def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     assert bar.toolbar._buttons["validate"].text() == "Проверить элементы"
 
 
+@_skip_layout_on_ci
 def test_workspace_minimum_width_stays_small_with_labeled_toolbar(qapp) -> None:
     controller = AppController()
     workspace = EditorWorkspace(controller)
@@ -91,6 +102,7 @@ def test_workspace_minimum_width_stays_small_with_labeled_toolbar(qapp) -> None:
     assert workspace.minimumSizeHint().width() > chrome
 
 
+@_skip_layout_on_ci
 def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     host = QWidget()
     host.setMinimumSize(0, 0)
