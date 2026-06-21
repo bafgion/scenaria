@@ -71,6 +71,7 @@ class VAParamsMerger:
         junit_dir = run_dir / "junit"
         junit_dir.mkdir(parents=True, exist_ok=True)
         allure_dir = run_dir / "allure"
+        scenario_log = run_dir / "scenario.log"
         status_path = run_dir / "status.log"
 
         options = dict(request.runner_options or {})
@@ -80,6 +81,8 @@ class VAParamsMerger:
         overlay: dict[str, Any] = {
             "ВыгружатьСтатусВыполненияСценариевВФайл": normalize_bool(True, style=bool_style),
             "ПутьКФайлуДляВыгрузкиСтатусаВыполненияСценариев": path_for_va_json(status_path),
+            "ДелатьЛогВыполненияСценариевВТекстовыйФайл": normalize_bool(True, style=bool_style),
+            "ИмяФайлаЛогВыполненияСценариев": path_for_va_json(scenario_log),
         }
         if report_junit:
             overlay["ДелатьОтчетВФорматеjUnit"] = normalize_bool(True, style=bool_style)

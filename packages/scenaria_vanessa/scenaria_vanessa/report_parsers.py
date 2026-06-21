@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from app.plugins.models import RunCaseResult
 
 from scenaria_vanessa.exit_codes import is_run_success
+
+_SCENARIO_START_RE = re.compile(
+    r"(?:Начало выполнения сценария|Сценарий|Scenario)\s*[:\-]\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+_STEP_START_RE = re.compile(
+    r"(?:Шаг|Step)\s*[:\-]\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -62,10 +73,100 @@ def collect_report_artifacts(merged_params: dict[str, Any], run_dir: Path) -> Re
 def parse_junit_dir(junit_dir: Path) -> list[RunCaseResult]:
     if not junit_dir.is_dir():
         return []
-    cases: list[RunCaseResult] = []
-    for xml_path in sorted(junit_dir.rglob("*.xml")):
-        cases.extend(parse_junit_file(xml_path))
-    return cases
+    parser = IncrementalJUnitParser()
+    return parser.poll(junit_dir)
+
+
+@dataclass
+class _JUnitFileCache:
+    mtime: float
+    cases: list[RunCaseResult] = field(default_factory=list)
+
+
+class IncrementalJUnitParser:
+    """Parse only changed JUnit XML files between polls."""
+
+    def __init__(self) -> None:
+        self._files: dict[str, _JUnitFileCache] = {}
+
+    def poll(self, junit_dir: Path | None) -> list[RunCaseResult]:
+        if junit_dir is None or not junit_dir.is_dir():
+            return []
+        present: set[str] = set()
+        for xml_path in sorted(junit_dir.rglob("*.xml")):
+            key = str(xml_path)
+            present.add(key)
+            try:
+                mtime = float(xml_path.stat().st_mtime)
+            except OSError:
+                continue
+            cached = self._files.get(key)
+            if cached is not None and cached.mtime == mtime:
+                continue
+            self._files[key] = _JUnitFileCache(mtime=mtime, cases=parse_junit_file(xml_path))
+        for key in list(self._files):
+            if key not in present:
+                del self._files[key]
+        merged: list[RunCaseResult] = []
+        for key in sorted(self._files):
+            merged.extend(self._files[key].cases)
+        return merged
+
+
+def _read_log_tail(path: Path | None, *, max_bytes: int) -> str:
+    if path is None or not path.is_file():
+        return ""
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > max_bytes:
+                handle.seek(-max_bytes, os.SEEK_END)
+            return handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def read_current_scenario_label(
+    scenario_log: Path | None,
+    *,
+    process_log: Path | None = None,
+    max_bytes: int = 16_384,
+) -> str:
+    """Best-effort current scenario name from Vanessa text logs."""
+    current = ""
+    for source in (scenario_log, process_log):
+        text = _read_log_tail(source, max_bytes=max_bytes)
+        if not text:
+            continue
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            match = _SCENARIO_START_RE.search(stripped)
+            if match:
+                current = match.group(1).strip().strip('"')
+                continue
+            step_match = _STEP_START_RE.search(stripped)
+            if step_match and not current:
+                current = step_match.group(1).strip().strip('"')
+        if current:
+            break
+    return current
+
+
+def parse_status_log(path: Path | None) -> int | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    first = raw.splitlines()[0].strip()
+    if first.isdigit():
+        return int(first)
+    return None
 
 
 def parse_junit_file(path: Path) -> list[RunCaseResult]:

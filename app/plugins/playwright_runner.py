@@ -23,6 +23,7 @@ class PlaywrightRunner:
         *,
         on_log=None,
         on_progress=None,
+        on_partial_cases=None,
         should_stop=None,
     ) -> RunBatchResult:
         started = time.perf_counter()

@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         rec.focus_failed_step.connect(self._on_focus_failed)
         rec.play_results.connect(self._on_play_results)
         rec.batch_results.connect(self._on_batch_results)
+        rec.batch_partial.connect(self._on_batch_partial_results)
         rec.progress.connect(self._on_progress)
         rec.validation_results.connect(self._on_validation_results)
         rec.save_prompt.connect(self._on_save_prompt)
@@ -1459,6 +1460,21 @@ class MainWindow(QMainWindow):
         self.bottom_panel.error_panel.clear()
         self._show_bottom_panel("results")
         self._maybe_open_html_report(payload)
+
+    def _on_batch_partial_results(self, payload: dict) -> None:
+        if str(payload.get("runner", "") or "") != "vanessa":
+            return
+        panel = self.bottom_panel.results_panel
+        total_hint = int(payload.get("total", 0) or 0)
+        if payload.get("bootstrap"):
+            panel.begin_live_suite(total_hint=total_hint)
+            self._show_bottom_panel("results")
+            return
+        cases = list(payload.get("cases") or [])
+        if not cases:
+            return
+        panel.update_suite_cases(cases)
+        self._show_bottom_panel("results")
 
     def _show_about(self) -> None:
         box = QMessageBox(self)

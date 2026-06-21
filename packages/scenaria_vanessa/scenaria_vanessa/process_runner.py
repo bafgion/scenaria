@@ -15,6 +15,7 @@ from scenaria_vanessa.platform_command import PlatformLaunchSpec
 
 LogCallback = Callable[[str], None]
 StopCallback = Callable[[], bool]
+PollCallback = Callable[[], None]
 
 
 @dataclass
@@ -50,6 +51,7 @@ class VanessaProcessRunner:
         *,
         run_dir: Path,
         on_log: LogCallback | None = None,
+        on_poll: PollCallback | None = None,
         should_stop: StopCallback | None = None,
         timeout_sec: int | None = None,
         dry_run: bool = False,
@@ -101,6 +103,7 @@ class VanessaProcessRunner:
             thread.start()
 
         deadline = time.perf_counter() + timeout_sec if timeout_sec and timeout_sec > 0 else None
+        last_poll = 0.0
         while proc.poll() is None:
             if should_stop and should_stop():
                 stopped = True
@@ -110,6 +113,13 @@ class VanessaProcessRunner:
                 timed_out = True
                 proc.kill()
                 break
+            now = time.perf_counter()
+            if on_poll is not None and now - last_poll >= 0.75:
+                last_poll = now
+                try:
+                    on_poll()
+                except Exception:  # noqa: BLE001
+                    pass
             time.sleep(0.2)
 
         for thread in threads:

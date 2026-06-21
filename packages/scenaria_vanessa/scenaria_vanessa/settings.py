@@ -15,6 +15,7 @@ DEFAULTS: dict[str, Any] = {
     "platform_mode": "TestManager",
     "platform_extra_args": [],
     "epf_path": "",
+    "epf_download_url": "",
     "ib_connection_string": "",
     "user": "",
     "password": "",

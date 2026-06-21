@@ -39,6 +39,7 @@ class RecordingController(QObject):
     save_prompt = Signal(int)  # step count after recording
     picker_done = Signal(str)  # selected selector
     batch_results = Signal(dict, int)  # payload, duration_ms
+    batch_partial = Signal(dict)  # partial suite cases during batch run
     progress = Signal(object)  # ProgressState | None
     validation_results = Signal(dict)
     browser_raise = Signal(str)  # page title hint for OS-level focus on UI thread
@@ -97,6 +98,7 @@ class RecordingController(QObject):
         bridge.on("picker_done", self._on_picker_done)
         bridge.on("batch_done", self._on_batch_done)
         bridge.on("batch_progress", self._on_batch_progress)
+        bridge.on("batch_partial", self._on_batch_partial)
         bridge.on("continue_prepare_done", self._on_continue_prepare_done)
 
     @property
@@ -595,6 +597,7 @@ class RecordingController(QObject):
             self.log.emit("Сценарии .feature не найдены", "error")
             return
 
+        total = len(files)
         bridge = self._bridge_ref()
         self._batch_running = True
         self._batch_stop_requested = False
@@ -603,6 +606,10 @@ class RecordingController(QObject):
         self._play_started_at = time.time()
         if resolved_runner_id == "vanessa":
             self._session.vanessa_running = True
+            bridge.emit_event(
+                "batch_partial",
+                {"cases": [], "runner": "vanessa", "total": total, "bootstrap": True},
+            )
         else:
             self._session.playing = True
         self._set_pending(True, "Пакетный запуск...")
@@ -617,8 +624,6 @@ class RecordingController(QObject):
             "scenario_names": list(scenario_names or []),
         }
         self._emit_session()
-
-        total = len(files)
 
         def worker() -> None:
             from app.settings import load_settings
@@ -635,6 +640,17 @@ class RecordingController(QObject):
                         "index": state.current,
                         "total": state.total,
                         "path": state.label,
+                        "runner": resolved_runner_id,
+                    },
+                )
+
+            def on_partial_cases(cases) -> None:
+                bridge.emit_event(
+                    "batch_partial",
+                    {
+                        "cases": [case.to_dict() for case in cases],
+                        "runner": resolved_runner_id,
+                        "total": total,
                     },
                 )
 
@@ -657,6 +673,7 @@ class RecordingController(QObject):
                     request,
                     on_log=on_log,
                     on_progress=on_progress,
+                    on_partial_cases=on_partial_cases,
                     should_stop=should_stop,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -1094,8 +1111,7 @@ class RecordingController(QObject):
     def _on_batch_progress(self, payload: dict[str, Any]) -> None:
         index = int(payload.get("index", 0))
         total = int(payload.get("total", 0))
-        path = Path(str(payload.get("path", "")))
-        label = path.name if path.name else "сценарий"
+        label = str(payload.get("path", "") or "").strip() or "сценарий"
         self.status.emit(f"Пакет: {index}/{total} — {label}", "playing")
         self.progress.emit(
             ProgressState(
@@ -1105,6 +1121,19 @@ class RecordingController(QObject):
                 total=total,
                 cancellable=True,
             )
+        )
+
+    def _on_batch_partial(self, payload: dict[str, Any]) -> None:
+        cases = list(payload.get("cases") or [])
+        if not cases and not payload.get("bootstrap"):
+            return
+        self.batch_partial.emit(
+            {
+                "cases": cases,
+                "runner": payload.get("runner"),
+                "total": int(payload.get("total", 0) or 0),
+                "bootstrap": bool(payload.get("bootstrap")),
+            }
         )
 
     def _on_batch_done(self, payload: dict[str, Any]) -> None:

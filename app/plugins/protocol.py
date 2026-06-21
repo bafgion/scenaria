@@ -7,13 +7,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from app.plugins.models import RunBatchResult, RunRequest, RunResult
+    from app.plugins.models import RunBatchResult, RunCaseResult, RunRequest, RunResult
     from app.progress_state import ProgressState
 
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[["ProgressState"], None]
 StopCallback = Callable[[], bool]
+
+
+PartialCasesCallback = Callable[[list["RunCaseResult"]], None]
 
 
 @runtime_checkable
@@ -29,6 +32,7 @@ class RunnerPlugin(Protocol):
         *,
         on_log: LogCallback | None = None,
         on_progress: ProgressCallback | None = None,
+        on_partial_cases: PartialCasesCallback | None = None,
         should_stop: StopCallback | None = None,
     ) -> RunBatchResult: ...
 
