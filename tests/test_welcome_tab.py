@@ -74,50 +74,80 @@ def test_welcome_tab_reopens_without_duplicates(qapp) -> None:
 def test_welcome_tab_does_not_enable_scenario_actions(qapp) -> None:
     from app.gherkin_ru import steps_to_gherkin
     from app.mvc.controllers.app_controller import AppController
-    from app.qt.main_window import MainWindow
+    from app.qt.widgets.editor_workspace import EditorWorkspace
 
     steps = [{"action": "goto", "url": "https://example.com"}]
     text = steps_to_gherkin(steps, scenario_name="demo")
 
-    window = MainWindow(AppController())
-    window.show()
-    window.workspace.open_untitled(initial_text=text)
+    controller = AppController()
+    workspace = EditorWorkspace(controller)
+    workspace.show()
+    workspace.open_untitled(initial_text=text)
     qapp.processEvents()
-    window.workspace.gherkin_panel.apply_to_model()
+    workspace.gherkin_panel.apply_to_model()
     qapp.processEvents()
-    assert window._controller.scenario.steps
+    assert controller.scenario.steps
 
-    window.workspace.ensure_welcome_tab(activate=True)
+    workspace.ensure_welcome_tab(activate=True)
     qapp.processEvents()
-    window._sync_menu_states()
+    workspace.quick_toolbar.sync_states(
+        pending=False,
+        browser_open=False,
+        recording=False,
+        playing=False,
+        has_steps=False,
+        editor_active=False,
+    )
+    workspace.sync_chrome(
+        pending=False,
+        browser_open=False,
+        recording=False,
+        playing=False,
+        has_steps=False,
+    )
 
-    assert window.workspace.is_editor_tab_active() is False
-    assert not window.workspace.quick_toolbar._buttons["play"].isEnabled()
-    assert not window.workspace.quick_toolbar._buttons["record"].isEnabled()
-    assert not window.workspace.quick_toolbar._buttons["validate"].isEnabled()
-    assert window.workspace.editor_action_bar._file_hint.text() == ""
-    assert window.workspace.editor_action_bar._next_step.text() == "Откройте сценарий"
+    assert workspace.is_editor_tab_active() is False
+    assert not workspace.quick_toolbar._buttons["play"].isEnabled()
+    assert not workspace.quick_toolbar._buttons["record"].isEnabled()
+    assert not workspace.quick_toolbar._buttons["validate"].isEnabled()
+    assert workspace.editor_action_bar._file_hint.text() == ""
+    assert workspace.editor_action_bar._next_step.text() == "Откройте сценарий"
 
 
 def test_toolbar_density_stable_when_switching_to_welcome(qapp) -> None:
     from app.gherkin_ru import steps_to_gherkin
     from app.mvc.controllers.app_controller import AppController
-    from app.qt.main_window import MainWindow
+    from app.qt.widgets.editor_workspace import EditorWorkspace
 
     steps = [{"action": "goto", "url": "https://example.com"}]
     text = steps_to_gherkin(steps, scenario_name="demo")
 
-    window = MainWindow(AppController())
-    window.resize(1180, 760)
-    window.show()
-    window.workspace.open_untitled(initial_text=text)
+    controller = AppController()
+    workspace = EditorWorkspace(controller)
+    workspace.resize(1180, 760)
+    workspace.show()
+    workspace.open_untitled(initial_text=text)
     qapp.processEvents()
-    window.workspace.gherkin_panel.apply_to_model()
+    workspace.gherkin_panel.apply_to_model()
     qapp.processEvents()
-    compact_before = window.workspace.editor_action_bar.toolbar.is_auto_compact()
+    compact_before = workspace.editor_action_bar.toolbar.is_auto_compact()
 
-    window.workspace.ensure_welcome_tab(activate=True)
+    workspace.ensure_welcome_tab(activate=True)
     qapp.processEvents()
-    window._sync_menu_states()
+    workspace.quick_toolbar.sync_states(
+        pending=False,
+        browser_open=False,
+        recording=False,
+        playing=False,
+        has_steps=False,
+        editor_active=False,
+    )
+    workspace.sync_chrome(
+        pending=False,
+        browser_open=False,
+        recording=False,
+        playing=False,
+        has_steps=False,
+    )
 
-    assert window.workspace.editor_action_bar.toolbar.is_auto_compact() == compact_before
+    assert workspace.editor_action_bar.toolbar.is_auto_compact() == compact_before
