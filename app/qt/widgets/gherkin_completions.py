@@ -4,11 +4,77 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
-from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QCompleter, QPlainTextEdit
+from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt, QSize
+from PySide6.QtGui import QColor, QFont, QKeyEvent, QPainter
+from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QStyledItemDelegate, QStyleOptionViewItem
 
 from app.gherkin_snippets import GherkinSnippet, KEYWORDS, completions_for_line
+from app.step_catalog import entry_for_action
+
+
+class _CompletionDelegate(QStyledItemDelegate):
+    """Rich completion row: label, description, example (F1-2)."""
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
+        return QSize(option.rect.width(), 58)
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:  # noqa: N802
+        snippet: GherkinSnippet | None = index.data(Qt.ItemDataRole.UserRole)
+        if snippet is None:
+            super().paint(painter, option, index)
+            return
+        entry = entry_for_action(
+            _action_from_snippet(snippet),
+            line_body=snippet.insert,
+        )
+        description = entry.description if entry else snippet.description
+        example = entry.example if entry else snippet.insert
+
+        painter.save()
+        if option.state & option.StateFlag.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+            text_color = option.palette.highlightedText().color()
+        else:
+            text_color = option.palette.text().color()
+        muted = QColor(text_color)
+        muted.setAlpha(180)
+
+        x = option.rect.x() + 8
+        y = option.rect.y() + 6
+        label_font = QFont(option.font)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        painter.setPen(text_color)
+        painter.drawText(x, y + painter.fontMetrics().ascent(), snippet.label)
+
+        body_font = QFont(option.font)
+        body_font.setPointSize(max(8, body_font.pointSize() - 1))
+        painter.setFont(body_font)
+        painter.setPen(muted)
+        painter.drawText(
+            x,
+            y + painter.fontMetrics().height() + 6,
+            painter.fontMetrics().elidedText(description, Qt.TextElideMode.ElideRight, option.rect.width() - 16),
+        )
+        mono = QFont(option.font)
+        mono.setFamily("Consolas")
+        mono.setPointSize(max(8, mono.pointSize() - 1))
+        painter.setFont(mono)
+        painter.setPen(text_color)
+        painter.drawText(
+            x,
+            y + painter.fontMetrics().height() * 2 + 4,
+            painter.fontMetrics().elidedText(example, Qt.TextElideMode.ElideRight, option.rect.width() - 16),
+        )
+        painter.restore()
+
+
+_ACTION_RE = re.compile(r"\(action:\s*(\w+)\)", re.IGNORECASE)
+
+
+def _action_from_snippet(snippet: GherkinSnippet) -> str:
+    match = _ACTION_RE.search(snippet.description)
+    return match.group(1) if match else ""
 
 
 class _SnippetListModel(QAbstractListModel):
@@ -34,9 +100,17 @@ class _SnippetListModel(QAbstractListModel):
             return None
         snippet = self._snippets[index.row()]
         if role == Qt.ItemDataRole.DisplayRole:
+            entry = entry_for_action(_action_from_snippet(snippet), line_body=snippet.insert)
+            if entry:
+                return f"{snippet.label} — {entry.description}"
             return f"{snippet.label} — {snippet.description}"
         if role == Qt.ItemDataRole.ToolTipRole:
-            return f"{snippet.description}\n{snippet.insert}"
+            entry = entry_for_action(_action_from_snippet(snippet), line_body=snippet.insert)
+            example = entry.example if entry else snippet.insert
+            description = entry.description if entry else snippet.description
+            return f"{description}\nПример: {example}"
+        if role == Qt.ItemDataRole.UserRole:
+            return snippet
         return None
 
 
@@ -53,6 +127,9 @@ class GherkinCompleter:
         self._completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
         self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._completer.setWrapAround(False)
+        popup = self._completer.popup()
+        popup.setItemDelegate(_CompletionDelegate(popup))
+        popup.setMinimumWidth(420)
         self._completer.activated.connect(self._on_activated)
 
     def popup_visible(self) -> bool:
@@ -86,7 +163,7 @@ class GherkinCompleter:
         prefix = line[start:end]
         self._completer.setCompletionPrefix(prefix)
         rect = self._editor.cursorRect(cursor)
-        rect.setWidth(max(360, self._completer.popup().sizeHintForColumn(0) + 48))
+        rect.setWidth(max(420, self._completer.popup().sizeHintForColumn(0) + 48))
         self._completer.complete(rect)
         return True
 

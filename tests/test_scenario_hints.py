@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from app.scenario_hints import (
+    apply_duplicate_goto_fix_at_index,
     apply_menu_hover_fix_at_index,
+    collect_all_hints,
     find_suspicious_menu_clicks,
     gherkin_template_text,
     propose_menu_hover_fix,
@@ -68,3 +70,27 @@ def test_gherkin_template_contains_url() -> None:
     text = gherkin_template_text(url="https://store.test", scenario_name="Smoke")
     assert "https://store.test" in text
     assert "Сценарий: Smoke" in text
+
+
+def test_collect_all_hints_detects_issues() -> None:
+    steps = [
+        {"action": "goto", "url": "https://a.com"},
+        {"action": "goto", "url": "https://b.com"},
+        {"action": "click", "selector": 'div:has-text("Menu") >> a.item >> button.ok'},
+        {"action": "fill", "value": "x", "selector": "#email"},
+    ]
+    hints = collect_all_hints(steps)
+    ids = {hint.id for hint in hints}
+    assert "duplicate_goto" in ids
+    assert "goto_no_wait" in ids
+    assert "long_chain" in ids
+    assert "fill_no_assert" in ids
+
+
+def test_apply_duplicate_goto_fix() -> None:
+    steps = [
+        {"action": "goto", "url": "https://a.com"},
+        {"action": "goto", "url": "https://b.com"},
+    ]
+    updated = apply_duplicate_goto_fix_at_index(steps, 1)
+    assert updated == [{"action": "goto", "url": "https://a.com"}]

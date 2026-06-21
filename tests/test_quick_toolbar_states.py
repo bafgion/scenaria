@@ -97,6 +97,38 @@ def test_toolbar_unlocks_during_picking(qapp) -> None:
     assert toolbar._buttons["stop"].isEnabled()
 
 
+def test_toolbar_enables_continue_record_with_steps_and_browser(qapp) -> None:
+    from app.qt.widgets.quick_toolbar import QuickToolBar
+
+    toolbar = QuickToolBar()
+    toolbar.sync_states(
+        pending=False,
+        browser_open=True,
+        recorder_browser_open=True,
+        recording=False,
+        playing=False,
+        has_steps=True,
+    )
+
+    assert toolbar._buttons["continue_record"].isEnabled()
+
+
+def test_toolbar_disables_continue_record_without_steps(qapp) -> None:
+    from app.qt.widgets.quick_toolbar import QuickToolBar
+
+    toolbar = QuickToolBar()
+    toolbar.sync_states(
+        pending=False,
+        browser_open=True,
+        recorder_browser_open=True,
+        recording=False,
+        playing=False,
+        has_steps=False,
+    )
+
+    assert not toolbar._buttons["continue_record"].isEnabled()
+
+
 def test_toolbar_disables_picker_without_browser(qapp) -> None:
     from app.qt.widgets.quick_toolbar import QuickToolBar
 

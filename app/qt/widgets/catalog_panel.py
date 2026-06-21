@@ -9,6 +9,7 @@ from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedWidget, QTreeView, QVBoxLayout, QWidget
 
 from app.mvc.models.catalog_model import CatalogNode, CatalogViewState
+from app.run_display import format_last_run_summary
 from app.qt.theme import COLOR_ERROR, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING
 from app.qt.widgets.catalog_empty_state import CatalogEmptyState
 
@@ -16,6 +17,7 @@ from app.qt.widgets.catalog_empty_state import CatalogEmptyState
 class CatalogTreeView(QTreeView):
     run_folder_requested = Signal(object)  # Path
     add_folder_to_selection_requested = Signal(object)  # Path
+    run_history_requested = Signal(object)  # Path
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -144,6 +146,10 @@ class CatalogTreeView(QTreeView):
             toggle.triggered.connect(
                 lambda: self._on_toggle_run_selection(path) if self._on_toggle_run_selection else None
             )
+            menu.addAction(
+                "История прогонов",
+                lambda: self.run_history_requested.emit(path),
+            )
         elif kind in {"root", "dir"}:
             menu.addAction("Запустить сценарии в папке", lambda: self.run_folder_requested.emit(path))
             menu.addAction(
@@ -229,8 +235,16 @@ class CatalogTreeView(QTreeView):
             parts.append("ошибка")
         elif node.step_count:
             parts.append(f"{node.step_count} ш.")
+        if node.example_count:
+            parts.append(f"{node.example_count} прим.")
+        if node.params_count:
+            parts.append(f"{node.params_count} пар.")
         if node.domain:
             parts.append(node.domain)
+        if node.tags:
+            parts.append(" ".join(f"@{tag}" for tag in node.tags[:2]))
+        if node.run_runner and node.run_runner != "playwright":
+            parts.append(f"[{node.run_runner}]")
         return f"{mark}{badge} {' · '.join(parts)}"
 
     def _make_item(self, node: CatalogNode) -> QStandardItem:
@@ -241,16 +255,24 @@ class CatalogTreeView(QTreeView):
                 tooltip_parts.append(f"Ошибка разбора: {node.parse_error}")
             elif node.step_count:
                 tooltip_parts.append(f"Шагов: {node.step_count}")
+            if node.example_count:
+                tooltip_parts.append(f"Примеров: {node.example_count}")
+            if node.params_count:
+                tooltip_parts.append(f"Наборов параметров: {node.params_count}")
             if node.domain:
                 tooltip_parts.append(f"Домен: {node.domain}")
-            if node.run_success is True:
-                tooltip_parts.append("Последний прогон: успех")
-            elif node.run_success is False:
-                tooltip_parts.append("Последний прогон: ошибка")
-            else:
-                tooltip_parts.append("Прогон не выполнялся")
-            if node.run_at:
-                tooltip_parts.append(f"Когда: {node.run_at}")
+            if node.tags:
+                tooltip_parts.append("Теги: " + " ".join(f"@{tag}" for tag in node.tags))
+            tooltip_parts.append(
+                format_last_run_summary(
+                    success=node.run_success,
+                    at=node.run_at,
+                    duration_ms=node.run_duration_ms,
+                    failed_step=node.run_failed_step,
+                    message=node.run_message,
+                    runner=node.run_runner,
+                )
+            )
             tooltip = "\n".join(tooltip_parts)
         else:
             text = f"📁 {node.name}"

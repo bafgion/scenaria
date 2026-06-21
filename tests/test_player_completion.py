@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,18 @@ from app.player import ScenarioPlayer
 from app.run_suite import run_feature_file
 
 pytestmark = pytest.mark.integration
+
+
+def _wait_player_stopped(player: ScenarioPlayer, *, timeout: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout
+    while player.worker_alive and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if player.worker_alive:
+        player.stop()
+        deadline = time.monotonic() + timeout
+        while player.worker_alive and time.monotonic() < deadline:
+            time.sleep(0.05)
+    assert not player.worker_alive, "player worker did not stop"
 
 
 def test_headless_run_feature_file_completes_without_close_browser(tmp_path: Path) -> None:
@@ -106,7 +119,7 @@ def test_player_can_restart_after_failure() -> None:
     assert outcomes[-1] is False
     assert player.worker_alive
     player.stop()
-    assert not player.worker_alive
+    _wait_player_stopped(player)
 
     player.play(
         ok_scenario,
@@ -118,3 +131,4 @@ def test_player_can_restart_after_failure() -> None:
     assert ok_done.wait(timeout=60)
     assert outcomes[-1] is True
     player.stop()
+    _wait_player_stopped(player)

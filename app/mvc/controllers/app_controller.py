@@ -36,6 +36,7 @@ class AppController:
         self.session.filter_recording = bool(settings.get("filter_recording"))
         self.session.nav_only_recording = bool(settings.get("nav_only_recording"))
         self.session.headless = bool(settings.get("headless"))
+        self.session.hover_recording = bool(settings.get("hover_record_enabled"))
 
     def attach_catalog_ui(self, controller: CatalogController) -> None:
         self.catalog_controller = controller

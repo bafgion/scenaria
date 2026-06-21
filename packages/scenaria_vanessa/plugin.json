@@ -1,0 +1,7 @@
+{
+  "id": "vanessa",
+  "name": "Vanessa Automation",
+  "version": "0.1.0",
+  "min_scenaria": "0.6.0",
+  "entry": "scenaria_vanessa.plugin:VanessaPlugin"
+}

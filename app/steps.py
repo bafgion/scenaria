@@ -61,6 +61,14 @@ def apply_coalesced_step(steps: list[dict], step: dict) -> tuple[list[dict], dic
         upgraded = _upgrade_fill_selector(step)
         return steps[:-1] + [upgraded], upgraded
 
+    if (
+        action == "press"
+        and last.get("action") == "fill"
+        and last.get("selector") == step.get("selector")
+        and str(step.get("key", "")).lower() == "tab"
+    ):
+        return steps, None
+
     if action == "fill" and step.get("inputType") == "checkbox":
         checked = str(step.get("value", "")).lower() in {"on", "true", "1", "yes"}
         return apply_coalesced_step(

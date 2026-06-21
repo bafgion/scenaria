@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 from app.qt.widgets.error_panel import ErrorPanel
 from app.qt.widgets.log_panel import LogPanel
 from app.qt.widgets.results_panel import ResultsPanel
+from app.qt.widgets.validate_results_panel import ValidateResultsPanel
 
 
 class BottomPanel(QWidget):
@@ -25,9 +26,11 @@ class BottomPanel(QWidget):
         self.tabs.tabBar().setDrawBase(False)
         self.log_panel = LogPanel(self.tabs)
         self.results_panel = ResultsPanel(self.tabs)
+        self.validate_panel = ValidateResultsPanel(self.tabs)
         self.error_panel = ErrorPanel(self.tabs)
         self.tabs.addTab(self.log_panel, "Журнал")
         self.tabs.addTab(self.results_panel, "Результаты")
+        self.tabs.addTab(self.validate_panel, "Проверка")
         self.tabs.addTab(self.error_panel, "Ошибка")
         layout.addWidget(self.tabs)
 
@@ -35,6 +38,7 @@ class BottomPanel(QWidget):
         mapping = {
             "log": self.log_panel,
             "results": self.results_panel,
+            "validate": self.validate_panel,
             "error": self.error_panel,
         }
         widget = mapping.get(key)

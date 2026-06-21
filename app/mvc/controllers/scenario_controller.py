@@ -17,7 +17,7 @@ from app.feature_store import (
     save_feature,
     save_feature_text,
 )
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps, steps_to_gherkin
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text, steps_to_gherkin
 from app.mvc.models.catalog_model import CatalogModel
 from app.mvc.models.scenario_model import ScenarioModel
 from app.qt.dialogs import alert, confirm, prompt_text
@@ -40,7 +40,7 @@ from app.scenario_io import (
 )
 from app.settings import load_settings
 from app.steps import normalize_steps
-from app.scenario_hints import apply_menu_hover_fix_at_index
+from app.scenario_hints import ScenarioHint, apply_hint_fix, apply_menu_hover_fix_at_index
 from app.scenario_utils import ScenarioNotFoundError, suggest_scenario_name
 from app.brand import BRAND_NAME
 
@@ -75,6 +75,9 @@ class ScenarioController:
     def set_steps(self, steps: list[dict[str, Any]]) -> None:
         self._model.set_steps(steps)
 
+    def apply_parsed_editor(self, steps: list[dict[str, Any]], source_text: str) -> None:
+        self._model.apply_parsed_editor(steps, source_text)
+
     def save_to_path(self, target: Path) -> Path:
         saved = save_feature(target, self._model.steps, scenario_name=self._model.name or target.stem)
         self._model.mark_saved(saved)
@@ -85,9 +88,18 @@ class ScenarioController:
         scenario_name = self._model.name.strip() or "Сценарий"
         if self._model.feature_path is not None:
             scenario_name = self._model.feature_path.stem
-        text = steps_to_gherkin(self._model.steps, scenario_name=scenario_name)
+        text = merge_steps_into_feature_text(
+            self._model.source_text,
+            self._model.steps,
+            tags=self._model.tags,
+            scenario_name=scenario_name,
+        )
         self._model.set_source_text(text)
         return text
+
+    def set_tags(self, tags: list[str]) -> None:
+        self._model.set_tags(tags)
+        self.commit_steps_to_gherkin()
 
     def collapse_duplicate_gotos(self) -> int:
         before = len(self._model.steps)
@@ -171,6 +183,15 @@ class ScenarioController:
         """Split a menu click into hover + click when selectors are known."""
         steps = list(self._model.steps)
         updated = apply_menu_hover_fix_at_index(steps, index)
+        if updated is None:
+            return False
+        self._model.set_steps(updated)
+        self.commit_steps_to_gherkin()
+        return True
+
+    def apply_scenario_hint(self, hint: ScenarioHint) -> bool:
+        steps = list(self._model.steps)
+        updated = apply_hint_fix(steps, hint)
         if updated is None:
             return False
         self._model.set_steps(updated)
@@ -266,6 +287,7 @@ class ScenarioController:
 
         save_feature_text(target, raw)
         self._model.set_steps(steps)
+        self._model.sync_tags_from_text(raw)
         self._model.set_source_text(raw)
         self._model.set_name(target.stem)
         self._model.mark_saved(target)
@@ -582,8 +604,7 @@ class ScenarioController:
             return False
         save_feature_text(target, editor_text)
         if self._model.feature_path is not None and self._model.feature_path.resolve() == target.resolve():
-            self._model.set_steps(steps)
-            self._model.set_source_text(editor_text)
+            self._model.apply_parsed_editor(steps, editor_text)
             self._model.set_name(target.stem)
             self._model.mark_saved(target)
         return True

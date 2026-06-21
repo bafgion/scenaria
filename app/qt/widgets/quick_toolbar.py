@@ -14,6 +14,7 @@ class QuickToolBar(QWidget):
     browser_clicked = Signal()
     focus_browser_clicked = Signal()
     record_clicked = Signal()
+    continue_record_clicked = Signal()
     stop_clicked = Signal()
     pause_clicked = Signal()
     play_clicked = Signal()
@@ -69,6 +70,15 @@ class QuickToolBar(QWidget):
             "Начать запись действий на сайте (Ctrl+R)",
             self.record_clicked,
             primary=True,
+        )
+        self._add_btn(
+            secondary_row,
+            "continue_record",
+            icons.record_icon(),
+            "Дозапись",
+            "Продолжить запись в конец сценария",
+            self.continue_record_clicked,
+            primary=False,
         )
         self._add_btn(
             primary_row,
@@ -295,6 +305,14 @@ class QuickToolBar(QWidget):
         self._buttons["focus_browser"].setEnabled(browser_open or playing)
         self._buttons["record"].setEnabled(
             editor_active and recorder_browser_open and not recording and not playing and not batch_running
+        )
+        self._buttons["continue_record"].setEnabled(
+            editor_active
+            and recorder_browser_open
+            and has_steps
+            and not recording
+            and not playing
+            and not batch_running
         )
         self._buttons["quick_record"].setEnabled(
             editor_active and not recording and not playing and not batch_running

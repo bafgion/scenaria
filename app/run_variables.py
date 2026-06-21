@@ -1,13 +1,16 @@
-"""Per-run generated values for scenario playback."""
+"""Per-run generated values and scenario variables for playback."""
 
 from __future__ import annotations
 
+import os
 import random
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
-_PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_:]+)\s*\}\}")
 
 GENERATOR_ALIASES: dict[str, str] = {
     "phone": "phone",
@@ -161,15 +164,64 @@ _GENERATORS: dict[str, Callable[[random.Random], str]] = {
 
 @dataclass
 class RunContext:
-    """Stores generated values for one scenario run."""
+    """Stores generators, user variables, and download state for one scenario run."""
 
     seed: int | None = None
+    project_root: Path | None = None
     _values: dict[str, str] = field(default_factory=dict)
+    _variables: dict[str, str] = field(default_factory=dict)
+    _download_dir: Path | None = field(default=None, repr=False)
+    _last_download: Path | None = field(default=None, repr=False)
     _rng: random.Random = field(init=False)
     _person: tuple[str, str, str] | None = field(default=None, repr=False)
+    _page: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
+
+    def bind_page(self, page: Any) -> None:
+        self._page = page
+
+    def current_page(self, fallback: Any) -> Any:
+        return self._page or fallback
+
+    def set_current_page(self, page: Any) -> None:
+        self._page = page
+
+    def set_initial_variables(self, values: dict[str, str] | None) -> None:
+        if not values:
+            return
+        for key, value in values.items():
+            name = str(key).strip()
+            if name:
+                self._variables[name] = str(value)
+
+    def remember(self, name: str, value: str) -> None:
+        key = str(name).strip()
+        if not key:
+            raise ValueError("Имя переменной не может быть пустым")
+        self._variables[key] = str(value)
+
+    def get_variable(self, name: str) -> str | None:
+        return self._variables.get(str(name).strip())
+
+    def set_download_dir(self, directory: Path) -> None:
+        self._download_dir = directory
+
+    def download_dir(self) -> Path:
+        if self._download_dir is None:
+            from app.download_helpers import new_download_run_dir
+
+            _, directory = new_download_run_dir()
+            self._download_dir = directory
+        return self._download_dir
+
+    def set_last_download(self, path: Path) -> None:
+        self._last_download = path
+
+    @property
+    def last_download(self) -> Path | None:
+        return self._last_download
 
     def _person_parts(self) -> tuple[str, str, str]:
         if self._person is None:
@@ -213,8 +265,20 @@ class RunContext:
             return text
 
         def replace(match: re.Match[str]) -> str:
-            key = match.group(1)
-            return self.generate(key)
+            key = match.group(1).strip()
+            lower = key.lower()
+            if lower.startswith("env:"):
+                env_name = key[4:].strip()
+                value = os.environ.get(env_name, "")
+                if not value:
+                    raise ValueError(f"Переменная окружения не задана: {env_name}")
+                return value
+            if key in self._variables:
+                return self._variables[key]
+            canonical = normalize_generator_name(key)
+            if canonical is not None:
+                return self.generate(key)
+            raise ValueError(f"Неизвестная переменная: {key}")
 
         return _PLACEHOLDER_RE.sub(replace, text)
 

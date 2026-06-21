@@ -10,15 +10,16 @@ from typing import Callable
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
-from app.browser_config import browser_context_options, BROWSER_LAUNCH_ARGS
+from app.browser_config import browser_context_options, launch_browser, load_browser_engine
 from app.browser_focus import focus_browser_context_with_title
 from app.http_auth import auth_key, resolve_http_credentials
 from app.paths import configure_playwright_browsers
 from app.settings import load_settings
 from app.playwright_lifecycle import release_playwright_session
 from app.picker_script import PICKER_INSTALL_SCRIPT, PICKER_UNINSTALL_SCRIPT
-from app.player import PlayResult, highlight_selector, remove_highlight, reset_highlight_cleanup_state, run_scenario_on_page, setup_highlight_cleanup, validate_scenario_on_page
+from app.player import PlayResult, highlight_selector, remove_highlight, reset_highlight_cleanup_state, run_scenario_on_page, setup_highlight_cleanup
 from app.recorder_script import RECORDER_INIT_SCRIPT, RECORDER_INSTALLED_CHECK
+from app.selector_build import apply_smart_selector_to_step
 from app.steps import NAV_TIMEOUT_MS, NAV_WAIT_UNTIL, apply_coalesced_step, normalize_steps
 
 BrowserCallback = Callable[[], None]
@@ -47,10 +48,12 @@ class _Command(Enum):
     CLEAR_HIGHLIGHT = auto()
     SET_FILTER = auto()
     SET_NAV_ONLY = auto()
+    SET_HOVER_RECORD = auto()
     CLOSE = auto()
     BROWSER_SCRIPT = auto()
     PICK_SELECTOR = auto()
     PICK_SELECTOR_CANCEL = auto()
+    SAVE_BROWSER_SESSION = auto()
     SHUTDOWN = auto()
 
 
@@ -70,6 +73,8 @@ class ScenarioRecorder:
         self._paused = False
         self._filter_mode = False
         self._nav_only_mode = False
+        self._hover_record_mode = False
+        self._append_mode = False
         self._busy = False
         self._steps: list[dict] = []
         self._on_step: Callable[[dict], None] | None = None
@@ -89,6 +94,7 @@ class ScenarioRecorder:
         self._shutdown_requested = False
         self._session_releasing = False
         self._context_auth_key: tuple[str, str] | None = None
+        self._browser_engine: str | None = None
 
         self._enqueue(_Command.PREWARM, {})
 
@@ -151,12 +157,20 @@ class ScenarioRecorder:
         on_status: Callable[[str], None],
         on_complete: BrowserCallback | None = None,
         on_error: ErrorCallback | None = None,
+        *,
+        append: bool = False,
     ) -> None:
+        self._append_mode = append
         self._steps = []
         self._on_step = on_step
         self._on_status = on_status
         self._last_goto = ""
-        self._enqueue(_Command.START_RECORDING, {"start_url": start_url}, on_complete, on_error)
+        self._enqueue(
+            _Command.START_RECORDING,
+            {"start_url": start_url, "append": append},
+            on_complete,
+            on_error,
+        )
 
     def stop_recording(
         self,
@@ -214,6 +228,10 @@ class ScenarioRecorder:
         self._nav_only_mode = enabled
         self._enqueue(_Command.SET_NAV_ONLY, {"enabled": enabled}, None, None)
 
+    def set_hover_record_mode(self, enabled: bool) -> None:
+        self._hover_record_mode = enabled
+        self._enqueue(_Command.SET_HOVER_RECORD, {"enabled": enabled}, None, None)
+
     def validate_scenario(
         self,
         scenario: dict,
@@ -249,12 +267,21 @@ class ScenarioRecorder:
         on_error: ErrorCallback | None = None,
         on_status: Callable[[str], None] | None = None,
         on_step: Callable[[int, dict], None] | None = None,
+        *,
+        start_step: int = 0,
+        end_step: int | None = None,
     ) -> None:
         if on_status:
             self._on_status = on_status
         self._enqueue(
             _Command.PLAY,
-            {"scenario": scenario, "on_log": on_log, "on_step": on_step},
+            {
+                "scenario": scenario,
+                "on_log": on_log,
+                "on_step": on_step,
+                "start_step": start_step,
+                "end_step": end_step,
+            },
             on_complete,
             on_error,
         )
@@ -274,6 +301,15 @@ class ScenarioRecorder:
 
     def cancel_pick_selector(self) -> None:
         self._enqueue(_Command.PICK_SELECTOR_CANCEL, {}, None, None)
+
+    def save_browser_session(
+        self,
+        *,
+        label: str = "",
+        on_complete: Callable[[str], None] | None = None,
+        on_error: ErrorCallback | None = None,
+    ) -> None:
+        self._enqueue(_Command.SAVE_BROWSER_SESSION, {"label": label}, on_complete, on_error)
 
     def shutdown(self) -> None:
         if self._shutdown_requested:
@@ -305,6 +341,13 @@ class ScenarioRecorder:
             self._last_goto = url
 
         incoming = dict(step)
+        incoming = apply_smart_selector_to_step(
+            incoming,
+            load_settings().get("selector_priority"),
+        )
+        strategy = incoming.get("selectorStrategy")
+        if strategy and incoming.get("selector"):
+            self._emit_status(f"Селектор ({strategy}): {incoming['selector'][:100]}")
         if incoming.get("action") == "click" and incoming.get("hoverSelector"):
             hover_step = {
                 "action": "hover",
@@ -435,6 +478,7 @@ class ScenarioRecorder:
                 _Command.SET_NAV_ONLY,
                 _Command.PICK_SELECTOR_CANCEL,
                 _Command.CLOSE,
+                _Command.SAVE_BROWSER_SESSION,
             }
             if command != _Command.PREWARM and self._busy and command not in light_commands:
                 self._notify_error(on_error, RuntimeError("Подождите завершения предыдущей операции"))
@@ -465,7 +509,10 @@ class ScenarioRecorder:
         if command == _Command.START_RECORDING:
             if self._recording:
                 raise RuntimeError("Запись уже идёт")
-            return self._handle_start_recording(payload["start_url"])
+            return self._handle_start_recording(
+                payload["start_url"],
+                append=bool(payload.get("append")),
+            )
         if command == _Command.STOP_RECORDING:
             return self._handle_stop_recording()
         if command == _Command.PAUSE_TOGGLE:
@@ -488,13 +535,24 @@ class ScenarioRecorder:
         if command == _Command.SET_NAV_ONLY:
             self._handle_set_nav_only(payload["enabled"])
             return None
+        if command == _Command.SET_HOVER_RECORD:
+            self._handle_set_hover_record(payload["enabled"])
+            return None
         if command == _Command.VALIDATE:
             return self._handle_validate(payload["scenario"], payload["on_log"])
         if command == _Command.PLAY:
-            return self._handle_play(payload["scenario"], payload["on_log"], payload.get("on_step"))
+            return self._handle_play(
+                payload["scenario"],
+                payload["on_log"],
+                payload.get("on_step"),
+                start_step=int(payload.get("start_step", 0)),
+                end_step=payload.get("end_step"),
+            )
         if command == _Command.CLOSE:
             self._handle_close()
             return None
+        if command == _Command.SAVE_BROWSER_SESSION:
+            return self._handle_save_browser_session(payload.get("label", ""))
         if command == _Command.BROWSER_SCRIPT and self._page:
             self._page.evaluate(payload["script"])
             return None
@@ -538,13 +596,24 @@ class ScenarioRecorder:
         ):
             self._close_session(keep_playwright=True)
 
+        wanted_engine = load_browser_engine()
+        if (
+            self._browser is not None
+            and self._browser.is_connected()
+            and self._browser_engine is not None
+            and self._browser_engine != wanted_engine
+        ):
+            self._close_session(keep_playwright=True)
+
         if self._playwright is None:
             self._emit_status("Инициализация Playwright...")
             self._playwright = sync_playwright().start()
 
         if self._browser is None or not self._browser.is_connected():
-            self._emit_status("Запуск Chromium...")
-            self._browser = self._playwright.chromium.launch(headless=False, args=BROWSER_LAUNCH_ARGS)
+            label = wanted_engine.capitalize()
+            self._emit_status(f"Запуск {label}...")
+            self._browser = launch_browser(self._playwright, engine=wanted_engine, headless=False)
+            self._browser_engine = wanted_engine
             context_options = browser_context_options(start_url)
             self._context = self._browser.new_context(**context_options)
             self._context_auth_key = wanted_key
@@ -558,13 +627,22 @@ class ScenarioRecorder:
             self._watchers_attached = False
             self._attach_session_watchers()
 
+    def _recorder_flags_script(self) -> str:
+        settings = load_settings()
+        min_ms = int(settings.get("hover_record_min_ms", 300))
+        scroll_before = bool(settings.get("scroll_before_click"))
+        return (
+            f"window.__shopRecorderFilterMode = {'true' if self._filter_mode else 'false'};"
+            f"window.__shopRecorderNavOnlyMode = {'true' if self._nav_only_mode else 'false'};"
+            f"window.__shopRecorderHoverMode = {'true' if self._hover_record_mode else 'false'};"
+            f"window.__shopRecorderHoverMinMs = {min_ms};"
+            f"window.__shopRecorderScrollBeforeClick = {'true' if scroll_before else 'false'};"
+        )
+
     def _sync_recorder_flags(self) -> None:
         if self._context is None:
             return
-        script = (
-            f"window.__shopRecorderFilterMode = {'true' if self._filter_mode else 'false'};"
-            f"window.__shopRecorderNavOnlyMode = {'true' if self._nav_only_mode else 'false'};"
-        )
+        script = self._recorder_flags_script()
         try:
             for page in self._context.pages:
                 if not page.is_closed():
@@ -578,15 +656,9 @@ class ScenarioRecorder:
     def _inject_recorder_into_frame(self, frame) -> None:
         try:
             if frame.evaluate(RECORDER_INSTALLED_CHECK):
-                frame.evaluate(
-                    f"window.__shopRecorderFilterMode = {'true' if self._filter_mode else 'false'};"
-                    f"window.__shopRecorderNavOnlyMode = {'true' if self._nav_only_mode else 'false'};"
-                )
+                frame.evaluate(self._recorder_flags_script())
                 return
-            frame.evaluate(
-                f"window.__shopRecorderFilterMode = {'true' if self._filter_mode else 'false'};"
-                f"window.__shopRecorderNavOnlyMode = {'true' if self._nav_only_mode else 'false'};"
-            )
+            frame.evaluate(self._recorder_flags_script())
             frame.evaluate(RECORDER_INIT_SCRIPT)
         except Exception:
             pass
@@ -630,8 +702,7 @@ class ScenarioRecorder:
         if not self._context_binding_attached:
             self._context.expose_function("recordStep", self._enqueue_browser_step)
             self._context.add_init_script(
-                f"window.__shopRecorderFilterMode = {'true' if self._filter_mode else 'false'};"
-                f"window.__shopRecorderNavOnlyMode = {'true' if self._nav_only_mode else 'false'};\n"
+                f"{self._recorder_flags_script()}\n"
                 f"{RECORDER_INIT_SCRIPT}"
             )
             self._context.on("page", self._prepare_page_for_recording)
@@ -659,8 +730,9 @@ class ScenarioRecorder:
         self._navigate_if_needed(start_url)
         self._emit_status("Браузер открыт. Перейдите на нужную страницу и нажмите «Начать запись».")
 
-    def _handle_start_recording(self, start_url: str) -> str:
-        self._emit_status("Подготовка записи...")
+    def _handle_start_recording(self, start_url: str, *, append: bool = False) -> str:
+        self._append_mode = append
+        self._emit_status("Подготовка дозаписи..." if append else "Подготовка записи...")
         self._ensure_playwright(start_url)
         from app.http_auth import strip_url_credentials
 
@@ -676,8 +748,9 @@ class ScenarioRecorder:
         self._recording = True
         self._paused = False
         self._attach_recording_hooks()
-        self._append_step({"action": "goto", "url": page.url})
-        status = "Запись идёт"
+        if not append:
+            self._append_step({"action": "goto", "url": page.url})
+        status = "Дозапись идёт" if append else "Запись идёт"
         if self._filter_mode:
             status += " (только важные действия)"
         if self._paused:
@@ -721,6 +794,24 @@ class ScenarioRecorder:
         page = self._get_active_page()
         return page.url
 
+    def _handle_save_browser_session(self, label: str) -> str:
+        from app.browser_session import save_session_from_context, session_origin
+        from app.feature_store import get_root
+
+        if self._context is None or not self._browser or not self._browser.is_connected():
+            raise RuntimeError("Браузер не открыт")
+        page = self._get_active_page()
+        origin = session_origin(page.url)
+        if not origin:
+            raise RuntimeError("Не удалось определить origin текущей вкладки")
+        path = save_session_from_context(
+            self._context,
+            origin,
+            label=label,
+            project_root=get_root(),
+        )
+        return str(path)
+
     def _handle_focus_browser(self) -> str:
         if self._context is None or not self._browser or not self._browser.is_connected():
             raise RuntimeError("Браузер не открыт")
@@ -748,17 +839,31 @@ class ScenarioRecorder:
         self._nav_only_mode = enabled
         self._sync_recorder_flags()
 
-    def _handle_validate(self, scenario: dict, on_log: Callable[[str], None]) -> list[str]:
+    def _handle_set_hover_record(self, enabled: bool) -> None:
+        self._hover_record_mode = enabled
+        self._sync_recorder_flags()
+
+    def _handle_validate(self, scenario: dict, on_log: Callable[[str], None]) -> dict[str, Any]:
         if not self._browser or not self._browser.is_connected():
             raise RuntimeError("Сначала откройте браузер")
         page = self._get_active_page()
         self._emit_status("Проверка сценария...")
-        issues = validate_scenario_on_page(page, scenario, on_log)
+        from app.selector_validate import (
+            validate_results_to_issues,
+            validate_results_to_payload,
+            validate_scenario_selectors,
+        )
+
+        results = validate_scenario_selectors(page, scenario, on_log=on_log)
+        issues = validate_results_to_issues(results)
         if issues:
             self._emit_status(f"Найдено проблем: {len(issues)}")
         else:
             self._emit_status("Сценарий прошёл проверку")
-        return issues
+        return {
+            "issues": issues,
+            "results": validate_results_to_payload(results),
+        }
 
     def _get_active_page(self) -> Page:
         if self._context is None:
@@ -884,6 +989,9 @@ class ScenarioRecorder:
         scenario: dict,
         on_log: Callable[[str], None],
         on_step: Callable[[int, dict], None] | None = None,
+        *,
+        start_step: int = 0,
+        end_step: int | None = None,
     ) -> PlayResult:
         if self._recording:
             raise RuntimeError("Остановите запись перед запуском теста")
@@ -913,6 +1021,8 @@ class ScenarioRecorder:
                 on_step=on_step,
                 trace_context=self._context,
                 on_close_browser=close_session,
+                start_step=start_step,
+                end_step=end_step,
             )
         finally:
             self._playing = False

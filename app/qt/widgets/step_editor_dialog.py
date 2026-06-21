@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFormLayout,
     QLabel,
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.qt.dialogs import BTN_OK, ok_cancel_button_box
+from app.selector_build import strategy_label
 
 from app.step_display import ACTION_ICONS
 
@@ -25,12 +28,32 @@ class StepEditorDialog(QDialog):
         self.setWindowTitle(f"Шаг {index + 1}")
         self._action = action
         self._fields: dict[str, QLineEdit] = {}
+        self._selector_combo: QComboBox | None = None
+        self._original_step = step
 
         layout = QFormLayout(self)
         layout.addRow(QLabel(f"{icon} {action}"))
 
         field_specs = _fields_for_action(action)
+        candidates = self._selector_candidates(step)
+        if candidates and any(key == "selector" for key, _ in field_specs):
+            self._selector_combo = QComboBox(self)
+            self._selector_combo.setEditable(True)
+            current = str(step.get("selector", "") or "")
+            for strategy, selector in candidates:
+                label = strategy_label(strategy)
+                self._selector_combo.addItem(f"{label}: {selector}", selector)
+            index_in_combo = self._selector_combo.findData(current)
+            if index_in_combo >= 0:
+                self._selector_combo.setCurrentIndex(index_in_combo)
+            else:
+                self._selector_combo.setEditText(current)
+            self._selector_combo.currentIndexChanged.connect(self._on_candidate_changed)
+            layout.addRow("Селектор", self._selector_combo)
+
         for key, label in field_specs:
+            if key == "selector" and self._selector_combo is not None:
+                continue
             edit = QLineEdit(str(step.get(key, "") or ""))
             if key == "selector":
                 edit.setPlaceholderText("Элемент на странице, например кнопка «Выбрать»")
@@ -48,10 +71,51 @@ class StepEditorDialog(QDialog):
             ok_btn.setEnabled(False)
         layout.addRow(buttons)
 
+    @staticmethod
+    def _selector_candidates(step: dict[str, Any]) -> list[tuple[str, str]]:
+        result: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        current = str(step.get("selector", "") or "").strip()
+        current_strategy = str(step.get("selectorStrategy", "") or "").strip()
+        if current:
+            result.append((current_strategy or "текущий", current))
+            seen.add(current)
+        raw_candidates = step.get("selectorCandidates")
+        if isinstance(raw_candidates, list):
+            for item in raw_candidates:
+                if not isinstance(item, dict):
+                    continue
+                selector = str(item.get("selector", "") or "").strip()
+                strategy = str(item.get("strategy", "") or "").strip() or "вариант"
+                if not selector or selector in seen:
+                    continue
+                result.append((strategy, selector))
+                seen.add(selector)
+        return result
+
+    def _on_candidate_changed(self, index: int) -> None:
+        if self._selector_combo is None or index < 0:
+            return
+        data = self._selector_combo.itemData(index)
+        if data:
+            self._selector_combo.setEditText(str(data))
+
     def edited_step(self, original: dict[str, Any]) -> dict[str, Any] | None:
         if self.result() != QDialog.DialogCode.Accepted:
             return None
         step = dict(original)
+        if self._selector_combo is not None:
+            value = self._selector_combo.currentText().strip()
+            if not value and self._action not in {"press"}:
+                return None
+            if value:
+                step["selector"] = value
+                for strategy, selector in self._selector_candidates(original):
+                    if selector == value and strategy not in {"", "текущий", "вариант"}:
+                        step["selectorStrategy"] = strategy
+                        break
+            else:
+                step.pop("selector", None)
         for key, edit in self._fields.items():
             value = edit.text().strip()
             if key in {"selector"} and not value and self._action not in {"press"}:

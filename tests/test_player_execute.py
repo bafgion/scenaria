@@ -271,3 +271,28 @@ def test_execute_fill_placeholder(page: MagicMock) -> None:
     )
     value = page.locator.return_value.first.fill.call_args.args[0]
     assert len(value) == 12 and value.isdigit()
+
+
+def test_prompt_email_code_uses_env_var_in_headless(page: MagicMock, monkeypatch) -> None:
+    monkeypatch.setenv("SCENARIA_EMAIL_CODE", "123456")
+    field = MagicMock()
+    field.first = field
+    field.count.return_value = 1
+
+    def locator_side_effect(selector: str) -> MagicMock:
+        if selector == "input#otp":
+            return field
+        return page.locator.return_value
+
+    page.locator.side_effect = locator_side_effect
+    logs: list[str] = []
+    execute_step(
+        page,
+        {"action": "prompt_email_code", "email": "qa@test.com", "selector": "input#otp"},
+        1,
+        logs.append,
+        highlight=False,
+        interactive=False,
+    )
+    assert any("SCENARIA_EMAIL_CODE" in line for line in logs)
+

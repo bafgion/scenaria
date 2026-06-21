@@ -134,7 +134,7 @@ def test_switch_tabs_preserves_unsaved_edits(qapp, tmp_path: Path) -> None:
     edited = workspace.gherkin_panel.get_text() + "\n\t# черновик"
     workspace.gherkin_panel.set_text(edited, clean=False)
     qapp.processEvents()
-    assert workspace.gherkin_panel.is_dirty
+    assert workspace.gherkin_panel.is_unapplied
 
     workspace.tab_bar.setCurrentIndex(0)
     qapp.processEvents()
@@ -144,8 +144,9 @@ def test_switch_tabs_preserves_unsaved_edits(qapp, tmp_path: Path) -> None:
     workspace.tab_bar.setCurrentIndex(1)
     qapp.processEvents()
     assert workspace.gherkin_panel.get_text() == edited
-    assert workspace.gherkin_panel.is_dirty
-    assert workspace._tabs[1].unapplied
+    assert not workspace.gherkin_panel.has_parse_error
+    assert workspace._tabs[1].unapplied is False
+    assert workspace._tabs[1].unsaved
 
 
 def test_open_third_file_while_tab_is_dirty(qapp, tmp_path: Path) -> None:

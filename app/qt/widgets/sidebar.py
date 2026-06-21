@@ -14,6 +14,7 @@ from app.qt.widgets.catalog_panel import CatalogPanel
 class Sidebar(QWidget):
     run_selected_requested = Signal()
     run_folder_requested = Signal(object)  # Path
+    run_history_requested = Signal(object)  # Path
 
     def __init__(
         self,
@@ -44,7 +45,7 @@ class Sidebar(QWidget):
         search_row = QHBoxLayout()
         search_row.setSpacing(4)
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Поиск по сценариям")
+        self.search_edit.setPlaceholderText("Поиск или @тег")
         self.search_edit.textChanged.connect(controller.set_filter)
         search_row.addWidget(self.search_edit, stretch=1)
         self.new_btn = QToolButton()
@@ -89,6 +90,7 @@ class Sidebar(QWidget):
         self.catalog_panel.bind_expansion(self._on_tree_expansion)
         self.catalog_panel.tree.set_toggle_run_selection_handler(controller.toggle_run_selection)
         self.catalog_panel.tree.run_folder_requested.connect(self.run_folder_requested.emit)
+        self.catalog_panel.tree.run_history_requested.connect(self.run_history_requested.emit)
         self.catalog_panel.tree.add_folder_to_selection_requested.connect(
             controller.add_folder_to_run_selection
         )

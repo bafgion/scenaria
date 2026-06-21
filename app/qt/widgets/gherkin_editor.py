@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QMenu, QPlainTextEdit, QTextEdit
 from app.qt.fonts import editor_font
 from app.qt.theme import COLOR_EDITOR
 from app.qt.widgets.gherkin_completions import GherkinCompleter
+from app.qt.widgets.gherkin_highlighter import GherkinHighlighter
 
 
 class GherkinEditor(QPlainTextEdit):
@@ -27,6 +28,7 @@ class GherkinEditor(QPlainTextEdit):
         super().__init__(parent)
         self._step_selections: list[QTextEdit.ExtraSelection] = []
         self._completer = GherkinCompleter(self)
+        self._highlighter = GherkinHighlighter(self.document())
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setProperty("role", "code-editor")
         font = editor_font()
@@ -35,6 +37,18 @@ class GherkinEditor(QPlainTextEdit):
         self.setStyleSheet(f"QPlainTextEdit {{ background: {COLOR_EDITOR}; }}")
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.key() == Qt.Key.Key_F1:
+            event.accept()
+            self._open_step_help_for_line()
+            return
+        if (
+            event.key() == Qt.Key.Key_Space
+            and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            and event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+        ):
+            event.accept()
+            self._open_snippet_palette()
+            return
         if event.key() == Qt.Key.Key_Space and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             event.accept()
             self._completer.trigger()
@@ -68,6 +82,9 @@ class GherkinEditor(QPlainTextEdit):
         copy.setShortcut("Ctrl+C")
         copy.triggered.connect(self.copy)
         copy.setEnabled(cursor.hasSelection())
+        if cursor.hasSelection() and not self.isReadOnly():
+            save_snippet = menu.addAction("Сохранить выделение как сниппет…")
+            save_snippet.triggered.connect(self._save_selection_as_snippet)
         paste = menu.addAction("Вставить")
         paste.setShortcut("Ctrl+V")
         paste.triggered.connect(self.paste)
@@ -92,11 +109,89 @@ class GherkinEditor(QPlainTextEdit):
         complete = menu.addAction("Автодополнение")
         complete.setShortcut("Ctrl+Space")
         complete.triggered.connect(self._completer.trigger)
+        from app.gherkin_quick_fixes import suggest_quick_fixes
+
+        fixes = suggest_quick_fixes(self.toPlainText(), cursor.blockNumber() + 1)
+        actionable = [item for item in fixes if item[0].label != "Открыть палитру шагов (Ctrl+Shift+Space)"]
+        if actionable:
+            menu.addSeparator()
+            fix_menu = menu.addMenu("Исправить")
+            for quick_fix, new_text in actionable:
+                action = fix_menu.addAction(quick_fix.label)
+                action.setToolTip(quick_fix.description)
+
+                def _apply_fix(_checked=False, payload=new_text) -> None:
+                    self.setPlainText(payload)
+
+                action.triggered.connect(_apply_fix)
+            palette_fix = next(
+                (item for item in fixes if item[0].label == "Открыть палитру шагов (Ctrl+Shift+Space)"),
+                None,
+            )
+            if palette_fix is not None:
+                unknown = fix_menu.addAction("Похожий шаг из палитры…")
+                unknown.triggered.connect(self._open_snippet_palette)
+        palette = menu.addAction("Палитра сниппетов…")
+        palette.setShortcut("Ctrl+Shift+Space")
+        palette.triggered.connect(self._open_snippet_palette)
+        step_help = menu.addAction("Справка по шагу…")
+        step_help.setShortcut("F1")
+        step_help.triggered.connect(self._open_step_help_for_line)
+        menu.addSeparator()
+        find_action = menu.addAction("Найти и заменить…")
+        find_action.setShortcut("Ctrl+H")
+        find_action.triggered.connect(self._open_find_replace)
         menu.addSeparator()
         select_all = menu.addAction("Выделить всё")
         select_all.setShortcut("Ctrl+A")
         select_all.triggered.connect(self.selectAll)
         menu.exec(event.globalPos())
+
+    def _open_find_replace(self) -> None:
+        from app.qt.widgets.find_replace_dialog import open_find_replace_dialog
+
+        window = self.window()
+        open_find_replace_dialog(window, self)
+
+    def _save_selection_as_snippet(self) -> None:
+        from app.qt.widgets.save_snippet_dialog import open_save_snippet_dialog
+
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            return
+        text = cursor.selectedText().replace("\u2029", "\n")
+        default_label = text.strip().splitlines()[0][:40] if text.strip() else "Сниппет"
+        open_save_snippet_dialog(self.window(), text=text, default_label=default_label)
+
+    def _open_step_help_for_line(self) -> None:
+        from app.step_catalog import resolve_step_entry
+        from app.qt.widgets.step_help_panel import open_step_help_panel
+
+        cursor = self.textCursor()
+        line_no = cursor.blockNumber() + 1
+        text = self.toPlainText()
+        entry = resolve_step_entry(text=text, line_no=line_no)
+        search = ""
+        if entry is None:
+            line = cursor.block().text().strip()
+            if line and not line.startswith("#"):
+                search = re.sub(
+                    r"^(?:Допустим|Когда|Тогда|И|Но)\s+",
+                    "",
+                    line,
+                    flags=re.IGNORECASE,
+                ).strip()
+        open_step_help_panel(
+            self.window(),
+            editor=self,
+            focus_entry=entry,
+            initial_search=search,
+        )
+
+    def _open_snippet_palette(self) -> None:
+        from app.qt.widgets.snippet_palette_dialog import open_snippet_palette
+
+        open_snippet_palette(self.window(), self)
 
     def _insert_snippet_at_cursor(self, snippet) -> None:
         cursor = self.textCursor()
@@ -119,6 +214,22 @@ class GherkinEditor(QPlainTextEdit):
             cursor.insertText(text)
         else:
             cursor.insertText(("\n" if column == len(line) else "") + text)
+        self.setTextCursor(cursor)
+
+    def insert_snippet_block(self, text: str) -> None:
+        """Insert a multi-line Gherkin block at the cursor."""
+        chunk = text.strip("\n")
+        if not chunk:
+            return
+        cursor = self.textCursor()
+        block = cursor.block()
+        line = block.text()
+        column = cursor.position() - block.position()
+        if column < len(line):
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+        elif line.strip():
+            cursor.insertText("\n")
+        cursor.insertText(chunk + "\n")
         self.setTextCursor(cursor)
 
     def suggested_step_keyword(self, cursor: QTextCursor | None = None) -> str:
@@ -175,6 +286,9 @@ class GherkinEditor(QPlainTextEdit):
         cursor.insertText(f'"{_quote(value)}"')
         self.setTextCursor(cursor)
 
+    def set_syntax_error_line(self, line_no: int | None) -> None:
+        self._highlighter.set_error_line(line_no)
+
     def replace_plain_text_preserve_caret(self, text: str) -> None:
         cursor = self.textCursor()
         position = cursor.position()
@@ -218,10 +332,7 @@ class GherkinEditor(QPlainTextEdit):
         position = cursor.position()
         anchor = cursor.anchor()
         had_selection = cursor.hasSelection()
-
-        temp = QTextCursor(self.document())
-        temp.select(QTextCursor.SelectionType.Document)
-        temp.setCharFormat(QTextCharFormat())
+        self._highlighter.rehighlight()
         self._restore_text_cursor(position, anchor, had_selection)
 
     def _restore_text_cursor(self, position: int, anchor: int, had_selection: bool) -> None:

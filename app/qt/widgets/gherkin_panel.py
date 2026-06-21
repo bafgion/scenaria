@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, is_gherkin_step_line, steps_to_gherkin
+from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, is_gherkin_step_line, parse_gherkin_steps, steps_to_gherkin
 from app.mvc.controllers.scenario_controller import ScenarioController
 from app.mvc.models.scenario_model import ScenarioModel
 from app.qt.dialogs import prompt_text
@@ -35,9 +36,11 @@ class GherkinPanel(QWidget):
         super().__init__(parent)
         self._model = model
         self._controller = controller
-        self._dirty = False
+        self._parse_error = False
+        self._unapplied = False
         self._block = False
         self._sync_from_model = True
+        self._last_seen_text = ""
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -64,8 +67,17 @@ class GherkinPanel(QWidget):
         self._model.changed.connect(self._on_model_changed)
 
     @property
+    def has_parse_error(self) -> bool:
+        return self._parse_error
+
+    @property
+    def is_unapplied(self) -> bool:
+        return self._unapplied
+
+    @property
     def is_dirty(self) -> bool:
-        return self._dirty
+        """True when editor text has a syntax error (blocks run/save)."""
+        return self._parse_error
 
     def set_sync_from_model(self, enabled: bool) -> None:
         self._sync_from_model = enabled
@@ -77,17 +89,23 @@ class GherkinPanel(QWidget):
         current = self.editor.toPlainText()
         if self._texts_equivalent(current, text):
             self.editor.clear_step_line_highlights()
-            self._set_dirty(not clean)
+            self._last_seen_text = current
+            self._set_editor_state(parse_error=False, unapplied=not clean)
+            if not clean:
+                self._auto_apply_timer.start()
             return
         self.editor.clear_char_formats()
         self.editor.clear_step_line_highlights()
         self._block = True
         self.editor.replace_plain_text_preserve_caret(text)
         self._block = False
-        self._set_dirty(not clean)
+        self._last_seen_text = self.editor.toPlainText()
+        self._set_editor_state(parse_error=False, unapplied=not clean)
+        if not clean:
+            self._auto_apply_timer.start()
 
     def mark_clean(self) -> None:
-        self._set_dirty(False)
+        self._set_editor_state(parse_error=False, unapplied=False)
 
     @staticmethod
     def _texts_equivalent(left: str, right: str) -> bool:
@@ -105,47 +123,103 @@ class GherkinPanel(QWidget):
     def _on_text_changed(self) -> None:
         if self._block:
             return
+        raw = self.editor.toPlainText()
+        if raw == self._last_seen_text:
+            return
+        self._last_seen_text = raw
+        source = self._model.source_text
+        if source is not None and self._texts_equivalent(raw, source):
+            if self._parse_error:
+                self.editor.clear_step_line_highlights()
+            self._set_editor_state(parse_error=False, unapplied=False)
+            self._auto_apply_timer.stop()
+            return
+        if self._parse_error:
+            self.editor.clear_step_line_highlights()
+        self._set_editor_state(parse_error=False, unapplied=True)
         self._auto_apply_timer.start()
+
+    def _parse_editor_text(self, raw: str) -> tuple[list[dict[str, Any]] | None, GherkinParseError | None, str]:
+        stripped = raw.strip()
+        if not stripped:
+            return [], None, raw
+        try:
+            steps, canonical = parse_gherkin_steps(raw)
+            return steps, None, canonical
+        except GherkinParseError as exc:
+            return None, exc, raw
+
+    def _sync_editor_text_if_needed(self, raw: str, canonical: str) -> str:
+        if self._texts_equivalent(raw, canonical):
+            return raw
+        self._block = True
+        self.editor.replace_plain_text_preserve_caret(canonical)
+        self._block = False
+        return canonical
+
+    def _report_parse_error(self, exc: GherkinParseError) -> None:
+        self._set_editor_state(parse_error=True, unapplied=True)
+        self._emit_status(str(exc), COLOR_ERROR)
+        line_no = max(1, int(exc.line_no))
+        self.editor.set_syntax_error_line(line_no)
+        self.editor.set_step_line_highlights([line_no], failed=True)
+
+    def _apply_parsed_steps(self, raw: str, steps: list[dict[str, Any]]) -> None:
+        self._block = True
+        try:
+            self._model.sync_tags_from_text(raw)
+            self._controller.apply_parsed_editor(steps, raw)
+        finally:
+            self._block = False
+        self._set_editor_state(parse_error=False, unapplied=False)
+        self.editor.set_syntax_error_line(None)
+        self.editor.clear_step_line_highlights()
+        self.applied.emit()
 
     def _auto_apply_if_valid(self) -> None:
         if self._block:
             return
         raw = self.editor.toPlainText()
-        stripped = raw.strip()
-        if not stripped:
-            if self._dirty or self._model.steps:
-                self._controller.set_steps([])
-                self._model.set_source_text(raw)
-                self._set_dirty(False)
-                self.applied.emit()
+        steps, error, canonical = self._parse_editor_text(raw)
+        if error is not None:
+            self._report_parse_error(error)
             return
-        try:
-            steps = gherkin_to_steps(raw)
-        except GherkinParseError:
-            self._set_dirty(True)
+        assert steps is not None
+        raw = self._sync_editor_text_if_needed(raw, canonical)
+        if not raw.strip():
+            if self._parse_error or self._unapplied or self._model.steps:
+                self._apply_parsed_steps(raw, steps)
             return
         source = self._model.source_text
         if (
-            not self._dirty
+            not self._parse_error
+            and not self._unapplied
             and source is not None
             and self._texts_equivalent(raw, source)
             and len(steps) == len(self._model.steps)
         ):
             return
-        self._controller.set_steps(steps)
-        self._model.set_source_text(raw)
-        self._set_dirty(False)
-        self.applied.emit()
+        self._apply_parsed_steps(raw, steps)
+
+    def _set_editor_state(self, *, parse_error: bool, unapplied: bool) -> None:
+        parse_cleared = self._parse_error and not parse_error
+        changed = parse_error != self._parse_error or unapplied != self._unapplied
+        self._parse_error = parse_error
+        self._unapplied = unapplied
+        if parse_cleared:
+            self.editor.set_syntax_error_line(None)
+            self.editor.clear_step_line_highlights()
+        if not changed:
+            return
+        self.dirty_changed.emit(self._parse_error or self._unapplied)
+        if parse_error:
+            self._emit_status("Исправьте ошибки в тексте сценария", COLOR_WARNING)
+        elif parse_cleared:
+            self._emit_status("")
 
     def _set_dirty(self, dirty: bool) -> None:
-        if dirty == self._dirty:
-            return
-        self._dirty = dirty
-        self.dirty_changed.emit(dirty)
-        if dirty:
-            self._emit_status("Исправьте ошибки в тексте сценария", COLOR_WARNING)
-        else:
-            self._emit_status("")
+        """Backward-compatible helper: dirty=True means syntax error."""
+        self._set_editor_state(parse_error=dirty, unapplied=dirty if dirty else self._unapplied)
 
     def _emit_status(self, text: str, color: str = "") -> None:
         self.status_message.emit(text)
@@ -194,11 +268,15 @@ class GherkinPanel(QWidget):
             return source
         if self._model.steps:
             scenario_name = self._model.name.strip() or "Сценарий"
-            return steps_to_gherkin(self._model.steps, scenario_name=scenario_name)
+            return steps_to_gherkin(
+                self._model.steps,
+                scenario_name=scenario_name,
+                tags=self._model.tags,
+            )
         return ""
 
     def _do_sync(self, *, force: bool = False) -> None:
-        if self._dirty and not force:
+        if self._unapplied and not force:
             return
         text = self._editor_text_from_model()
         self._block = True
@@ -208,8 +286,16 @@ class GherkinPanel(QWidget):
             self.editor.replace_plain_text_preserve_caret(text)
         else:
             self.editor.clear_step_line_highlights()
-        self._set_dirty(False)
         self._block = False
+
+        raw = self.editor.toPlainText()
+        steps, error, canonical = self._parse_editor_text(raw)
+        if error is not None:
+            self._report_parse_error(error)
+            return
+        assert steps is not None
+        raw = self._sync_editor_text_if_needed(raw, canonical)
+        self._set_editor_state(parse_error=False, unapplied=False)
 
     def _validate(self) -> None:
         self.editor.clear_char_formats()
@@ -231,46 +317,42 @@ class GherkinPanel(QWidget):
         self._do_sync(force=True)
 
     def _apply(self) -> None:
+        self._auto_apply_timer.stop()
         self.editor.clear_char_formats()
         self.editor.clear_step_line_highlights()
         raw = self.editor.toPlainText()
-        stripped = raw.strip()
-        if not stripped:
-            self._controller.set_steps([])
-            self._model.set_source_text(raw)
-            self._set_dirty(False)
+        steps, error, canonical = self._parse_editor_text(raw)
+        if error is not None:
+            self._report_parse_error(error)
+            return
+        assert steps is not None
+        raw = self._sync_editor_text_if_needed(raw, canonical)
+        if not raw.strip():
+            self._apply_parsed_steps(raw, steps)
             self._emit_status("Сценарий очищен", COLOR_SUCCESS)
-            self.applied.emit()
             return
         try:
-            steps = gherkin_to_steps(raw)
-        except GherkinParseError as exc:
-            self._emit_status(str(exc), COLOR_ERROR)
-            self.editor.set_step_line_highlights([max(1, int(exc.line_no))], failed=True)
-            return
+            self._apply_parsed_steps(raw, steps)
         except Exception as exc:  # noqa: BLE001
+            self._set_editor_state(parse_error=True, unapplied=True)
             self._emit_status(f"Ошибка: {exc}", COLOR_ERROR)
             return
-
-        self._controller.set_steps(steps)
-        self._model.set_source_text(raw)
-        self._set_dirty(False)
         self._emit_status(f"Сценарий обновлён: {len(steps)} шагов", COLOR_SUCCESS)
-        self.applied.emit()
 
     def discard_changes(self) -> None:
         self._do_sync(force=True)
         self._emit_status("Изменения сброшены", COLOR_SUCCESS)
 
     def prepare_open(self, *, unsaved_to_disk: bool = False) -> bool:
-        if self._dirty or unsaved_to_disk:
+        if self._parse_error or self._unapplied or unsaved_to_disk:
             from app.qt.dialogs import confirm
 
-            message = (
-                "Есть несохранённые изменения на диске.\nСбросить и открыть другой файл?"
-                if unsaved_to_disk and not self._dirty
-                else "В тексте сценария есть ошибки.\nСбросить и открыть другой файл?"
-            )
+            if unsaved_to_disk and not self._parse_error and not self._unapplied:
+                message = "Есть несохранённые изменения на диске.\nСбросить и открыть другой файл?"
+            elif self._parse_error:
+                message = "В тексте сценария есть ошибки.\nСбросить и открыть другой файл?"
+            else:
+                message = "Есть несохранённые правки в редакторе.\nСбросить и открыть другой файл?"
             if not confirm(
                 self,
                 BRAND_NAME,
@@ -280,15 +362,15 @@ class GherkinPanel(QWidget):
         return True
 
     def apply_if_dirty(self) -> bool:
-        if not self._dirty:
+        if not self._unapplied and not self._parse_error:
             return True
         self._apply()
-        return not self._dirty
+        return not self._parse_error
 
     def apply_to_model(self) -> bool:
         """Always parse editor text into the scenario model (play/save/validate)."""
         self._apply()
-        return not self._dirty
+        return not self._parse_error
 
     def _insert_template(self) -> None:
         from app.scenario_hints import gherkin_template_text
@@ -311,12 +393,14 @@ class GherkinPanel(QWidget):
 
         if choice.label == "Только селектор":
             self.editor.insert_quoted_text(selector)
-            self._set_dirty(True)
+            self._set_editor_state(parse_error=False, unapplied=True)
+            self._auto_apply_timer.start()
             self._emit_status("Селектор вставлен — допишите шаг сценария", COLOR_SUCCESS)
             return
 
         self.editor.insert_step_line(choice.step_body)
-        self._set_dirty(True)
+        self._set_editor_state(parse_error=False, unapplied=True)
+        self._auto_apply_timer.start()
         self._emit_status(f"Добавлен шаг «{choice.label}»", COLOR_SUCCESS)
 
     def _step_index_at_cursor(self) -> int | None:
@@ -350,13 +434,13 @@ class GherkinPanel(QWidget):
 
         if self._controller.try_fix_menu_hover(index):
             self.sync_from_model(force=True)
-            self._set_dirty(False)
+            self._set_editor_state(parse_error=False, unapplied=False)
             self._emit_status("Шаг разбит: наведение + клик", COLOR_SUCCESS)
             return True
 
         if 0 <= index < len(self._model.steps) and self._controller.split_click_into_hover(self, index) is not None:
             self.sync_from_model(force=True)
-            self._set_dirty(False)
+            self._set_editor_state(parse_error=False, unapplied=False)
             self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)
             return True
         return False
@@ -379,7 +463,8 @@ class GherkinPanel(QWidget):
         cursor.setPosition(block.position())
         cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(f'{indent}{click_keyword} нажимаю "{click_selector}"')
-        self._set_dirty(True)
+        self._set_editor_state(parse_error=False, unapplied=True)
+        self._auto_apply_timer.start()
         self._emit_status("Добавлено наведение перед кликом", COLOR_SUCCESS)
         return True
 
@@ -399,5 +484,6 @@ class GherkinPanel(QWidget):
             self._emit_status("Селектор наведения не указан", COLOR_WARNING)
             return
         self.editor.insert_step_line(f'навожу "{selector}"')
-        self._set_dirty(True)
+        self._set_editor_state(parse_error=False, unapplied=True)
+        self._auto_apply_timer.start()
         self._emit_status("Добавлен шаг наведения", COLOR_SUCCESS)

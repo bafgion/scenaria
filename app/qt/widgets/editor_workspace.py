@@ -26,7 +26,7 @@ from app.qt.widgets.recording_modes_bar import RecordingModesBar
 from app.qt.widgets.steps_strip import StepsStrip
 from app.qt.widgets.empty_editor_panel import EmptyEditorPanel
 from app.qt.widgets.welcome_panel import WelcomePanel
-from app.scenario_hints import find_suspicious_menu_clicks
+from app.scenario_hints import ScenarioHint, collect_all_hints
 from app.settings import load_settings, save_settings
 from app.brand import BRAND_NAME
 
@@ -163,6 +163,8 @@ class EditorWorkspace(QWidget):
         self.steps_strip.step_move_down.connect(self._on_step_move_down)
         self.steps_strip.step_edit.connect(self._on_step_edit)
         self.steps_strip.collapse_requested.connect(self._collapse_steps_panel)
+        self.steps_strip.run_from_step.connect(self._run_from_step)
+        self.steps_strip.run_until_step.connect(self._run_until_step)
         self._editor_splitter.splitterMoved.connect(self._on_steps_splitter_moved)
 
         self._load_steps_panel_settings()
@@ -237,6 +239,37 @@ class EditorWorkspace(QWidget):
     def has_editor_tabs(self) -> bool:
         return any(not tab.is_welcome for tab in self._tabs)
 
+    def open_feature_paths(self) -> list[Path]:
+        return [
+            tab.path
+            for tab in self._tabs
+            if tab.path is not None and tab.path.is_file()
+        ]
+
+    def dirty_feature_paths(self) -> set[Path]:
+        dirty: set[Path] = set()
+        for index, tab in enumerate(self._tabs):
+            if tab.path is None or tab.is_welcome:
+                continue
+            if tab.unapplied or tab.unsaved:
+                dirty.add(tab.path.resolve())
+                continue
+            if index == self._current_index and self.gherkin_panel.is_dirty:
+                dirty.add(tab.path.resolve())
+        return dirty
+
+    def sync_replaced_files(self, changed: dict[Path, tuple[str, int]]) -> None:
+        for path, (new_text, _count) in changed.items():
+            resolved = path.resolve()
+            for index, tab in enumerate(self._tabs):
+                if tab.path is not None and tab.path.resolve() == resolved:
+                    tab.text = new_text
+                    tab.unapplied = False
+                    tab.unsaved = False
+                    if index == self._current_index:
+                        self.gherkin_panel.set_text(new_text, clean=True)
+                    break
+
     def current_tab(self) -> _EditorTab | None:
         if self._current_index < 0 or self._current_index >= len(self._tabs):
             return None
@@ -261,7 +294,12 @@ class EditorWorkspace(QWidget):
         editor_active = self.is_editor_tab_active()
         if not editor_active:
             has_steps = False
-        unapplied = self.gherkin_panel.is_dirty if editor_active else False
+        unapplied = (
+            (self.gherkin_panel.is_unapplied or self.gherkin_panel.has_parse_error)
+            if editor_active
+            else False
+        )
+        parse_error = self.gherkin_panel.has_parse_error if editor_active else False
         file_unsaved = self._is_file_unsaved() if editor_active else False
         self.editor_action_bar.set_url(self._model.start_url)
         self.editor_action_bar.sync_workflow(
@@ -270,7 +308,7 @@ class EditorWorkspace(QWidget):
             recording=recording,
             playing=playing,
             has_steps=has_steps,
-            unapplied=unapplied,
+            unapplied=parse_error,
             file_unsaved=file_unsaved,
             editor_active=editor_active,
         )
@@ -280,14 +318,17 @@ class EditorWorkspace(QWidget):
             filter_recording=self._session.filter_recording,
             nav_only_recording=self._session.nav_only_recording,
             headless=self._session.headless,
+            use_saved_session=bool(load_settings().get("use_saved_browser_session", True)),
+            hover_recording=self._session.hover_recording,
         )
-        self.dirty_banner.set_visible(unapplied and not recording)
+        self.dirty_banner.set_visible(parse_error and not recording)
         self._refresh_steps_strip()
 
     def show_post_record(self, steps: list[dict]) -> None:
         self._last_record_steps = list(steps)
-        suspicious = find_suspicious_menu_clicks(steps)
-        self.post_record_banner.show_recording(len(steps), suspicious_clicks=len(suspicious))
+        self.post_record_banner.reset_dismissed()
+        hints = collect_all_hints(steps)
+        self.post_record_banner.show_recording(len(steps), hints=hints)
         self.sync_after_recording()
         self._last_record_steps = []
         self.show_editor()
@@ -328,6 +369,13 @@ class EditorWorkspace(QWidget):
             return True
         self._persist_current_tab()
         return True
+
+    def open_files(self, paths: list[Path], *, reload_if_clean: bool = False) -> int:
+        opened = 0
+        for path in paths:
+            if self.open_file(path, reload_if_clean=reload_if_clean):
+                opened += 1
+        return opened
 
     def open_file(self, path: Path, *, reload_if_clean: bool = False) -> bool:
         resolved = path.resolve()
@@ -540,7 +588,7 @@ class EditorWorkspace(QWidget):
         if tab.is_welcome:
             return
         tab.text = self.gherkin_panel.get_text()
-        tab.unapplied = self.gherkin_panel.is_dirty
+        tab.unapplied = self.gherkin_panel.is_unapplied or self.gherkin_panel.has_parse_error
         tab.unsaved = self._is_file_unsaved()
         self._update_tab_bar_item(self._current_index)
         self._update_run_target()
@@ -573,6 +621,7 @@ class EditorWorkspace(QWidget):
             path=tab.path,
             unapplied=tab.unapplied,
             unsaved=tab.unsaved,
+            tags=self._model.tags,
         )
 
     def _restore_tab_content(self, tab: _EditorTab) -> None:
@@ -584,9 +633,9 @@ class EditorWorkspace(QWidget):
 
             if tab.unapplied or tab.unsaved:
                 self._scenario_controller.bind_feature_path(tab.path)
-                self.gherkin_panel.set_text(tab.text, clean=not tab.unapplied)
-                if not tab.unapplied and tab.text.strip():
-                    self.gherkin_panel.apply_to_model()
+                self.gherkin_panel.set_text(tab.text, clean=False)
+                self.gherkin_panel._auto_apply_timer.stop()
+                self.gherkin_panel._auto_apply_if_valid()
                 return
 
             try:
@@ -598,13 +647,15 @@ class EditorWorkspace(QWidget):
             except (OSError, GherkinParseError):
                 self._scenario_controller.bind_feature_path(tab.path)
                 self.gherkin_panel.set_text(tab.text, clean=False)
+                self.gherkin_panel._auto_apply_timer.stop()
+                self.gherkin_panel._auto_apply_if_valid()
             return
 
         self._scenario_controller.new_scenario()
         if tab.text.strip():
-            self.gherkin_panel.set_text(tab.text, clean=not tab.unapplied)
-            if not tab.unapplied:
-                self.gherkin_panel.apply_to_model()
+            self.gherkin_panel.set_text(tab.text, clean=False)
+            self.gherkin_panel._auto_apply_timer.stop()
+            self.gherkin_panel._auto_apply_if_valid()
         else:
             self.gherkin_panel.set_text("", clean=True)
 
@@ -731,11 +782,12 @@ class EditorWorkspace(QWidget):
         tab = self._tabs[self._current_index]
         if tab.is_welcome:
             return
-        tab.unapplied = dirty
-        tab.text = self.gherkin_panel.get_text()
+        panel = self.gherkin_panel
+        tab.unapplied = panel.is_unapplied or panel.has_parse_error
+        tab.text = panel.get_text()
         tab.unsaved = self._is_file_unsaved()
         self._update_tab_bar_item(self._current_index)
-        self.dirty_banner.set_visible(dirty and not self._session.recording)
+        self.dirty_banner.set_visible(panel.has_parse_error and not self._session.recording)
         self._update_run_target()
 
     def _on_gherkin_applied(self) -> None:
@@ -779,14 +831,19 @@ class EditorWorkspace(QWidget):
             self._update_run_target()
 
     def _refresh_steps_strip(self) -> None:
-        if self.gherkin_panel.is_dirty and not self._last_record_steps:
-            raw = self.gherkin_panel.get_text().strip()
+        panel = self.gherkin_panel
+        if panel.has_parse_error and not self._last_record_steps:
+            raw = panel.get_text().strip()
             if raw:
                 try:
                     self.steps_strip.set_steps(gherkin_to_steps(raw))
+                    self._update_steps_collapsed_label()
                     return
                 except GherkinParseError:
                     pass
+            if self._model.steps:
+                self.steps_strip.set_steps(self._model.steps)
+                self._update_steps_collapsed_label()
             return
         self.steps_strip.set_steps(self._model.steps)
         self._update_steps_collapsed_label()
@@ -911,6 +968,16 @@ class EditorWorkspace(QWidget):
         if self._scenario_controller.edit_step(self, index) is None:
             return
         self._sync_steps_from_controller(select_row=index)
+
+    def _run_from_step(self, index: int) -> None:
+        if not self.gherkin_panel.apply_to_model():
+            return
+        self._controller.recording.play(start_step=index)
+
+    def _run_until_step(self, index: int) -> None:
+        if not self.gherkin_panel.apply_to_model():
+            return
+        self._controller.recording.play(start_step=0, end_step=index)
 
     def on_document_saved(self, path: Path) -> None:
         if self._current_index < 0 or self._current_index >= len(self._tabs):

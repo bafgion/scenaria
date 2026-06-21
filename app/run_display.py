@@ -18,6 +18,49 @@ def format_duration(ms: int) -> str:
     return f"{minutes} мин {secs} с"
 
 
+def format_run_at(iso: str) -> str:
+    if not iso:
+        return ""
+    try:
+        from datetime import datetime
+
+        normalized = iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone()
+        return dt.strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return iso[:16]
+
+
+def format_last_run_summary(
+    *,
+    success: bool | None,
+    at: str = "",
+    duration_ms: int = 0,
+    failed_step: int | None = None,
+    message: str = "",
+    runner: str = "",
+) -> str:
+    if success is None:
+        return "Прогон не выполнялся"
+    result = "успех" if success else "ошибка"
+    parts = [f"Последний: {result}"]
+    if runner and runner != "playwright":
+        parts.append(f"runner: {runner}")
+    if duration_ms > 0:
+        parts.append(format_duration(duration_ms))
+    when = format_run_at(at)
+    if when:
+        parts.append(when)
+    if failed_step is not None and not success:
+        parts.append(f"шаг {failed_step}")
+    if message and not success:
+        brief = message.splitlines()[0][:80]
+        parts.append(brief)
+    return ", ".join(parts)
+
+
 def format_run_diff(recorded_steps: list[dict[str, Any]], result: dict[str, Any]) -> str:
     recorded = len(recorded_steps)
     executed = int(result.get("executed_count", 0))

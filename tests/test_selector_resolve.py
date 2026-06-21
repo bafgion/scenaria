@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from playwright.sync_api import sync_playwright
+import pytest
 
 from app.paths import configure_playwright_browsers
 from app.selector_resolve import (
@@ -10,6 +11,8 @@ from app.selector_resolve import (
     resolve_chained_locator,
     resolve_hover_locator,
 )
+
+pytestmark = pytest.mark.integration
 
 CONTRACT_TYPE_HTML = """
 <!doctype html>

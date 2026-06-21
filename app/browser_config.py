@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from app.http_auth import playwright_http_credentials
@@ -17,12 +18,54 @@ BROWSER_LAUNCH_ARGS = [
 # Follow the real browser window size when the user resizes or maximizes.
 BROWSER_CONTEXT_OPTIONS = {"viewport": None, "no_viewport": True}
 
+BROWSER_ENGINES: tuple[str, ...] = ("chromium", "firefox", "webkit")
+
+BROWSER_ENGINE_LABELS: dict[str, str] = {
+    "chromium": "Chromium",
+    "firefox": "Firefox",
+    "webkit": "WebKit (Safari)",
+}
+
+
+def normalize_browser_engine(value: str | None) -> str:
+    engine = str(value or "chromium").strip().lower()
+    if engine not in BROWSER_ENGINES:
+        return "chromium"
+    return engine
+
+
+def load_browser_engine(settings: dict[str, Any] | None = None) -> str:
+    if settings is None:
+        from app.settings import load_settings
+
+        settings = load_settings()
+    return normalize_browser_engine(settings.get("browser_engine"))
+
+
+def launch_browser(
+    playwright,
+    *,
+    engine: str | None = None,
+    headless: bool = False,
+    slow_mo_ms: int = 0,
+    settings: dict[str, Any] | None = None,
+):
+    resolved = normalize_browser_engine(engine) if engine else load_browser_engine(settings)
+    launcher = getattr(playwright, resolved)
+    kwargs: dict[str, Any] = {"headless": headless}
+    if slow_mo_ms > 0:
+        kwargs["slow_mo"] = slow_mo_ms
+    if resolved == "chromium" and not headless:
+        kwargs["args"] = BROWSER_LAUNCH_ARGS
+    return launcher.launch(**kwargs)
+
 
 def browser_context_options(
     url: str = "",
     *,
     headless: bool = False,
     settings: dict[str, Any] | None = None,
+    project_root: Path | None = None,
 ) -> dict[str, Any]:
     """Playwright context options, including HTTP Basic Auth when configured."""
     if settings is None:
@@ -34,4 +77,13 @@ def browser_context_options(
     credentials = playwright_http_credentials(url, settings)
     if credentials:
         options["http_credentials"] = credentials
+
+    if settings.get("use_saved_browser_session", True) and url.strip():
+        from app.browser_session import storage_state_for_url
+        from app.feature_store import get_root
+
+        root = project_root or get_root()
+        state = storage_state_for_url(url, root)
+        if state:
+            options["storage_state"] = state
     return options

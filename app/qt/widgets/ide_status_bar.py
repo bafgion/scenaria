@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QWidget
 
+from app.progress_state import ProgressState
 from app.qt import icons
 from app.qt.theme import COLOR_BORDER, COLOR_MUTED, COLOR_PRIMARY, COLOR_RECORDING, COLOR_SUCCESS, COLOR_TEXT, COLOR_WARNING
 
@@ -123,6 +124,7 @@ class _StatusSegment(QWidget):
 class IdeStatusBar(QWidget):
     panel_clicked = Signal()
     project_clicked = Signal()
+    progress_cancelled = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -137,6 +139,23 @@ class IdeStatusBar(QWidget):
         self._message.setProperty("status", "message")
         self._message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self._message, stretch=1)
+
+        self._progress_wrap = QWidget()
+        progress_layout = QHBoxLayout(self._progress_wrap)
+        progress_layout.setContentsMargins(0, 0, 8, 0)
+        progress_layout.setSpacing(6)
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setFixedHeight(14)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setMaximum(100)
+        progress_layout.addWidget(self._progress_bar, stretch=1)
+        self._progress_cancel = QPushButton("Отмена")
+        self._progress_cancel.setFixedHeight(20)
+        self._progress_cancel.clicked.connect(self._on_progress_cancel)
+        progress_layout.addWidget(self._progress_cancel)
+        self._progress_wrap.hide()
+        root.addWidget(self._progress_wrap)
+        self._progress_task_id = ""
 
         right = QWidget()
         right.setProperty("status", "right")
@@ -187,6 +206,22 @@ class IdeStatusBar(QWidget):
         elif tone in ("busy", "muted", "info"):
             color = COLOR_MUTED
         self._message.setStyleSheet(f"color: {color}; padding: 0 12px; font-size: 8pt;")
+
+    def set_progress(self, state: ProgressState | None) -> None:
+        if state is None or not state.active:
+            self._progress_task_id = ""
+            self._progress_wrap.hide()
+            return
+        self._progress_task_id = state.task_id
+        self._progress_bar.setRange(0, state.total)
+        self._progress_bar.setValue(max(0, min(state.current, state.total)))
+        self._progress_cancel.setVisible(state.cancellable)
+        self._progress_wrap.show()
+        self.set_message(state.step_label(), "busy")
+
+    def _on_progress_cancel(self) -> None:
+        if self._progress_task_id:
+            self.progress_cancelled.emit(self._progress_task_id)
 
     def set_session_state(self, text: str) -> None:
         if not text.strip():

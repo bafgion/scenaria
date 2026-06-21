@@ -7,11 +7,13 @@ import threading
 import time
 from datetime import datetime
 import re
+from pathlib import Path
 from typing import Any, Callable, TypedDict
 
 from playwright.sync_api import Page, sync_playwright
 
-from app.browser_config import browser_context_options, BROWSER_LAUNCH_ARGS
+from app.browser_config import browser_context_options, launch_browser, load_browser_engine
+from app.download_helpers import file_contains_substring, save_playwright_download
 from app.run_variables import RunContext, normalize_generator_name
 from app.paths import configure_playwright_browsers, screenshots_dir, traces_dir
 from app.play_log import format_click_log, format_fill_generated_log, format_fill_log, step_log_target
@@ -137,6 +139,7 @@ class PlayResult(TypedDict):
     screenshot_path: str | None
     trace_path: str | None
     log_lines: list[str]
+    step_results: list[dict[str, Any]]
 
 
 _INTERACTIVE_ACTIONS = frozenset(
@@ -660,93 +663,10 @@ def capture_failure_screenshot(page: Page, scenario_name: str, step_index: int) 
 
 
 def validate_scenario_on_page(page: Page, scenario: dict[str, Any], on_log: LogCallback | None = None) -> list[str]:
-    issues: list[str] = []
-    steps = normalize_steps(list(scenario.get("steps", [])))
-    if not steps:
-        issues.append("Сценарий не содержит шагов")
+    from app.selector_validate import validate_results_to_issues, validate_scenario_selectors
 
-    start_url = scenario.get("startUrl") or (
-        steps[0].get("url") if steps and steps[0].get("action") == "goto" else ""
-    )
-    if start_url and not urls_match(page.url, start_url):
-        if on_log:
-            on_log(f"Переход для проверки → {start_url}")
-        try:
-            page.goto(start_url, wait_until=NAV_WAIT_UNTIL, timeout=NAV_TIMEOUT_MS)
-        except Exception as exc:  # noqa: BLE001
-            issues.append(f"Не удалось открыть стартовый URL: {exc}")
-            return issues
-
-    for index, step in enumerate(steps, start=1):
-        action = step.get("action")
-        if action == "goto":
-            continue
-        if action in _WAIT_ACTIONS:
-            if action in {"wait_for", "wait_for_hidden"} and not step.get("selector", ""):
-                issues.append(f"Шаг {index}: нет селектора для ожидания")
-            continue
-        if action in _NAV_ACTIONS | _SESSION_ACTIONS:
-            continue
-        if action == "assert_url":
-            expected = step.get("url", "")
-            if expected and not urls_match(page.url, expected):
-                issues.append(f"Шаг {index}: URL не совпадает — сейчас {page.url}")
-            continue
-        selector = step.get("selector", "")
-        if action == "assert_hidden":
-            if not selector:
-                issues.append(f"Шаг {index}: нет селектора для проверки")
-                continue
-            hidden_issues = _locator_hidden_issues(page, selector)
-            if hidden_issues:
-                issues.append(f"Шаг {index}: {', '.join(hidden_issues)} → {selector}")
-            continue
-        if action in _ASSERT_ACTIONS and action != "assert_url":
-            if not selector:
-                issues.append(f"Шаг {index}: нет селектора для проверки")
-                continue
-            loc_issues = _locator_issues(page, selector)
-            if loc_issues:
-                issues.append(f"Шаг {index}: {', '.join(loc_issues)} → {selector}")
-            continue
-        if action in _INTERACTIVE_ACTIONS:
-            if action == "press" and not selector:
-                continue
-            if not selector:
-                issues.append(f"Шаг {index}: нет селектора для действия «{action}»")
-                continue
-            require_enabled = action in {
-                "click",
-                "fill",
-                "fill_generated",
-                "select",
-                "double_click",
-                "clear",
-                "check",
-                "uncheck",
-                "upload",
-            }
-            if action == "fill_generated" and normalize_generator_name(str(step.get("generator", ""))) is None:
-                issues.append(f"Шаг {index}: неизвестный генератор «{step.get('generator', '')}»")
-                continue
-            loc_issues = _locator_issues(page, selector, require_enabled=require_enabled)
-            if loc_issues:
-                issues.append(f"Шаг {index}: {', '.join(loc_issues)} → {selector}")
-            continue
-        if action in _PROMPT_ACTIONS:
-            if not selector:
-                issues.append(f"Шаг {index}: нет селектора для ввода кода из почты")
-                continue
-            digits = step.get("digits")
-            parsed_digits = int(digits) if digits else None
-            loc_issues = _locator_issues_for_code_input(page, selector, digits=parsed_digits)
-            if loc_issues:
-                issues.append(f"Шаг {index}: {', '.join(loc_issues)} → {selector}")
-            continue
-        if action not in _ASSERT_ACTIONS | _INTERACTIVE_ACTIONS | _WAIT_ACTIONS | _NAV_ACTIONS | _SESSION_ACTIONS | _PROMPT_ACTIONS | {"goto"}:
-            issues.append(f"Шаг {index}: неизвестное действие «{action}»")
-
-    return issues
+    results = validate_scenario_selectors(page, scenario, on_log=on_log)
+    return validate_results_to_issues(results)
 
 
 def _fill_locator(page: Page, selector: str, value: str) -> None:
@@ -755,6 +675,27 @@ def _fill_locator(page: Page, selector: str, value: str) -> None:
     locator.fill(value, timeout=15000)
     locator.evaluate(_INPUT_EVENTS_JS)
     remove_highlight(page)
+
+
+def _evaluate_condition(page: Page, condition: dict, ctx: RunContext) -> bool:
+    kind = str(condition.get("type", "") or "")
+    try:
+        if kind == "visible":
+            selector = ctx.resolve_text(str(condition.get("selector", "") or ""))
+            return page.locator(selector).first.is_visible()
+        if kind == "hidden":
+            selector = ctx.resolve_text(str(condition.get("selector", "") or ""))
+            locator = page.locator(selector).first
+            return not locator.is_visible()
+        if kind == "url_contains":
+            needle = ctx.resolve_text(str(condition.get("value", "") or ""))
+            return needle in page.url
+        if kind == "page_text":
+            needle = ctx.resolve_text(str(condition.get("value", "") or ""))
+            return needle in page.content()
+    except Exception:  # noqa: BLE001
+        return False
+    return False
 
 
 def execute_step(
@@ -770,9 +711,162 @@ def execute_step(
     run_context: RunContext | None = None,
 ) -> None:
     ctx = run_context or RunContext()
+    page = ctx.current_page(page)
     action = step.get("action")
+
+    if action == "if":
+        condition = step.get("condition") or {}
+        nested = list(step.get("steps") or [])
+        if _evaluate_condition(page, condition, ctx):
+            on_log(f"{index}. Если → выполняю блок ({len(nested)} шаг.)")
+            for sub_index, sub_step in enumerate(nested, start=1):
+                execute_step(
+                    page,
+                    sub_step,
+                    index,
+                    on_log,
+                    highlight=highlight,
+                    interactive=interactive,
+                    prior_steps=prior_steps,
+                    on_close_browser=on_close_browser,
+                    run_context=ctx,
+                )
+        else:
+            on_log(f"{index}. Если → пропуск блока")
+        remove_highlight(page)
+        return
+
+    if action == "repeat":
+        from app.settings import load_settings
+
+        max_iterations = max(1, int(load_settings().get("max_loop_iterations", 100)))
+        count = min(max(1, int(step.get("count") or 1)), max_iterations)
+        nested = list(step.get("steps") or [])
+        on_log(f"{index}. Повторяю {count} раз(а), {len(nested)} шаг. в теле")
+        for iteration in range(1, count + 1):
+            on_log(f"{index}.{iteration} итерация")
+            for sub_step in nested:
+                execute_step(
+                    page,
+                    sub_step,
+                    index,
+                    on_log,
+                    highlight=highlight,
+                    interactive=interactive,
+                    prior_steps=prior_steps,
+                    on_close_browser=on_close_browser,
+                    run_context=ctx,
+                )
+        remove_highlight(page)
+        return
+
+    if action == "while":
+        from app.settings import load_settings
+
+        max_iterations = max(1, int(load_settings().get("max_loop_iterations", 100)))
+        condition = step.get("condition") or {}
+        nested = list(step.get("steps") or [])
+        iterations = 0
+        while _evaluate_condition(page, condition, ctx) and iterations < max_iterations:
+            iterations += 1
+            on_log(f"{index}.{iterations} Пока → тело ({len(nested)} шаг.)")
+            for sub_step in nested:
+                page = ctx.current_page(page)
+                execute_step(
+                    page,
+                    sub_step,
+                    index,
+                    on_log,
+                    highlight=highlight,
+                    interactive=interactive,
+                    prior_steps=prior_steps,
+                    on_close_browser=on_close_browser,
+                    run_context=ctx,
+                )
+        page = ctx.current_page(page)
+        if iterations >= max_iterations and _evaluate_condition(page, condition, ctx):
+            raise RuntimeError("Превышен лимит итераций цикла «пока»")
+        on_log(f"{index}. Пока → завершено ({iterations} ит.)")
+        remove_highlight(page)
+        return
+
+    if action == "for_each":
+        selector = ctx.resolve_text(str(step.get("selector", "") or ""))
+        variable = str(step.get("variable", "") or "")
+        nested = list(step.get("steps") or [])
+        locators = page.locator(selector).all()
+        on_log(f"{index}. Для каждого «{selector}» → {len(locators)} элемент(ов)")
+        for item_index, locator in enumerate(locators, start=1):
+            try:
+                value = (locator.inner_text(timeout=3000) or "").strip()
+            except Exception:  # noqa: BLE001
+                value = str(item_index)
+            if not value:
+                value = str(item_index)
+            ctx.remember(variable, value)
+            on_log(f"{index}.{item_index} «{variable}» = «{value}»")
+            for sub_step in nested:
+                page = ctx.current_page(page)
+                execute_step(
+                    page,
+                    sub_step,
+                    index,
+                    on_log,
+                    highlight=highlight,
+                    interactive=interactive,
+                    prior_steps=prior_steps,
+                    on_close_browser=on_close_browser,
+                    run_context=ctx,
+                )
+        page = ctx.current_page(page)
+        remove_highlight(page)
+        return
+
+    if action == "switch_tab":
+        from app.tab_helpers import resolve_tab_page
+
+        mode = str(step.get("mode", "") or "")
+        value = ctx.resolve_text(str(step.get("value", "") or ""))
+        target = resolve_tab_page(page.context, mode=mode, value=value)
+        if target is None:
+            raise RuntimeError(f"Вкладка не найдена ({mode}: {value})".rstrip(": "))
+        ctx.set_current_page(target)
+        try:
+            target.bring_to_front()
+        except Exception:  # noqa: BLE001
+            pass
+        on_log(f"{index}. Переключение вкладки → {mode}")
+        remove_highlight(target)
+        return
+
+    if action == "close_tab":
+        from app.tab_helpers import open_pages
+
+        pages = open_pages(page.context)
+        if len(pages) <= 1:
+            raise RuntimeError("Нельзя закрыть единственную вкладку")
+        current = page
+        remaining = [item for item in pages if item != current]
+        current.close()
+        fallback = remaining[-1] if remaining else pages[0]
+        ctx.set_current_page(fallback)
+        on_log(f"{index}. Закрыта текущая вкладка")
+        remove_highlight(fallback)
+        return
+
+    if action == "assert_tab_count":
+        from app.tab_helpers import open_pages
+
+        expected = int(step.get("count", 0))
+        actual = len(open_pages(page.context))
+        on_log(f"{index}. Проверка вкладок → {actual} из {expected}")
+        if actual != expected:
+            raise AssertionError(f"Ожидалось вкладок: {expected}, открыто: {actual}")
+        remove_highlight(page)
+        return
+
     if action == "goto":
-        url = step.get("url", "")
+        url = ctx.resolve_text(str(step.get("url", "")))
         if urls_match(page.url, url):
             on_log(f"{index}. Уже на странице → {url}")
             return
@@ -781,8 +875,32 @@ def execute_step(
         page.goto(url, wait_until=NAV_WAIT_UNTIL, timeout=NAV_TIMEOUT_MS)
         return
 
+    if action in {"remember_text", "remember_field", "remember_url"}:
+        if action == "remember_text":
+            variable = str(step.get("variable", "") or "")
+            value = ctx.resolve_text(str(step.get("value", "") or ""))
+            ctx.remember(variable, value)
+            on_log(f"{index}. Запомнено «{variable}» = «{value}»")
+        elif action == "remember_field":
+            variable = str(step.get("variable", "") or "")
+            field_selector = str(step.get("selector", "") or "")
+            locator = page.locator(field_selector).first
+            locator.wait_for(state="visible", timeout=10000)
+            try:
+                value = locator.input_value(timeout=3000)
+            except Exception:  # noqa: BLE001
+                value = (locator.inner_text(timeout=3000) or "").strip()
+            ctx.remember(variable, value)
+            on_log(f"{index}. Запомнено «{variable}» из поля {field_selector}")
+        else:
+            variable = str(step.get("variable", "") or "")
+            ctx.remember(variable, page.url)
+            on_log(f"{index}. Запомнено «{variable}» = текущий URL")
+        remove_highlight(page)
+        return
+
     if action == "assert_url":
-        expected = step.get("url", "")
+        expected = ctx.resolve_text(str(step.get("url", "")))
         on_log(f"{index}. Проверка URL → {expected}")
         if not urls_match(page.url, expected):
             raise AssertionError(f"Ожидался URL «{expected}», сейчас: {page.url}")
@@ -905,11 +1023,7 @@ def execute_step(
         return
 
     if action == "prompt_email_code":
-        if not interactive:
-            raise RuntimeError(
-                "Шаг «код из почты» требует видимого браузера и участия пользователя (не headless)"
-            )
-        from app.qt.sync_prompts import prompt_email_code_blocking
+        import os
 
         selector = step.get("selector", "")
         timeout_ms = max(1000, int(step.get("timeout_ms", 60000)))
@@ -928,8 +1042,20 @@ def execute_step(
                 'Не удалось определить email для кода. '
                 'Укажите в шаге: ввожу код из почты "user@mail.com" в "селектор"'
             )
-        on_log(f"{index}. Код из почты ({email}) → {selector}")
-        code = prompt_email_code_blocking(email=email, selector=selector)
+
+        env_code = os.environ.get("SCENARIA_EMAIL_CODE", "").strip()
+        if env_code:
+            on_log(f"{index}. Код из SCENARIA_EMAIL_CODE ({email}) → {selector}")
+            code = env_code
+        elif interactive:
+            from app.qt.sync_prompts import prompt_email_code_blocking
+
+            on_log(f"{index}. Код из почты ({email}) → {selector}")
+            code = prompt_email_code_blocking(email=email, selector=selector)
+        else:
+            raise RuntimeError(
+                "Шаг «код из почты» в headless: задайте переменную окружения SCENARIA_EMAIL_CODE"
+            )
         if code is None:
             raise RuntimeError("Ввод кода из почты отменён")
         value = code.strip()
@@ -1002,9 +1128,39 @@ def execute_step(
         return
 
     if action == "upload":
-        path = str(step.get("path", ""))
-        on_log(f"{index}. Загрузка файла → {path}")
-        page.locator(selector).first.set_input_files(path)
+        from app.upload_helpers import resolve_upload_path, validate_upload_path
+
+        path = str(step.get("path", "") or "")
+        missing = validate_upload_path(path, ctx.project_root)
+        if missing:
+            raise FileNotFoundError(missing)
+        resolved = resolve_upload_path(path, ctx.project_root)
+        on_log(f"{index}. Загрузка файла → {resolved}")
+        page.locator(selector).first.set_input_files(str(resolved))
+        remove_highlight(page)
+        return
+
+    if action == "download_click":
+        on_log(f"{index}. Скачивание по клику → {selector}")
+        _maybe_highlight(page, selector, enabled=highlight, pause_ms=200)
+        with page.expect_download(timeout=60000) as download_info:
+            page.locator(selector).first.click(timeout=15000)
+        saved = save_playwright_download(download_info.value, ctx.download_dir())
+        ctx.set_last_download(saved)
+        on_log(f"{index}. Файл сохранён → {saved.name}")
+        remove_highlight(page)
+        return
+
+    if action == "assert_download_contains":
+        needle = str(step.get("value", "") or "")
+        downloaded = ctx.last_download
+        if downloaded is None or not downloaded.is_file():
+            raise AssertionError("Нет скачанного файла — сначала выполните «скачиваю по клику на …»")
+        on_log(f"{index}. Проверка скачанного файла «{downloaded.name}»")
+        if downloaded.stat().st_size <= 0:
+            raise AssertionError(f"Скачанный файл пуст: {downloaded.name}")
+        if not file_contains_substring(downloaded, needle):
+            raise AssertionError(f"Файл «{downloaded.name}» не содержит «{needle}»")
         remove_highlight(page)
         return
 
@@ -1015,7 +1171,7 @@ def execute_step(
         return
 
     if action == "assert_text":
-        expected = step.get("value", "")
+        expected = ctx.resolve_text(str(step.get("value", "") or ""))
         on_log(f"{index}. Проверка текста «{expected}» → {selector}")
         locator = page.locator(selector).first
         locator.wait_for(state="visible", timeout=10000)
@@ -1051,6 +1207,10 @@ def run_scenario_on_page(
     on_close_browser: CloseBrowserCallback | None = None,
     on_between_steps: BetweenStepsCallback | None = None,
     trace_context=None,
+    start_step: int = 0,
+    end_step: int | None = None,
+    run_initial_goto: bool = True,
+    project_root: Path | None = None,
 ) -> PlayResult:
     log_lines: list[str] = []
 
@@ -1059,6 +1219,16 @@ def run_scenario_on_page(
         on_log(message)
 
     steps = normalize_steps(list(scenario.get("steps", [])))
+    total_steps = len(steps)
+    if total_steps == 0:
+        start_index = 0
+        end_index = -1
+    else:
+        start_index = max(0, min(start_step, total_steps - 1))
+        end_index = total_steps - 1 if end_step is None else max(0, min(end_step, total_steps - 1))
+        if end_index < start_index:
+            end_index = start_index
+
     start_url = scenario.get("startUrl") or (
         steps[0].get("url") if steps and steps[0].get("action") == "goto" else ""
     )
@@ -1067,9 +1237,21 @@ def run_scenario_on_page(
     if trace_context is not None:
         start_play_trace(trace_context, scenario_name=scenario_name)
 
-    _log(f"Запуск теста «{scenario_name}» ({len(steps)} шагов)")
+    if start_index > 0 and end_index >= start_index:
+        _log(
+            f"Запуск теста «{scenario_name}» (шаги {start_index + 1}–{end_index + 1} из {total_steps})"
+        )
+        _log(f"Пропуск шагов 1–{start_index}")
+    elif total_steps:
+        _log(f"Запуск теста «{scenario_name}» ({total_steps} шагов)")
 
-    run_context = RunContext(seed=scenario.get("runSeed"))
+    run_context = RunContext(seed=scenario.get("runSeed"), project_root=project_root)
+    run_context.set_initial_variables(dict(scenario.get("variables") or {}))
+    run_context.bind_page(page)
+    from app.download_helpers import new_download_run_dir
+
+    _, download_dir = new_download_run_dir()
+    run_context.set_download_dir(download_dir)
     setup_highlight_cleanup(page)
 
     def _maybe_focus_browser() -> None:
@@ -1080,13 +1262,24 @@ def run_scenario_on_page(
 
         focus_browser_context(page.context)
 
-    if start_url and not urls_match(page.url, start_url):
+    if start_index == 0 and start_url and not urls_match(page.url, start_url):
         _log(f"Открываю {start_url}")
         remove_highlight(page)
         page.goto(start_url, wait_until=NAV_WAIT_UNTIL, timeout=NAV_TIMEOUT_MS)
+    elif start_index > 0 and run_initial_goto:
+        for prep_step in steps:
+            if prep_step.get("action") == "goto":
+                url = str(prep_step.get("url", "") or "")
+                if url and not urls_match(page.url, url):
+                    _log(f"Подготовка: открываю {url}")
+                    remove_highlight(page)
+                    page.goto(url, wait_until=NAV_WAIT_UNTIL, timeout=NAV_TIMEOUT_MS)
+                break
 
     playable: list[tuple[int, dict]] = []
     for step_index, step in enumerate(steps):
+        if step_index < start_index or step_index > end_index:
+            continue
         if (
             step_index == 0
             and step.get("action") == "goto"
@@ -1095,8 +1288,9 @@ def run_scenario_on_page(
             continue
         playable.append((step_index, step))
 
-    skipped_count = len(steps) - len(playable)
+    skipped_count = total_steps - len(playable)
     executed = 0
+    step_results: list[dict[str, Any]] = []
     for display_index, (step_index, step) in enumerate(playable, start=1):
         _maybe_focus_browser()
         if on_between_steps is not None:
@@ -1114,10 +1308,13 @@ def run_scenario_on_page(
                 "screenshot_path": None,
                 "trace_path": None,
                 "log_lines": log_lines,
+                "step_results": step_results,
             }
+        started = time.perf_counter()
         try:
             if on_step:
                 on_step(display_index, step_index, step)
+            page = run_context.current_page(page)
             execute_step(
                 page,
                 step,
@@ -1129,10 +1326,32 @@ def run_scenario_on_page(
                 on_close_browser=on_close_browser,
                 run_context=run_context,
             )
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            step_results.append(
+                {
+                    "index": step_index,
+                    "action": str(step.get("action", "") or ""),
+                    "selector": str(step.get("selector", "") or step.get("url", "") or ""),
+                    "success": True,
+                    "message": "",
+                    "duration_ms": duration_ms,
+                }
+            )
             executed += 1
             if step.get("action") == "close_browser":
                 break
         except Exception as exc:  # noqa: BLE001
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            step_results.append(
+                {
+                    "index": step_index,
+                    "action": str(step.get("action", "") or ""),
+                    "selector": str(step.get("selector", "") or step.get("url", "") or ""),
+                    "success": False,
+                    "message": str(exc),
+                    "duration_ms": duration_ms,
+                }
+            )
             remove_highlight(page)
             screenshot_path = None
             trace_path = None
@@ -1160,6 +1379,7 @@ def run_scenario_on_page(
                 "screenshot_path": screenshot_path,
                 "trace_path": trace_path,
                 "log_lines": log_lines,
+                "step_results": step_results,
             }
 
     remove_highlight(page)
@@ -1176,6 +1396,7 @@ def run_scenario_on_page(
         "screenshot_path": None,
         "trace_path": None,
         "log_lines": log_lines,
+        "step_results": step_results,
     }
 
 
@@ -1223,16 +1444,30 @@ class ScenarioPlayer:
         headless: bool = False,
         slow_mo_ms: int = 200,
         on_started: Callable[[], None] | None = None,
+        start_step: int = 0,
+        end_step: int | None = None,
+        project_root: Path | None = None,
     ) -> None:
         if self._thread and self._thread.is_alive():
             raise RuntimeError("Воспроизведение уже запущено")
         if self._thread is not None:
             self._release_detached_session()
+            self._thread = None
         self._stop.clear()
         self._browser_lost_notified = False
         self._thread = threading.Thread(
             target=self._run,
-            args=(scenario, on_log, on_done, headless, slow_mo_ms, on_started),
+            args=(
+                scenario,
+                on_log,
+                on_done,
+                headless,
+                slow_mo_ms,
+                on_started,
+                start_step,
+                end_step,
+                project_root,
+            ),
             daemon=True,
         )
         self._thread.start()
@@ -1244,6 +1479,8 @@ class ScenarioPlayer:
         if thread is not None and thread.is_alive():
             thread.join(timeout=30)
         self._release_detached_session()
+        if thread is None or not thread.is_alive():
+            self._thread = None
 
     def focus_browser(self) -> bool:
         if not self.browser_open or self._context is None:
@@ -1434,6 +1671,9 @@ class ScenarioPlayer:
         headless: bool,
         slow_mo_ms: int,
         on_started: Callable[[], None] | None,
+        start_step: int = 0,
+        end_step: int | None = None,
+        project_root: Path | None = None,
     ) -> None:
         configure_playwright_browsers()
         result: PlayResult
@@ -1467,16 +1707,20 @@ class ScenarioPlayer:
 
         try:
             playwright = sync_playwright().start()
-            browser = playwright.chromium.launch(
+            engine = str(scenario.get("browserEngine") or "") or load_browser_engine()
+            browser = launch_browser(
+                playwright,
+                engine=engine,
                 headless=headless,
-                slow_mo=slow_mo_ms,
-                args=BROWSER_LAUNCH_ARGS if not headless else None,
+                slow_mo_ms=slow_mo_ms,
             )
             start_url = scenario.get("startUrl") or ""
             steps = scenario.get("steps") or []
             if not start_url and steps and steps[0].get("action") == "goto":
                 start_url = str(steps[0].get("url") or "")
-            context = browser.new_context(**browser_context_options(start_url, headless=headless))
+            context = browser.new_context(
+                **browser_context_options(start_url, headless=headless, project_root=project_root)
+            )
             page = context.new_page()
             self._playwright = playwright
             self._browser = browser
@@ -1498,6 +1742,9 @@ class ScenarioPlayer:
                 trace_context=context,
                 on_close_browser=close_session,
                 on_between_steps=self._service_pick_requests,
+                start_step=start_step,
+                end_step=end_step,
+                project_root=project_root,
             )
         except Exception as exc:  # noqa: BLE001
             result = {
@@ -1510,6 +1757,7 @@ class ScenarioPlayer:
                 "screenshot_path": None,
                 "trace_path": None,
                 "log_lines": [f"Ошибка: {exc}"],
+                "step_results": [],
             }
             on_log(f"Ошибка: {exc}")
 

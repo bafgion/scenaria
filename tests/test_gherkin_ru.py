@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, steps_to_gherkin, suggest_step_keyword
+from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, merge_steps_into_feature_text, parse_feature_structure, steps_to_gherkin, suggest_step_keyword
 
 TAB = STEP_INDENT
 
@@ -339,3 +339,70 @@ def test_suggest_step_keyword_on_step_line() -> None:
         suggest_step_keyword(current_line=line, cursor_column=len(line), has_steps_before=False)
         == "И"
     )
+
+
+def test_parse_tags_and_comments_ignored_for_steps() -> None:
+    text = (
+        "Функционал: UI\n"
+        "@smoke\n"
+        "@wip\n"
+        "Сценарий: Checkout\n"
+        "\t# Старт с главной\n"
+        f'{TAB}Допустим открыт "https://shop.com"\n'
+        f'{TAB}И нажимаю "button.buy"'
+    )
+    steps = gherkin_to_steps(text)
+    assert steps == [
+        {"action": "goto", "url": "https://shop.com"},
+        {"action": "click", "selector": "button.buy"},
+    ]
+    structure = parse_feature_structure(text)
+    assert structure.tags == ["smoke", "wip"]
+    assert structure.before_steps == ["\t# Старт с главной"]
+
+
+def test_steps_to_gherkin_with_tags() -> None:
+    text = steps_to_gherkin(
+        [{"action": "goto", "url": "https://a.com"}],
+        scenario_name="T",
+        tags=["smoke", "catalog"],
+    )
+    assert "@smoke" in text
+    assert "@catalog" in text
+    assert "Сценарий: T" in text
+
+
+def test_merge_steps_preserves_comments_and_tags() -> None:
+    source = (
+        "Функционал: UI\n"
+        "@smoke\n"
+        "Сценарий: Old\n"
+        "\t# before step\n"
+        f'{TAB}Допустим открыт "https://old.com"\n'
+    )
+    merged = merge_steps_into_feature_text(
+        source,
+        [{"action": "goto", "url": "https://new.com"}],
+        tags=["smoke"],
+        scenario_name="New",
+    )
+    assert "@smoke" in merged
+    assert "# before step" in merged
+    assert "https://new.com" in merged
+    assert "Сценарий: New" in merged
+
+
+def test_parse_repairs_missing_closing_quote_on_last_line() -> None:
+    from app.gherkin_ru import parse_gherkin_steps
+
+    text = (
+        "Функционал: UI\n"
+        "Сценарий: T\n"
+        f'{TAB}Допустим открыт "https://shop.com"\n'
+        f'{TAB}И нажимаю "button:has-text(\\"Далее\\")'
+    )
+    steps, canonical = parse_gherkin_steps(text)
+    assert len(steps) == 2
+    assert steps[-1]["action"] == "click"
+    assert canonical.endswith('"')
+    assert gherkin_to_steps(canonical) == steps

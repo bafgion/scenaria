@@ -132,6 +132,26 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "Загрузка файла в поле (action: upload)",
     ),
     GherkinSnippet(
+        "скачиваю",
+        'скачиваю по клику на "a.export"',
+        "Скачивание файла по клику (action: download_click)",
+    ),
+    GherkinSnippet(
+        "скачанный файл",
+        'проверяю что скачанный файл содержит "Invoice"',
+        "Проверка содержимого скачанного файла (action: assert_download_contains)",
+    ),
+    GherkinSnippet(
+        "запоминаю текст",
+        'запоминаю текст "{{login}}" как "user_login"',
+        "Сохранить литерал в переменную (action: remember_text)",
+    ),
+    GherkinSnippet(
+        "запоминаю url",
+        'запоминаю url как "current_url"',
+        "Сохранить текущий URL (action: remember_url)",
+    ),
+    GherkinSnippet(
         "рисую подпись",
         'рисую подпись в "canvas"',
         "Рисование подписи на canvas (ПЭП, action: draw_signature)",

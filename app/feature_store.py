@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps, steps_to_gherkin
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text, parse_feature_structure, steps_to_gherkin
 from app.paths import data_dir
 from app.settings import load_settings, save_settings
 
@@ -107,17 +107,25 @@ def _compute_start_url(steps: list[dict[str, Any]]) -> str:
 def load_feature(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     steps = gherkin_to_steps(text)
+    structure = parse_feature_structure(text)
     return {
         "name": path.stem,
         "startUrl": _compute_start_url(steps),
+        "tags": list(structure.tags),
         "steps": steps,
     }
 
 
-def save_feature(path: Path, steps: list[dict[str, Any]], *, scenario_name: str | None = None) -> Path:
+def save_feature(
+    path: Path,
+    steps: list[dict[str, Any]],
+    *,
+    scenario_name: str | None = None,
+    tags: list[str] | None = None,
+) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     scenario = scenario_name or path.stem
-    text = steps_to_gherkin(list(steps), scenario_name=scenario)
+    text = steps_to_gherkin(list(steps), scenario_name=scenario, tags=tags or [])
     path.write_text(text + "\n", encoding="utf-8")
     return path
 

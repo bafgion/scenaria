@@ -12,6 +12,8 @@ class RecordingModesBar(QWidget):
     filter_toggled = Signal(bool)
     nav_only_toggled = Signal(bool)
     headless_toggled = Signal(bool)
+    saved_session_toggled = Signal(bool)
+    hover_record_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -40,6 +42,17 @@ class RecordingModesBar(QWidget):
         self._headless.toggled.connect(self.headless_toggled.emit)
         layout.addWidget(self._headless)
 
+        self._saved_session = QCheckBox("Сохранённая сессия")
+        self._saved_session.setToolTip("Подставлять cookies/localStorage для текущего сайта")
+        self._saved_session.setChecked(True)
+        self._saved_session.toggled.connect(self.saved_session_toggled.emit)
+        layout.addWidget(self._saved_session)
+
+        self._hover_record = QCheckBox("Записывать наведение")
+        self._hover_record.setToolTip("Фиксировать шаги «навожу» при наведении на меню и кнопки")
+        self._hover_record.toggled.connect(self.hover_record_toggled.emit)
+        layout.addWidget(self._hover_record)
+
         layout.addStretch()
         self.hide()
 
@@ -64,12 +77,16 @@ class RecordingModesBar(QWidget):
         filter_recording: bool,
         nav_only_recording: bool,
         headless: bool,
+        use_saved_session: bool,
+        hover_recording: bool,
     ) -> None:
         self.setVisible(visible)
         for box, value in (
             (self._filter, filter_recording),
             (self._nav_only, nav_only_recording),
             (self._headless, headless),
+            (self._saved_session, use_saved_session),
+            (self._hover_record, hover_recording),
         ):
             box.blockSignals(True)
             box.setChecked(value)

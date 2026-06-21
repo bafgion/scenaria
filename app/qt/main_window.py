@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtGui import QAction, QDesktopServices, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
 from app.feature_store import get_root, resolve_project_root
+from app.plugins.installer import PluginInstallError, install_from_zip, install_plugin
+from app.plugins.registry import get_registry
+from app.progress_state import ProgressState
+from app.qt.plugin_host import RunMenuHost
+from app.qt.drag_drop import classify_drop_paths, paths_from_drop_urls
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
 from app.http_auth import apply_url_credentials_to_settings, host_from_url, strip_url_credentials
 from app.qt.dialogs import BTN_OK, alert, confirm, prompt_text
 from app.qt.widgets.http_auth_dialog import HttpAuthDialog
+from app.qt.widgets.browser_session_dialog import BrowserSessionDialog
 from app.qt.sync_prompts import install_prompt_service
 from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.widgets.browser_overlay import BrowserOverlayPanel
@@ -105,6 +113,7 @@ class MainWindow(QMainWindow):
         self.status_bar = IdeStatusBar(root)
         self.status_bar.panel_clicked.connect(lambda: self._show_bottom_panel("log"))
         self.status_bar.project_clicked.connect(self._open_project)
+        self.status_bar.progress_cancelled.connect(self._on_progress_cancelled)
         root_layout.addWidget(self.status_bar)
 
         self.setCentralWidget(root)
@@ -115,6 +124,7 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._wire_signals()
         self._bind_hotkeys()
+        self.setAcceptDrops(True)
         self._start_autosave_timer()
         self._start_browser_watch_timer()
         self._sync_menu_states()
@@ -153,6 +163,8 @@ class MainWindow(QMainWindow):
         rec.focus_failed_step.connect(self._on_focus_failed)
         rec.play_results.connect(self._on_play_results)
         rec.batch_results.connect(self._on_batch_results)
+        rec.progress.connect(self._on_progress)
+        rec.validation_results.connect(self._on_validation_results)
         rec.save_prompt.connect(self._on_save_prompt)
         rec.picker_done.connect(self._on_picker_done)
 
@@ -171,6 +183,7 @@ class MainWindow(QMainWindow):
         self.sidebar.new_btn.clicked.connect(self._new_scenario)
         self.sidebar.run_selected_requested.connect(self._run_selected_features)
         self.sidebar.run_folder_requested.connect(self._run_folder_features)
+        self.sidebar.run_history_requested.connect(self._show_run_history)
         self._controller.catalog.run_selection_changed.connect(self._update_run_selection_menu)
         self.workspace.welcome_panel.open_project.connect(self._open_project)
         self.workspace.welcome_panel.create_feature.connect(self._new_scenario)
@@ -197,9 +210,13 @@ class MainWindow(QMainWindow):
         ws.recording_modes.filter_toggled.connect(self._on_filter_toggled)
         ws.recording_modes.nav_only_toggled.connect(self._on_nav_only_toggled)
         ws.recording_modes.headless_toggled.connect(self._on_headless_toggled)
+        ws.recording_modes.saved_session_toggled.connect(self._on_saved_session_toggled)
+        ws.recording_modes.hover_record_toggled.connect(self._on_hover_record_toggled)
         ws.post_record_banner.apply_and_test_clicked.connect(self._post_record_apply_and_test)
         ws.post_record_banner.save_clicked.connect(self._post_record_save)
         ws.post_record_banner.fix_hover_clicked.connect(self._post_record_fix_hover)
+        ws.post_record_banner.hint_fix_requested.connect(self._post_record_hint_fix)
+        ws.post_record_banner.hint_show_step_requested.connect(self._post_record_hint_show_step)
         ws.post_record_banner.dismiss_clicked.connect(ws.hide_post_record)
 
         self.activity_bar.explorer_toggled.connect(self._toggle_explorer)
@@ -211,6 +228,7 @@ class MainWindow(QMainWindow):
         tb.browser_clicked.connect(lambda: rec.open_browser(self._start_url()))
         tb.focus_browser_clicked.connect(rec.focus_browser)
         tb.record_clicked.connect(lambda: rec.start_recording(self._start_url()))
+        tb.continue_record_clicked.connect(self._continue_recording)
         tb.quick_record_clicked.connect(lambda: rec.quick_record(self._start_url()))
         tb.stop_clicked.connect(self._stop_active_run)
         tb.pause_clicked.connect(rec.toggle_pause)
@@ -230,9 +248,13 @@ class MainWindow(QMainWindow):
         overlay.picker_clicked.connect(rec.pick_selector)
         overlay.focus_browser_clicked.connect(rec.focus_browser)
 
+        self.bottom_panel.validate_panel.step_focus_requested.connect(self._on_validate_step_focus)
         self.bottom_panel.results_panel.set_jump_handler(
             lambda: self.workspace.focus_failed_step(self._controller.session.last_failed_step_index or 0)
         )
+        self.bottom_panel.results_panel.set_history_handler(self._show_run_history)
+        self.bottom_panel.results_panel.set_rerun_failed_handler(self._rerun_vanessa_failed)
+        self.bottom_panel.results_panel.set_open_allure_handler(self._open_allure_results)
         self.bottom_panel.error_panel.set_handlers(
             on_jump=lambda: self.workspace.focus_failed_step(
                 self._controller.session.last_failed_step_index or 0
@@ -308,6 +330,7 @@ class MainWindow(QMainWindow):
                 self.workspace.ensure_welcome_tab(activate=True)
         else:
             self.status_bar.set_message(str(root))
+        self._refresh_runner_menu()
 
     def _require_project(self) -> bool:
         if get_root() is not None:
@@ -463,6 +486,16 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         edit_menu = bar.addMenu("Правка")
+        find_action = edit_menu.addAction("Найти и заменить…", self._open_find_replace)
+        find_action.setShortcut(QKeySequence("Ctrl+H"))
+        edit_menu.addAction("Замена по проекту…", self._open_project_replace)
+        refactor_menu = edit_menu.addMenu("Рефакторинг")
+        refactor_menu.addAction("Обновить стартовый URL…", self._refactor_update_start_urls)
+        refactor_menu.addAction("Нормализовать отступы шагов", self._refactor_normalize_indents)
+        refactor_menu.addAction("Удалить пустые строки между шагами", self._refactor_collapse_blank_lines)
+        palette_action = edit_menu.addAction("Палитра сниппетов…", self._open_snippet_palette)
+        palette_action.setShortcut(QKeySequence("Ctrl+Shift+Space"))
+        edit_menu.addSeparator()
         edit_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
             QKeySequence("Ctrl+Shift+S")
         )
@@ -477,9 +510,14 @@ class MainWindow(QMainWindow):
             self.workspace.gherkin_panel.fix_menu_click_at_cursor,
         )
         edit_menu.addSeparator()
+        edit_menu.addAction("Теги сценария…", self._edit_scenario_tags)
+        edit_menu.addSeparator()
         edit_menu.addAction("Отменить шаг записи", rec.undo_last_step)
 
         run_menu = bar.addMenu("Запуск")
+        self._run_menu = run_menu
+        self._runner_menu_actions: list[QAction] = []
+        self._runner_menu_separator: QAction | None = None
         self._act_browser = QAction("Браузер", self)
         self._act_browser.setShortcut(QKeySequence("Ctrl+B"))
         self._act_browser.triggered.connect(lambda: rec.open_browser(self._start_url()))
@@ -488,6 +526,7 @@ class MainWindow(QMainWindow):
         run_menu.addSeparator()
         run_menu.addAction("Стартовый URL…", self._edit_start_url)
         run_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
+        run_menu.addAction("Сессии браузера…", self._edit_browser_sessions)
         run_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
         run_menu.addSeparator()
         self._act_record = QAction("Запись", self)
@@ -508,6 +547,7 @@ class MainWindow(QMainWindow):
         self._act_run_selected.triggered.connect(self._run_selected_features)
         run_menu.addAction(self._act_run_selected)
         run_menu.addAction("Запустить все сценарии проекта", rec.run_project_suite)
+        run_menu.addAction("Запустить сценарии с тегом…", self._run_project_tag)
         run_menu.addAction("Указать элемент…", rec.pick_selector)
         run_menu.addAction("Быстрая запись", lambda: rec.quick_record(self._start_url()))
         run_menu.addSeparator()
@@ -526,19 +566,127 @@ class MainWindow(QMainWindow):
         self._act_headless.setChecked(self._controller.session.headless)
         self._act_headless.toggled.connect(self._on_headless_toggled)
         run_menu.addAction(self._act_headless)
+        self._act_saved_session = QAction("Использовать сохранённую сессию", self)
+        self._act_saved_session.setCheckable(True)
+        self._act_saved_session.setChecked(bool(load_settings().get("use_saved_browser_session", True)))
+        self._act_saved_session.toggled.connect(self._on_saved_session_toggled)
+        run_menu.addAction(self._act_saved_session)
+        run_menu.addSeparator()
+        run_menu.addAction("Запись и селекторы…", self._open_recording_settings)
+        self._refresh_runner_menu()
 
         view_menu = bar.addMenu("Вид")
         view_menu.addAction("Старт", lambda: self.workspace.ensure_welcome_tab(activate=True))
         view_menu.addAction("Сценарии", lambda: self.activity_bar.explorer_btn.setChecked(True))
         view_menu.addAction("Журнал", lambda: self._show_bottom_panel("log"))
         view_menu.addAction("Результаты", lambda: self._show_bottom_panel("results"))
+        view_menu.addAction("Проверка элементов", lambda: self._show_bottom_panel("validate"))
         view_menu.addAction("Ошибка", lambda: self._show_bottom_panel("error"))
 
         help_menu = bar.addMenu("Справка")
-        help_menu.addAction("Горячие клавиши", self._show_hotkeys).setShortcut(QKeySequence.StandardKey.HelpContents)
+        help_menu.addAction("Шаги…", self._open_step_help).setShortcut("F1")
+        help_menu.addAction("Горячие клавиши", self._show_hotkeys).setShortcut("Shift+F1")
         if updates_supported():
             help_menu.addAction("Проверить обновления…", self._check_updates_manual)
         help_menu.addAction("О программе", self._show_about)
+
+    def _refresh_runner_menu(self) -> None:
+        for action in self._runner_menu_actions:
+            self._run_menu.removeAction(action)
+        self._runner_menu_actions.clear()
+        if self._runner_menu_separator is not None:
+            self._run_menu.removeAction(self._runner_menu_separator)
+            self._runner_menu_separator = None
+
+        registry = get_registry()
+        registry.reload(project_root=get_root())
+        extra_actions: list[QAction] = []
+        for info in registry.runner_infos():
+            if info.id == "playwright":
+                continue
+            if info.available:
+                action = QAction(f"Пакетный запуск ({info.label})…", self)
+
+                def _run_batch(checked: bool = False, runner_id: str = info.id) -> None:
+                    self._run_batch_with_runner(runner_id)
+
+                action.triggered.connect(_run_batch)
+                extra_actions.append(action)
+            elif not info.installed:
+                action = QAction(f"Установить {info.label}…", self)
+
+                def _install(checked: bool = False, plugin_id: str = info.id) -> None:
+                    self._install_runner_addon(plugin_id)
+
+                action.triggered.connect(_install)
+                extra_actions.append(action)
+
+        if not extra_actions:
+            host = RunMenuHost(self)
+            registry.contribute_menus(host)
+            return
+        self._runner_menu_separator = self._run_menu.addSeparator()
+        for action in extra_actions:
+            self._run_menu.addAction(action)
+            self._runner_menu_actions.append(action)
+
+        host = RunMenuHost(self)
+        registry.contribute_menus(host)
+
+    def _is_plugin_installed(self, plugin_id: str) -> bool:
+        return get_registry().get_runner(plugin_id) is not None
+
+    def _run_batch_with_runner(self, runner_id: str) -> None:
+        root = get_root()
+        if root is None:
+            alert(self, BRAND_NAME, "Сначала откройте проект с .feature файлами")
+            return
+        if not self._prepare_batch_run():
+            return
+        self._controller.recording.run_project_suite_with_runner(runner_id)
+
+    def _install_runner_addon(self, plugin_id: str) -> bool:
+        if self._is_plugin_installed(plugin_id):
+            return True
+        if confirm(self, BRAND_NAME, f"Скачать add-on «{plugin_id}» с GitHub Releases?"):
+            try:
+                install_plugin(plugin_id)
+            except PluginInstallError as exc:
+                if not confirm(self, BRAND_NAME, f"{exc}\n\nУказать локальный zip?"):
+                    return False
+                path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Выберите zip add-on",
+                    "",
+                    "Zip (*.zip)",
+                )
+                if not path:
+                    return False
+                try:
+                    install_from_zip(Path(path), plugin_id=plugin_id)
+                except PluginInstallError as exc2:
+                    alert(self, BRAND_NAME, str(exc2))
+                    return False
+            self._refresh_runner_menu()
+            alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
+            return self._is_plugin_installed(plugin_id)
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите zip add-on",
+            "",
+            "Zip (*.zip)",
+        )
+        if not path:
+            return False
+        try:
+            install_from_zip(Path(path), plugin_id=plugin_id)
+        except PluginInstallError as exc:
+            alert(self, BRAND_NAME, str(exc))
+            return False
+        self._refresh_runner_menu()
+        alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
+        return self._is_plugin_installed(plugin_id)
 
     def _start_url(self) -> str:
         return self._controller.scenario.start_url.strip()
@@ -578,6 +726,37 @@ class MainWindow(QMainWindow):
         dialog = HttpAuthDialog(self, suggested_host=host_from_url(self._start_url()))
         dialog.exec()
 
+    def _edit_browser_sessions(self) -> None:
+        rec = self._controller.recording
+        dialog = BrowserSessionDialog(self, suggested_url=self._start_url())
+
+        if self._controller.session.browser_open:
+            def save_current(label: str) -> None:
+                rec.save_browser_session(
+                    label,
+                    on_saved=dialog.on_session_saved,
+                    on_error=lambda exc: alert(self, BRAND_NAME, f"Не удалось сохранить сессию:\n{exc}"),
+                )
+
+            dialog._save_callback = save_current
+            dialog._update_save_enabled()
+        dialog.exec()
+
+    def _edit_scenario_tags(self) -> None:
+        current = ", ".join(self._controller.scenario.tags)
+        value = prompt_text(
+            self,
+            "Теги сценария",
+            "Теги через запятую (без @):\nнапример: smoke, regression",
+            initial=current,
+        )
+        if value is None:
+            return
+        tags = [part.strip().lstrip("@") for part in value.replace(";", ",").split(",") if part.strip()]
+        self._controller.scenario_controller.set_tags(tags)
+        self.workspace.gherkin_panel.sync_from_model(force=True)
+        self.workspace._sync_steps_from_controller()
+
     def _set_start_url(self, url: str) -> None:
         if not self._apply_start_url(url):
             alert(self, BRAND_NAME, "Укажите корректный URL (https://…)")
@@ -602,6 +781,102 @@ class MainWindow(QMainWindow):
 
         activate_browser_window_ui_thread(title_hint)
 
+    def _open_find_replace(self) -> None:
+        from app.qt.widgets.find_replace_dialog import open_find_replace_dialog
+
+        open_find_replace_dialog(self, self.workspace.gherkin_panel.editor)
+
+    def _active_editor_text(self) -> tuple[object, str]:
+        editor = self.workspace.gherkin_panel.editor
+        return editor, editor.toPlainText()
+
+    def _set_active_editor_text(self, editor: object, text: str) -> None:
+        editor.setPlainText(text)
+        self.workspace.gherkin_panel._auto_apply_timer.stop()
+        self.workspace.gherkin_panel._auto_apply_if_valid()
+
+    def _refactor_update_start_urls(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        from app.gherkin_refactor import update_start_urls
+
+        editor, text = self._active_editor_text()
+        current = self._start_url().strip()
+        new_url, ok = QInputDialog.getText(
+            self,
+            "Обновить стартовый URL",
+            "Новый URL для всех шагов «открыт»:",
+            text=current,
+        )
+        if not ok or not str(new_url).strip():
+            return
+        updated, count = update_start_urls(text, str(new_url).strip())
+        if count <= 0:
+            return
+        self._set_active_editor_text(editor, updated)
+
+    def _refactor_normalize_indents(self) -> None:
+        from app.gherkin_refactor import normalize_step_indents
+
+        editor, text = self._active_editor_text()
+        self._set_active_editor_text(editor, normalize_step_indents(text))
+
+    def _refactor_collapse_blank_lines(self) -> None:
+        from app.gherkin_refactor import collapse_blank_lines_between_steps
+
+        editor, text = self._active_editor_text()
+        self._set_active_editor_text(editor, collapse_blank_lines_between_steps(text))
+
+    def _open_snippet_palette(self) -> None:
+        from app.qt.widgets.snippet_palette_dialog import open_snippet_palette
+
+        open_snippet_palette(self, self.workspace.gherkin_panel.editor)
+
+    def _open_step_help(self) -> None:
+        from app.qt.widgets.step_help_panel import open_step_help_panel
+
+        editor = self.workspace.gherkin_panel.editor
+        open_step_help_panel(self, editor=editor)
+
+    def _open_project_replace(self) -> None:
+        from app.feature_store import get_root
+        from app.qt.widgets.project_replace_dialog import open_project_replace_dialog
+
+        open_project_replace_dialog(
+            self,
+            current_path=self._controller.scenario.feature_path,
+            open_paths=self.workspace.open_feature_paths(),
+            project_root=get_root(),
+            dirty_paths=self.workspace.dirty_feature_paths(),
+            on_applied=self._on_project_replace_applied,
+        )
+
+    def _on_project_replace_applied(self, changed: dict) -> None:
+        self.workspace.sync_replaced_files(changed)
+        self._controller.catalog.refresh_tree()
+
+    def _show_run_history(self, path: object) -> None:
+        from pathlib import Path
+
+        from app.qt.widgets.run_history_dialog import open_run_history_dialog
+
+        if isinstance(path, Path):
+            open_run_history_dialog(self, path)
+
+    def _continue_recording(self) -> None:
+        from app.qt.widgets.continue_recording_dialog import ask_continue_recording
+
+        step_count = len(self._controller.scenario.steps)
+        if step_count == 0:
+            return
+        prepare = ask_continue_recording(self, step_count=step_count)
+        if prepare is None:
+            return
+        self._controller.recording.continue_recording(
+            self._start_url(),
+            prepare_browser=prepare,
+        )
+
     def _play_with_apply(self) -> None:
         if not self.workspace.apply_before_action():
             return
@@ -618,6 +893,8 @@ class MainWindow(QMainWindow):
         session = self._controller.session
         if rec.is_batch_running:
             rec.stop_batch()
+        elif session.vanessa_running:
+            rec.stop_vanessa()
         elif session.recording:
             rec.stop_recording()
         elif session.playing:
@@ -627,7 +904,7 @@ class MainWindow(QMainWindow):
 
     def _prepare_batch_run(self) -> bool:
         self.workspace.persist_current_tab()
-        if self.workspace.gherkin_panel.is_dirty:
+        if self.workspace.gherkin_panel.has_parse_error:
             if not confirm(
                 self,
                 BRAND_NAME,
@@ -661,6 +938,27 @@ class MainWindow(QMainWindow):
             return
         self._controller.recording.run_selected_features(paths)
 
+    def _run_project_tag(self) -> None:
+        from app.mvc.models.catalog_model import parse_catalog_filter
+
+        _, tag_from_filter = parse_catalog_filter(self._controller.catalog.filter_text)
+        initial = tag_from_filter or ""
+        value = prompt_text(
+            self,
+            "Запуск по тегу",
+            "Тег (без @), например smoke:",
+            initial=initial,
+        )
+        if value is None:
+            return
+        tag = value.strip().lstrip("@")
+        if not tag:
+            alert(self, BRAND_NAME, "Укажите тег")
+            return
+        if not self._prepare_batch_run():
+            return
+        self._controller.recording.run_project_tag(tag)
+
     def _update_run_selection_menu(self) -> None:
         count = self._controller.catalog.run_selection_count
         self._act_run_selected.setText(
@@ -686,8 +984,8 @@ class MainWindow(QMainWindow):
         editor_active = self.workspace.is_editor_tab_active()
         has_steps = editor_active and bool(self._controller.scenario.steps)
         pending = s.pending
-        unapplied = self.workspace.gherkin_panel.is_dirty if editor_active else False
-        batch_running = self._controller.recording.is_batch_running
+        unapplied = self.workspace.gherkin_panel.has_parse_error if editor_active else False
+        batch_running = self._controller.recording.is_batch_running or s.vanessa_running
         browser_active = s.browser_session_active()
         for action in (self._act_save, self._act_browser, self._act_record, self._act_play):
             action.setEnabled(not pending)
@@ -716,6 +1014,7 @@ class MainWindow(QMainWindow):
             s.recording
             or s.playing
             or batch_running
+            or s.vanessa_running
             or s.player_browser
             or self._controller.recording.is_picking
         )
@@ -747,6 +1046,7 @@ class MainWindow(QMainWindow):
         self._act_filter.setChecked(s.filter_recording)
         self._act_nav_only.setChecked(s.nav_only_recording)
         self._act_headless.setChecked(s.headless)
+        self._act_saved_session.setChecked(bool(load_settings().get("use_saved_browser_session", True)))
         self._update_window_title()
         root = get_root()
         scenario = self._controller.scenario
@@ -818,6 +1118,38 @@ class MainWindow(QMainWindow):
         save_settings(settings)
         self._sync_menu_states()
 
+    def _on_saved_session_toggled(self, checked: bool) -> None:
+        self._act_saved_session.setChecked(checked)
+        settings = load_settings()
+        settings["use_saved_browser_session"] = checked
+        save_settings(settings)
+        self.workspace.recording_modes.sync(
+            visible=self.workspace.recording_modes.isVisible(),
+            filter_recording=self._controller.session.filter_recording,
+            nav_only_recording=self._controller.session.nav_only_recording,
+            headless=self._controller.session.headless,
+            use_saved_session=checked,
+            hover_recording=self._controller.session.hover_recording,
+        )
+        self._sync_menu_states()
+
+    def _on_hover_record_toggled(self, checked: bool) -> None:
+        session = self._controller.session
+        session.hover_recording = checked
+        self._controller.recording.apply_recording_modes()
+        settings = load_settings()
+        settings["hover_record_enabled"] = checked
+        save_settings(settings)
+        self._sync_menu_states()
+
+    def _open_recording_settings(self) -> None:
+        from app.qt.widgets.recording_settings_dialog import open_recording_settings_dialog
+
+        if open_recording_settings_dialog(self):
+            self._controller.recording.apply_recording_modes()
+            self.status_bar.set_message("Настройки записи сохранены", "success")
+            self._sync_menu_states()
+
     def _update_window_title(self) -> None:
         title = BRAND_NAME
         s = self._controller.session
@@ -828,7 +1160,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(title)
 
     def _post_record_apply_and_test(self) -> None:
-        if self.workspace.gherkin_panel.is_dirty:
+        if self.workspace.gherkin_panel.has_parse_error:
             return
         self._controller.recording.play()
 
@@ -852,6 +1184,27 @@ class MainWindow(QMainWindow):
             return
         self.workspace.focus_failed_step(index + 1)
         self.workspace.gherkin_panel.fix_menu_click_at_cursor()
+
+    def _post_record_hint_fix(self, hint) -> None:
+        from app.scenario_hints import ScenarioHint, collect_all_hints
+
+        if not isinstance(hint, ScenarioHint):
+            return
+        self.workspace.gherkin_panel.sync_from_model(force=True)
+        if self._controller.scenario_controller.apply_scenario_hint(hint):
+            row = hint.step_indices[0] + 1 if hint.step_indices else None
+            self.workspace._sync_steps_from_controller(select_row=row)
+            steps = list(self._controller.scenario.steps)
+            self.workspace.post_record_banner.show_recording(len(steps), hints=collect_all_hints(steps))
+            self.status_bar.set_message("Подсказка применена", "success")
+            return
+        self._post_record_hint_show_step(hint.step_indices[0] + 1 if hint.step_indices else 1)
+
+    def _post_record_hint_show_step(self, step_index: int) -> None:
+        if step_index < 1:
+            return
+        self.workspace.focus_failed_step(step_index)
+        self.workspace.gherkin_panel.focus_step(step_index)
 
     def _show_hotkeys(self) -> None:
         HotkeysDialog(self).exec()
@@ -892,7 +1245,7 @@ class MainWindow(QMainWindow):
         escape.setContext(Qt.ShortcutContext.ApplicationShortcut)
         escape.activated.connect(self._controller.recording.handle_escape)
         QShortcut(QKeySequence("Ctrl+`"), self, lambda: self.activity_bar.panel_btn.toggle())
-        QShortcut(QKeySequence.StandardKey.HelpContents, self, self._show_hotkeys)
+        QShortcut(QKeySequence("Shift+F1"), self, self._show_hotkeys)
 
     def _on_switch_tab(self, name: str) -> None:
         if name == "log":
@@ -904,6 +1257,97 @@ class MainWindow(QMainWindow):
 
     def _on_status(self, text: str, tone: str) -> None:
         self.status_bar.set_message(text, tone)
+
+    def _on_progress(self, state: object) -> None:
+        if state is None or not isinstance(state, ProgressState):
+            self.status_bar.set_progress(None)
+            return
+        self.status_bar.set_progress(state)
+
+    def _on_progress_cancelled(self, task_id: str) -> None:
+        if task_id == "batch-run":
+            self._controller.recording.stop_batch()
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+        if not event.mimeData().hasUrls():
+            return
+        urls = [url.toLocalFile() for url in event.mimeData().urls()]
+        paths = paths_from_drop_urls(urls)
+        if not paths:
+            return
+        features, directories = classify_drop_paths(paths)
+        if not features and not directories:
+            return
+        event.acceptProposedAction()
+        hints: list[str] = []
+        if features:
+            hints.append(f"{len(features)} .feature")
+        if directories:
+            hints.append(f"проект «{directories[0].name}»")
+        self.status_bar.set_message(f"Отпустите для открытия: {', '.join(hints)}", "info")
+
+    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        self._restore_status_after_drag()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+        if not event.mimeData().hasUrls():
+            return
+        urls = [url.toLocalFile() for url in event.mimeData().urls()]
+        paths = paths_from_drop_urls(urls)
+        features, directories = classify_drop_paths(paths)
+        ignored = len(paths) - len(features) - len(directories)
+
+        if directories:
+            self._open_dropped_project(directories[0])
+
+        if features:
+            if not self.workspace.apply_before_action():
+                event.acceptProposedAction()
+                self._restore_status_after_drag()
+                return
+            opened = self.workspace.open_files(features, reload_if_clean=True)
+            root = get_root()
+            for path in features:
+                remember_feature(path)
+                if root is not None and root in path.parents:
+                    self._controller.catalog.select_feature(path)
+            self._refresh_welcome_recents()
+            self.status_bar.set_message(f"Открыто файлов: {opened}", "success")
+
+        if ignored > 0:
+            alert(
+                self,
+                BRAND_NAME,
+                f"Пропущено элементов: {ignored} (ожидаются .feature или папка проекта).",
+            )
+
+        event.acceptProposedAction()
+        if not features:
+            self._restore_status_after_drag()
+
+    def _open_dropped_project(self, folder: Path) -> None:
+        resolved = folder.resolve()
+        current = get_root()
+        if current is not None and current.resolve() != resolved:
+            if not confirm(
+                self,
+                BRAND_NAME,
+                f"Открыть проект «{resolved.name}»?\nТекущий: {current}",
+            ):
+                return
+        self._controller.catalog.set_features_root(resolved)
+        remember_project(resolved)
+        self._refresh_welcome_recents()
+        self.status_bar.set_message(str(resolved))
+        self.workspace.ensure_welcome_tab(activate=not self.workspace.has_editor_tabs())
+
+    def _restore_status_after_drag(self) -> None:
+        root = get_root()
+        if root is not None:
+            self.status_bar.set_message(str(root))
+        else:
+            self.status_bar.set_message("Файл → Открыть проект…", "info")
 
     def _on_play_step(self, index: int) -> None:
         self.workspace.clear_play_highlight()
@@ -925,6 +1369,22 @@ class MainWindow(QMainWindow):
             message="Шаг не выполнен — см. журнал и результаты",
             screenshot_path=None,
         )
+
+    def _on_validation_results(self, payload: dict) -> None:
+        self.bottom_panel.validate_panel.show_results(payload)
+        self.workspace.show_editor()
+        self._show_bottom_panel("validate")
+
+    def _on_validate_step_focus(self, step_index: int) -> None:
+        self.workspace.show_editor()
+        payload = self.bottom_panel.validate_panel.results_as_payload()
+        status = ""
+        for item in payload.get("results", []):
+            if int(item.get("step_index", 0)) == step_index:
+                status = str(item.get("status", "") or "")
+                break
+        failed = status not in {"", "ok", "fragile", "skipped"}
+        self.workspace.gherkin_panel.highlight_step(step_index, failed=failed)
 
     def _on_play_results(self, payload: dict, _duration_ms: int) -> None:
         has_failed = self._controller.session.last_failed_step_index is not None
@@ -948,6 +1408,22 @@ class MainWindow(QMainWindow):
         else:
             self.bottom_panel.error_panel.clear()
             self._show_bottom_panel("results")
+        self._maybe_open_html_report(payload)
+
+    def _maybe_open_html_report(self, payload: dict) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        from app.settings import load_settings
+
+        if not load_settings().get("open_html_report_after_run", False):
+            return
+        report_path = payload.get("html_report_path") or payload.get("suite_html_index")
+        if not report_path:
+            return
+        path = Path(str(report_path))
+        if path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
 
     def _on_save_prompt(self, count: int) -> None:
         _ = count
@@ -962,10 +1438,27 @@ class MainWindow(QMainWindow):
         self.workspace.gherkin_panel.insert_picked_selector(selector)
         self.workspace.show_editor()
 
+    def _rerun_vanessa_failed(self) -> None:
+        self._controller.recording.rerun_vanessa_failed()
+
+    def _open_allure_results(self, allure_dir: object) -> None:
+        from pathlib import Path
+
+        from scenaria_vanessa.allure_helpers import open_allure_directory, run_allure_serve
+        from scenaria_vanessa.settings import load_vanessa_settings
+
+        if not isinstance(allure_dir, Path):
+            return
+        settings = load_vanessa_settings()
+        cli = str(settings.get("allure_cli_path", "allure") or "allure")
+        if run_allure_serve(allure_dir, cli) is None:
+            open_allure_directory(allure_dir)
+
     def _on_batch_results(self, payload: dict, _duration_ms: int) -> None:
         self.bottom_panel.results_panel.show_results(payload, has_failed_step=not payload.get("success"))
         self.bottom_panel.error_panel.clear()
         self._show_bottom_panel("results")
+        self._maybe_open_html_report(payload)
 
     def _show_about(self) -> None:
         box = QMessageBox(self)

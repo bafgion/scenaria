@@ -9,7 +9,7 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 
 from app.feature_store import clear_draft, load_draft, save_draft
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps, parse_feature_structure
 
 
 class ScenarioModel(QObject):
@@ -27,6 +27,7 @@ class ScenarioModel(QObject):
         self._name = ""
         self._start_url = ""
         self._steps: list[dict[str, Any]] = []
+        self._tags: list[str] = []
         self._source_text: str | None = None
         self._dirty = False
         self._saved_snapshot = ""
@@ -46,6 +47,10 @@ class ScenarioModel(QObject):
     @property
     def steps(self) -> list[dict[str, Any]]:
         return list(self._steps)
+
+    @property
+    def tags(self) -> list[str]:
+        return list(self._tags)
 
     @property
     def source_text(self) -> str | None:
@@ -76,6 +81,8 @@ class ScenarioModel(QObject):
                     self._start_url = url
                     break
         self._steps = list(steps)
+        structure = parse_feature_structure(raw)
+        self._tags = list(structure.tags)
         self._source_text = raw
         self._saved_snapshot = self._snapshot()
         self._dirty = False
@@ -91,6 +98,7 @@ class ScenarioModel(QObject):
         self._name = ""
         self._start_url = preserved_start_url
         self._steps = []
+        self._tags = []
         self._source_text = ""
         self._saved_snapshot = self._snapshot()
         self._dirty = False
@@ -112,13 +120,30 @@ class ScenarioModel(QObject):
         self._start_url = url
         self._mark_dirty()
 
+    def set_tags(self, tags: list[str]) -> None:
+        normalized = [t for t in (tag.strip().lstrip("@") for tag in tags) if t]
+        if normalized == self._tags:
+            return
+        self._tags = normalized
+        self._mark_dirty()
+
     def set_steps(self, steps: list[dict[str, Any]]) -> None:
         self._steps = list(steps)
         self._source_text = None
         self._mark_dirty()
 
+    def apply_parsed_editor(self, steps: list[dict[str, Any]], source_text: str) -> None:
+        """Atomically update steps and editor source text after a successful parse."""
+        self._steps = list(steps)
+        self._source_text = source_text
+        self._mark_dirty()
+
     def set_source_text(self, text: str) -> None:
         self._source_text = text
+
+    def sync_tags_from_text(self, text: str) -> None:
+        """Update tags from editor or file text without toggling dirty state."""
+        self._tags = list(parse_feature_structure(text).tags)
 
     def restore_draft_if_any(self) -> bool:
         draft = load_draft()
@@ -137,6 +162,7 @@ class ScenarioModel(QObject):
         self._name = str(draft.get("name", "") or "")
         self._start_url = str(draft.get("startUrl", "") or "")
         self._steps = list(draft.get("steps", []) or [])
+        self._tags = [str(tag).strip().lstrip("@") for tag in (draft.get("tags", []) or []) if str(tag).strip()]
         self._source_text = None
         self._saved_snapshot = self._snapshot()
         self._dirty = True
@@ -163,6 +189,7 @@ class ScenarioModel(QObject):
             {
                 "name": self._name,
                 "startUrl": self._start_url,
+                "tags": list(self._tags),
                 "steps": steps,
             }
         )
@@ -171,6 +198,7 @@ class ScenarioModel(QObject):
         return {
             "name": self._name,
             "startUrl": self._start_url,
+            "tags": list(self._tags),
             "steps": list(self._steps),
         }
 

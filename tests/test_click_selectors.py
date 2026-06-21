@@ -143,6 +143,7 @@ def test_normalize_contextual_selector_for_sz_contract() -> None:
     )
 
 
+@pytest.mark.integration
 def test_selector_probe_span_inside_button() -> None:
     configure_playwright_browsers()
     with sync_playwright() as playwright:
@@ -158,6 +159,7 @@ def test_selector_probe_span_inside_button() -> None:
         browser.close()
 
 
+@pytest.mark.integration
 def test_selector_probe_duplicate_vybrat_buttons() -> None:
     configure_playwright_browsers()
     with sync_playwright() as playwright:
@@ -178,6 +180,7 @@ def test_selector_probe_duplicate_vybrat_buttons() -> None:
         browser.close()
 
 
+@pytest.mark.integration
 def test_context_caption_for_duplicate_buttons() -> None:
     configure_playwright_browsers()
     with sync_playwright() as playwright:

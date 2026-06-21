@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, Signal
 
 from app.feature_store import MAX_FEATURES_IN_TREE, get_root, set_root
 from app.gherkin_ru import GherkinParseError
-from app.run_status_store import domain_from_url, get_run_status
+from app.run_status_store import domain_from_url, get_run_history, get_run_status
 
 
 RowKind = Literal["root", "dir", "file"]
@@ -24,10 +24,17 @@ class CatalogNode:
     name: str
     children: list[CatalogNode] = field(default_factory=list)
     step_count: int = 0
+    example_count: int = 0
+    params_count: int = 0
     domain: str = ""
     run_success: bool | None = None
     run_at: str = ""
+    run_duration_ms: int = 0
+    run_failed_step: int | None = None
+    run_message: str = ""
+    run_runner: str = ""
     parse_error: str | None = None
+    tags: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
@@ -38,7 +45,10 @@ class CatalogNode:
 class FeatureFileMeta:
     step_count: int
     domain: str
+    tags: tuple[str, ...] = ()
     parse_error: str | None = None
+    example_count: int = 0
+    params_count: int = 0
 
 
 _metadata_cache: dict[str, tuple[float, FeatureFileMeta]] = {}
@@ -52,7 +62,7 @@ def _file_metadata(path: Path) -> FeatureFileMeta:
     try:
         mtime = path.stat().st_mtime
     except OSError as exc:
-        return FeatureFileMeta(0, "", f"не удалось прочитать файл: {exc}")
+        return FeatureFileMeta(0, "", (), f"не удалось прочитать файл: {exc}")
 
     key = str(path.resolve())
     cached = _metadata_cache.get(key)
@@ -61,18 +71,37 @@ def _file_metadata(path: Path) -> FeatureFileMeta:
 
     try:
         from app.feature_store import load_feature
+        from app.gherkin_outline import outline_example_count
+        from app.scenario_params import param_case_count
 
         loaded = load_feature(path)
+        example_count = 0
+        params_count = 0
+        try:
+            example_count = outline_example_count(path.read_text(encoding="utf-8"))
+        except OSError:
+            example_count = 0
+        try:
+            params_count = param_case_count(path)
+        except OSError:
+            params_count = 0
     except GherkinParseError as exc:
-        meta = FeatureFileMeta(0, "", str(exc))
+        meta = FeatureFileMeta(0, "", (), str(exc))
     except (OSError, ValueError) as exc:
-        meta = FeatureFileMeta(0, "", str(exc))
+        meta = FeatureFileMeta(0, "", (), str(exc))
     else:
         steps = loaded.get("steps", []) or []
         start_url = str(loaded.get("startUrl", "") or "")
         if not start_url and steps and steps[0].get("action") == "goto":
             start_url = str(steps[0].get("url", "") or "")
-        meta = FeatureFileMeta(len(steps), domain_from_url(start_url), None)
+        meta = FeatureFileMeta(
+            len(steps),
+            domain_from_url(start_url),
+            tuple(str(tag).strip() for tag in (loaded.get("tags", []) or []) if str(tag).strip()),
+            None,
+            example_count,
+            params_count,
+        )
 
     _metadata_cache[key] = (mtime, meta)
     return meta
@@ -100,20 +129,41 @@ def count_feature_files(node: CatalogNode | None) -> int:
     return count + sum(count_feature_files(child) for child in node.children)
 
 
-def _filter_tree(node: CatalogNode, query: str) -> CatalogNode | None:
-    q = query.strip().lower()
-    if not q:
+def parse_catalog_filter(filter_text: str) -> tuple[str, str]:
+    """Split sidebar filter into text query and optional tag (without @)."""
+    raw = (filter_text or "").strip()
+    if raw.startswith("@"):
+        tag = raw[1:].strip().split()[0].lower()
+        return "", tag
+    lowered = raw.lower()
+    if lowered.startswith("tag:"):
+        return "", raw.split(":", 1)[1].strip().lower()
+    return raw.lower(), ""
+
+
+def _file_matches_filter(node: CatalogNode, query: str, tag: str) -> bool:
+    if tag:
+        file_tags = {item.lower() for item in node.tags}
+        if tag not in file_tags:
+            return False
+    if not query:
+        return True
+    rel = str(node.path).replace("\\", "/").lower()
+    return query in node.name.lower() or query in rel
+
+
+def _filter_tree(node: CatalogNode, query: str, tag: str = "") -> CatalogNode | None:
+    if not query and not tag:
         return node
 
     if node.kind == "file":
-        rel = str(node.path).replace("\\", "/").lower()
-        if q in node.name.lower() or q in rel:
+        if _file_matches_filter(node, query, tag):
             return node
         return None
 
     children: list[CatalogNode] = []
     for child in node.children:
-        filtered = _filter_tree(child, q)
+        filtered = _filter_tree(child, query, tag)
         if filtered is not None:
             children.append(filtered)
 
@@ -128,6 +178,7 @@ def _filter_tree(node: CatalogNode, query: str) -> CatalogNode | None:
             run_success=node.run_success,
             run_at=node.run_at,
             parse_error=node.parse_error,
+            tags=node.tags,
         )
 
     if not children:
@@ -143,6 +194,7 @@ def _filter_tree(node: CatalogNode, query: str) -> CatalogNode | None:
         run_success=node.run_success,
         run_at=node.run_at,
         parse_error=node.parse_error,
+        tags=node.tags,
     )
 
 
@@ -164,8 +216,8 @@ def build_catalog_view_state(root: Path | None, filter_text: str) -> CatalogView
 
     full_tree = build_catalog_tree(root)
     total_files = count_feature_files(full_tree)
-    query = filter_text.strip()
-    tree = _filter_tree(full_tree, query) if query else full_tree
+    query, tag = parse_catalog_filter(filter_text)
+    tree = _filter_tree(full_tree, query, tag) if (query or tag) else full_tree
     visible_files = count_feature_files(tree)
 
     if total_files == 0:
@@ -179,16 +231,22 @@ def build_catalog_view_state(root: Path | None, filter_text: str) -> CatalogView
             empty_kind="no_files",
         )
 
-    if query and visible_files == 0:
+    if (query or tag) and visible_files == 0:
+        if tag and not query:
+            hint = f"Тег «@{tag}» не найден ни в одном сценарии.\nОчистите поле поиска."
+            title = "Нет сценариев с тегом"
+        else:
+            hint = f"Запрос «{filter_text.strip()}» не дал результатов.\nОчистите поле поиска."
+            title = "Ничего не найдено"
         return CatalogViewState(
             tree=tree,
-            empty_title="Ничего не найдено",
-            empty_hint=f"Запрос «{query}» не дал результатов.\nОчистите поле поиска.",
+            empty_title=title,
+            empty_hint=hint,
             empty_kind="no_match",
             expand_all=True,
         )
 
-    return CatalogViewState(tree=tree, expand_all=bool(query))
+    return CatalogViewState(tree=tree, expand_all=bool(query or tag))
 
 
 def build_catalog_tree(root: Path) -> CatalogNode:
@@ -222,20 +280,72 @@ def build_catalog_tree(root: Path) -> CatalogNode:
 
         meta = _file_metadata(path)
         run = get_run_status(path)
+        history = get_run_history(path)
+        last = history[0] if history else None
         parent.children.append(
             CatalogNode(
                 "file",
                 path,
                 path.stem,
                 step_count=meta.step_count,
+                example_count=meta.example_count,
+                params_count=meta.params_count,
                 domain=meta.domain,
                 run_success=None if run is None else run.success,
                 run_at="" if run is None else run.at,
+                run_duration_ms=0 if last is None else last.duration_ms,
+                run_failed_step=None if last is None else last.failed_step,
+                run_message="" if run is None else run.message,
+                run_runner="" if last is None else last.runner,
                 parse_error=meta.parse_error,
+                tags=meta.tags,
             )
         )
 
     return root_node
+
+
+def feature_has_tag(path: Path, tag: str) -> bool:
+    """True if *path* contains *tag* (with or without leading @)."""
+    normalized = tag.strip().lstrip("@").lower()
+    if not normalized:
+        return True
+    meta = _file_metadata(path)
+    return normalized in {item.lower() for item in meta.tags}
+
+
+def collect_feature_paths_with_tag(root: Path, tag: str) -> list[Path]:
+    """All `.feature` files in *root* that contain *tag* (without @)."""
+    normalized = tag.strip().lstrip("@").lower()
+    if not normalized or not root.is_dir():
+        return []
+    result: list[Path] = []
+    try:
+        paths = sorted(root.rglob("*.feature"), key=lambda p: str(p).lower())
+    except OSError:
+        return []
+    for index, path in enumerate(paths):
+        if index >= MAX_FEATURES_IN_TREE:
+            break
+        meta = _file_metadata(path)
+        if normalized in {item.lower() for item in meta.tags}:
+            result.append(path.resolve())
+    return result
+
+
+def collect_project_tags(root: Path | None) -> list[str]:
+    if root is None or not root.is_dir():
+        return []
+    tags: set[str] = set()
+    try:
+        paths = root.rglob("*.feature")
+    except OSError:
+        return []
+    for index, path in enumerate(paths):
+        if index >= MAX_FEATURES_IN_TREE:
+            break
+        tags.update(_file_metadata(path).tags)
+    return sorted(tags, key=str.lower)
 
 
 def collect_feature_paths_under(path: Path) -> list[Path]:

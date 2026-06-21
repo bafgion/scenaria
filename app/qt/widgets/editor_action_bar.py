@@ -195,6 +195,7 @@ class EditorActionBar(QWidget):
         unapplied: bool,
         unsaved: bool,
         is_welcome: bool = False,
+        tags: list[str] | None = None,
     ) -> None:
         badges = ""
         if unapplied:
@@ -206,7 +207,8 @@ class EditorActionBar(QWidget):
             self._file_hint.setText("")
             self._file_name.setToolTip("Стартовая страница")
         elif path is not None:
-            self._file_hint.setText("")
+            tags = " ".join(f"@{tag}" for tag in (tags or ()))
+            self._file_hint.setText(tags)
             self._file_name.setToolTip(str(path))
         else:
             self._file_hint.setText("не сохранён")

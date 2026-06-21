@@ -16,9 +16,11 @@ class SessionModel(QObject):
         self.recording = False
         self.paused = False
         self.playing = False
+        self.vanessa_running = False
         self.headless = False
         self.filter_recording = False
         self.nav_only_recording = False
+        self.hover_recording = False
         self.last_failed_step_index: int | None = None
 
     def touch(self) -> None:

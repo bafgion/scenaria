@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QTableView,
@@ -67,6 +68,8 @@ class StepsStrip(QWidget):
     step_edit = Signal(int)
     step_delete = Signal(int)
     collapse_requested = Signal()
+    run_from_step = Signal(int)
+    run_until_step = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -134,6 +137,8 @@ class StepsStrip(QWidget):
         self._table.setShowGrid(False)
         self._table.clicked.connect(self._on_row_clicked)
         self._table.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_context_menu)
         layout.addWidget(self._table)
 
         self._selected_row = -1
@@ -192,3 +197,17 @@ class StepsStrip(QWidget):
     def _on_fix_menu(self) -> None:
         if self._selected_row >= 0:
             self.fix_menu_clicked.emit(self._selected_row + 1)
+
+    def _show_context_menu(self, pos) -> None:
+        index = self._table.indexAt(pos)
+        if not index.isValid():
+            return
+        row = index.row()
+        menu = QMenu(self)
+        from_action = menu.addAction(f"Запустить с шага {row + 1}")
+        until_action = menu.addAction(f"Запустить до шага {row + 1}")
+        chosen = menu.exec(self._table.viewport().mapToGlobal(pos))
+        if chosen is from_action:
+            self.run_from_step.emit(row)
+        elif chosen is until_action:
+            self.run_until_step.emit(row)

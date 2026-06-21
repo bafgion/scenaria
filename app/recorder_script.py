@@ -93,6 +93,9 @@ RECORDER_INIT_SCRIPT = (
   let lastClick = { selector: '', at: 0 };
   let lastToggle = { key: '', at: 0 };
   let lastSignature = { key: '', at: 0 };
+  let lastPress = { key: '', at: 0 };
+
+  const RECORDED_KEYS = new Set(['Enter', 'Tab', 'Escape']);
 
   function isImportantElement(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -119,6 +122,49 @@ RECORDER_INIT_SCRIPT = (
   }
 
   let lastHoverTrigger = null;
+  let hoverRecordTimer = null;
+  let lastRecordedHover = { selector: '', at: 0 };
+
+  function hoverRecordMinMs() {
+    const value = Number(window.__shopRecorderHoverMinMs);
+    return Number.isFinite(value) && value >= 100 ? value : 300;
+  }
+
+  function isHoverRecordTarget(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.matches('a[href], button, [role="button"], [role="menuitem"], [role="tab"], [role="link"]')) {
+      return true;
+    }
+    const nav = el.closest('nav, header');
+    return !!nav && !!el.closest('a, button, [role="button"], [role="menuitem"]');
+  }
+
+  function scheduleHoverRecord(el) {
+    if (!window.__shopRecorderHoverMode || window.__shopRecorderNavOnlyMode) return;
+    if (!isHoverRecordTarget(el) || !shouldRecordClick(el)) return;
+    clearTimeout(hoverRecordTimer);
+    const target = el.closest('a, button, [role="button"], [role="menuitem"], [role="tab"], [role="link"]') || el;
+    hoverRecordTimer = setTimeout(() => {
+      const selector = buildSelector(target);
+      if (!selector) return;
+      const now = Date.now();
+      if (selector === lastRecordedHover.selector && now - lastRecordedHover.at < 800) return;
+      lastRecordedHover = { selector, at: now };
+      send(enrichStep({
+        action: 'hover',
+        selector,
+        text: visibleText(target).slice(0, 120),
+      }, target));
+    }, hoverRecordMinMs());
+  }
+
+  document.addEventListener('mouseover', (event) => {
+    rememberHoverTarget(event.target);
+    const el = event.target;
+    if (el && el.nodeType === 1) {
+      scheduleHoverRecord(el);
+    }
+  }, true);
 
   function sameNavContext(a, b) {
     const navA = a?.closest('header, nav');
@@ -141,10 +187,6 @@ RECORDER_INIT_SCRIPT = (
     };
   }
 
-  document.addEventListener('mouseover', (event) => {
-    rememberHoverTarget(event.target);
-  }, true);
-
   document.addEventListener('pointerdown', (event) => {
     const el = event.target.closest(
       'a,button,input,select,textarea,label,[role="button"],[role="link"],[type="submit"],[onclick]'
@@ -152,21 +194,67 @@ RECORDER_INIT_SCRIPT = (
     if (!shouldRecordClick(el)) return;
 
     const checkbox = checkboxInputFor(el);
-    if (!checkbox || checkbox.type !== 'checkbox') return;
+    if (checkbox && checkbox.type === 'checkbox') {
+      const selector = buildCheckboxSelector(checkbox) || buildSelector(checkbox);
+      if (!selector) return;
+      const now = Date.now();
+      const action = checkbox.checked ? 'uncheck' : 'check';
+      const dedupeKey = `${action}::${selector}`;
+      if (dedupeKey === lastToggle.key && now - lastToggle.at < 600) return;
+      lastToggle = { key: dedupeKey, at: now };
+      send(enrichStep({
+        action,
+        selector,
+        text: checkboxLabelText(checkbox).slice(0, 120),
+      }, checkbox));
+      return;
+    }
+    if (checkbox && checkbox.type === 'radio') {
+      const selector = buildCheckboxSelector(checkbox) || buildSelector(checkbox);
+      if (!selector) return;
+      const now = Date.now();
+      const dedupeKey = `check::${selector}`;
+      if (dedupeKey === lastToggle.key && now - lastToggle.at < 600) return;
+      lastToggle = { key: dedupeKey, at: now };
+      send(enrichStep({
+        action: 'check',
+        selector,
+        text: checkboxLabelText(checkbox).slice(0, 120),
+      }, checkbox));
+    }
+  }, true);
 
-    const selector = buildCheckboxSelector(checkbox) || buildSelector(checkbox);
+  document.addEventListener('dblclick', (event) => {
+    if (window.__shopRecorderNavOnlyMode) return;
+    const el = event.target.closest(
+      'a,button,input,select,textarea,label,[role="button"],[role="link"],[role="menuitem"],[type="submit"],[onclick]'
+    ) || event.target;
+    if (!shouldRecordClick(el)) return;
+    if (isTextInput(el)) return;
+    const selector = buildSelector(event.target);
     if (!selector) return;
     const now = Date.now();
-    const action = checkbox.checked ? 'uncheck' : 'check';
-    const dedupeKey = `${action}::${selector}`;
-    if (dedupeKey === lastToggle.key && now - lastToggle.at < 600) return;
-    lastToggle = { key: dedupeKey, at: now };
-    send({
-      action,
+    lastClick = { selector: '', at: now };
+    send(enrichStep({
+      action: 'double_click',
       selector,
-      text: checkboxLabelText(checkbox).slice(0, 120),
-    });
+      text: visibleText(el).slice(0, 120),
+    }, el));
   }, true);
+
+  function isInViewport(el) {
+    if (!el || !el.getBoundingClientRect) return true;
+    const rect = el.getBoundingClientRect();
+    const height = window.innerHeight || document.documentElement.clientHeight;
+    const width = window.innerWidth || document.documentElement.clientWidth;
+    return rect.bottom > 0 && rect.right > 0 && rect.top < height && rect.left < width;
+  }
+
+  function maybeRecordScrollTo(el, selector) {
+    if (!window.__shopRecorderScrollBeforeClick || !selector || !el) return;
+    if (isInViewport(el)) return;
+    send(enrichStep({ action: 'scroll_to', selector }, el));
+  }
 
   document.addEventListener('click', (event) => {
     const canvas = canvasFor(event.target);
@@ -177,11 +265,11 @@ RECORDER_INIT_SCRIPT = (
       const dedupeKey = `draw_signature::${selector}`;
       if (dedupeKey === lastSignature.key && now - lastSignature.at < 2000) return;
       lastSignature = { key: dedupeKey, at: now };
-      send({
+      send(enrichStep({
         action: 'draw_signature',
         selector,
         text: signatureContextText(canvas).slice(0, 120),
-      });
+      }, canvas));
       return;
     }
 
@@ -191,13 +279,14 @@ RECORDER_INIT_SCRIPT = (
     if (!shouldRecordClick(el)) return;
 
     const checkbox = checkboxInputFor(el);
-    if (checkbox && checkbox.type === 'checkbox') return;
+    if (checkbox && (checkbox.type === 'checkbox' || checkbox.type === 'radio')) return;
 
     if (isTextInput(el)) return;
 
     const clickRoot = clickableAncestor(event.target) || el;
     const selector = buildSelector(event.target);
     if (!selector) return;
+    maybeRecordScrollTo(clickRoot, selector);
     const now = Date.now();
     if (selector === lastClick.selector && now - lastClick.at < 600) return;
     lastClick = { selector, at: now };
@@ -224,27 +313,27 @@ RECORDER_INIT_SCRIPT = (
       payload.hoverSelector = hover.selector;
       payload.hoverText = hover.text;
     }
-    send(payload);
+    send(enrichStep(payload, clickRoot, { contextText: payload.contextText }));
   }, true);
 
   let inputTimer = null;
   function recordFill(el) {
     const selector = buildInputSelector(el) || buildSelector(el);
     if (!selector) return;
-    send({
+    send(enrichStep({
       action: 'fill',
       selector,
       value: el.value,
       inputType: el.type || 'text',
       text: fieldCaptionText(el).slice(0, 120) || fieldLabelText(el).slice(0, 120),
-    });
+    }, el));
   }
 
   document.addEventListener('input', (event) => {
     if (window.__shopRecorderNavOnlyMode) return;
     const el = event.target;
     if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return;
-    if (el.type === 'checkbox' || el.type === 'radio') return;
+    if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') return;
     clearTimeout(inputTimer);
     inputTimer = setTimeout(() => recordFill(el), 400);
   }, true);
@@ -252,8 +341,44 @@ RECORDER_INIT_SCRIPT = (
   document.addEventListener('change', (event) => {
     if (window.__shopRecorderNavOnlyMode) return;
     const el = event.target;
+    if (!el || el.tagName !== 'INPUT' || el.type !== 'file') return;
+    const selector = buildInputSelector(el) || buildSelector(el);
+    if (!selector) return;
+    const fileName = el.files && el.files.length ? el.files[0].name : '';
+    send(enrichStep({
+      action: 'upload',
+      selector,
+      path: fileName ? `<${fileName}>` : '<файл>',
+      text: fieldCaptionText(el).slice(0, 120) || fieldLabelText(el).slice(0, 120),
+    }, el));
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (window.__shopRecorderNavOnlyMode) return;
+    if (!RECORDED_KEYS.has(event.key)) return;
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    const el = event.target;
+    if (!el || el.nodeType !== 1) return;
+    if (!isTextInput(el) && !el.isContentEditable) return;
+    const selector = buildInputSelector(el) || buildSelector(el);
+    if (!selector) return;
+    const now = Date.now();
+    const dedupeKey = `${event.key}::${selector}`;
+    if (dedupeKey === lastPress.key && now - lastPress.at < 600) return;
+    lastPress = { key: dedupeKey, at: now };
+    send(enrichStep({
+      action: 'press',
+      key: event.key,
+      selector,
+      text: fieldCaptionText(el).slice(0, 120) || fieldLabelText(el).slice(0, 120),
+    }, el));
+  }, true);
+
+  document.addEventListener('change', (event) => {
+    if (window.__shopRecorderNavOnlyMode) return;
+    const el = event.target;
     if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return;
-    if (el.type === 'checkbox' || el.type === 'radio') return;
+    if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') return;
     clearTimeout(inputTimer);
     recordFill(el);
   }, true);
@@ -264,12 +389,12 @@ RECORDER_INIT_SCRIPT = (
     if (!el || el.tagName !== 'SELECT') return;
     const selector = buildSelector(el);
     if (!selector) return;
-    send({
+    send(enrichStep({
       action: 'select',
       selector,
       value: el.value,
       label: el.options[el.selectedIndex]?.text || ''
-    });
+    }, el));
   }, true);
 })();
 """

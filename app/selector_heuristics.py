@@ -533,4 +533,65 @@ SELECTOR_HEURISTICS_JS = """
     }
     return parts.join(' > ');
   }
+
+  function buildCssPath(el) {
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && parts.length < 5) {
+      let part = node.tagName.toLowerCase();
+      if (node.id) {
+        parts.unshift(`#${cssEscape(node.id)}`);
+        break;
+      }
+      const parent = node.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter((c) => c.tagName === node.tagName);
+        if (siblings.length > 1) {
+          part += `:nth-of-type(${siblings.indexOf(node) + 1})`;
+        }
+      }
+      parts.unshift(part);
+      node = parent;
+    }
+    return parts.join(' > ');
+  }
+
+  function collectElementInfo(el, extra) {
+    if (!el || el.nodeType !== 1) return null;
+    const opts = extra || {};
+    const isField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+    const target = isField ? el : (clickableAncestor(el) || el);
+    const tag = target.tagName.toLowerCase();
+    const inputType = (target.type || 'text').toLowerCase();
+    return {
+      tag,
+      inputType,
+      id: target.id || '',
+      name: target.getAttribute('name') || '',
+      role: target.getAttribute('role') || '',
+      testId:
+        target.getAttribute('data-testid') ||
+        target.getAttribute('data-test') ||
+        target.getAttribute('data-qa') ||
+        '',
+      ariaLabel: (target.getAttribute('aria-label') || '').trim(),
+      placeholder: target.getAttribute('placeholder') || '',
+      labelText: fieldLabelText(target).slice(0, 120),
+      captionText: isField ? fieldCaptionText(target).slice(0, 120) : '',
+      text: visibleText(target).slice(0, 120),
+      contextText: (opts.contextText || clickContextCaption(target) || '').slice(0, 120),
+      fallbackSelector:
+        buildSelector(el) ||
+        buildInputSelector(el) ||
+        buildCheckboxSelector(el) ||
+        buildCanvasSelector(el) ||
+        buildCssPath(target),
+    };
+  }
+
+  function enrichStep(step, el, extra) {
+    const info = collectElementInfo(el, extra);
+    if (info) step.elementInfo = info;
+    return step;
+  }
 """

@@ -25,14 +25,17 @@ build = [
 [project.scripts]
 scenaria = "app.cli:main"
 
+[project.entry-points."scenaria.plugins"]
+vanessa = "scenaria_vanessa.plugin:VanessaPlugin"
+
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["app*"]
+where = [".", "packages/scenaria_vanessa"]
+include = ["app*", "scenaria_vanessa*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "integration: launches a real browser (run before Qt tests in CI)",
+    "integration: launches a real browser; runs first and serialized (before Qt tests)",
 ]
 
 [tool.ruff]

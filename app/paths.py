@@ -58,6 +58,36 @@ def exports_dir() -> Path:
     return path
 
 
+def reports_dir() -> Path:
+    path = data_dir() / "reports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def global_sessions_dir() -> Path:
+    path = data_dir() / "sessions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def project_sessions_dir(project_root: Path) -> Path:
+    return project_root / ".scenaria" / "sessions"
+
+
+def project_snippets_path(project_root: Path) -> Path:
+    return project_root / ".scenaria" / "snippets.json"
+
+
+def global_snippets_path() -> Path:
+    return data_dir() / "snippets.json"
+
+
+def plugins_dir() -> Path:
+    path = data_dir() / "plugins"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def configure_playwright_browsers() -> None:
     bundled = app_root() / "browsers"
     if bundled.is_dir():
