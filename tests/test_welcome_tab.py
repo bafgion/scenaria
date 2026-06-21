@@ -84,7 +84,7 @@ def test_welcome_tab_does_not_enable_scenario_actions(qapp) -> None:
     workspace.show()
     workspace.open_untitled(initial_text=text)
     qapp.processEvents()
-    workspace.gherkin_panel.apply_to_model()
+    controller.scenario.set_steps(steps)
     qapp.processEvents()
     assert controller.scenario.steps
 
@@ -128,7 +128,7 @@ def test_toolbar_density_stable_when_switching_to_welcome(qapp) -> None:
     workspace.show()
     workspace.open_untitled(initial_text=text)
     qapp.processEvents()
-    workspace.gherkin_panel.apply_to_model()
+    controller.scenario.set_steps(steps)
     qapp.processEvents()
     compact_before = workspace.editor_action_bar.toolbar.is_auto_compact()
 
