@@ -416,3 +416,41 @@ def test_parse_repairs_missing_closing_quote_on_last_line() -> None:
     assert steps[-1]["action"] == "click"
     assert canonical.endswith('"')
     assert gherkin_to_steps(canonical) == steps
+
+
+def test_parse_repairs_missing_closing_quote_in_middle_of_scenario() -> None:
+    from app.gherkin_ru import parse_gherkin_steps
+
+    text = (
+        "Функционал: UI\n"
+        "Сценарий: T\n"
+        f'{TAB}Допустим открыт "https://shop.com"\n'
+        f'{TAB}И отмечаю "label:has-text(\\"Согласен\\")"\n'
+        f'{TAB}И нажимаю "button:has-text(\\"Далее\\")'  # legacy: no closing quote
+        f'\n{TAB}И нажимаю "button:has-text(\\"Далее\\")"\n'
+    )
+    steps, canonical = parse_gherkin_steps(text)
+    assert len(steps) == 4
+    assert steps[2]["action"] == "click"
+    assert steps[2]["selector"] == 'button:has-text("Далее")'
+    repaired_line = canonical.splitlines()[4]
+    assert repaired_line.endswith('"')
+
+
+def test_parse_normalizes_legacy_unescaped_has_text_quotes() -> None:
+    from app.gherkin_ru import parse_gherkin_steps
+
+    text = (
+        "Функционал: UI\n"
+        "Сценарий: T\n"
+        f'{TAB}И отмечаю "label:has-text("Согласен с условиями Политики конфиденциальности")"\n'
+        f'{TAB}И нажимаю "button:has-text("Далее")"\n'
+        f'{TAB}И жду 1 сек\n'
+        f'{TAB}И нажимаю "button:has-text(\\"Далее\\")"\n'
+    )
+    steps, canonical = parse_gherkin_steps(text)
+    assert len(steps) == 4
+    assert steps[0]["action"] == "check"
+    assert steps[1]["selector"] == 'button:has-text("Далее")'
+    assert '\\"Далее\\"' in canonical.splitlines()[3]
+    assert ':has-text("Далее")' not in canonical

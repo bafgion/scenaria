@@ -13,6 +13,7 @@ _STEP_HEADER_RE = re.compile(r"^(?:функционал|сценарий|фун�
 _SCENARIO_LINE_RE = re.compile(r"^сценарий\s*:\s*(.*)$", re.IGNORECASE)
 _FEATURE_LINE_RE = re.compile(r"^функционал\s*:\s*(.*)$", re.IGNORECASE)
 _TAG_LINE_RE = re.compile(r"^@(\S+)$")
+_LEGACY_HAS_TEXT_UNESCAPED = re.compile(r':has-text\("([^"\\]+)"\)')
 _OUTLINE_HEADER_RE = re.compile(r"^структура\s+сценария\s*:", re.IGNORECASE)
 _EXAMPLES_HEADER_RE = re.compile(r"^примеры\s*:", re.IGNORECASE)
 _GHERKIN_KW_PREFIX_RE = re.compile(r"^(?:Допустим|Когда|Тогда|И|Но)\s+", re.IGNORECASE)
@@ -836,12 +837,48 @@ def normalize_gherkin_text(text: str) -> str:
     return text
 
 
-def try_repair_terminal_step_quote(text: str, exc: GherkinParseError) -> str | None:
-    """If the last step line lost a closing quote, append it."""
+def normalize_legacy_has_text_escapes(text: str) -> str:
+    """Escape inner quotes in legacy ``:has-text("…")`` selectors inside step strings."""
+    if ':has-text("' not in text:
+        return text
     lines = text.splitlines()
-    if not lines or exc.line_no != len(lines):
+    changed = False
+    for index, line in enumerate(lines):
+        if ':has-text("' not in line:
+            continue
+        fixed = _LEGACY_HAS_TEXT_UNESCAPED.sub(
+            lambda match: f':has-text(\\"{match.group(1)}\\")',
+            line,
+        )
+        if fixed != line:
+            lines[index] = fixed
+            changed = True
+    if not changed:
+        return text
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + suffix
+
+
+def try_repair_step_quote_on_line(text: str, exc: GherkinParseError) -> str | None:
+    """If a step line lost a closing quote, append it."""
+    lines = text.splitlines()
+    if exc.line_no < 1 or exc.line_no > len(lines):
         return None
     raw_line = lines[exc.line_no - 1]
+    repaired_line = _repair_unclosed_quote_line(raw_line)
+    if repaired_line is None:
+        return None
+    lines[exc.line_no - 1] = repaired_line
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + suffix
+
+
+def try_repair_terminal_step_quote(text: str, exc: GherkinParseError) -> str | None:
+    """Backward-compatible alias — repairs the failing line, not only the last one."""
+    return try_repair_step_quote_on_line(text, exc)
+
+
+def _repair_unclosed_quote_line(raw_line: str) -> str | None:
     stripped = raw_line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -851,21 +888,39 @@ def try_repair_terminal_step_quote(text: str, exc: GherkinParseError) -> str | N
         return None
     if stripped.count('"') % 2 == 0:
         return None
-    lines[exc.line_no - 1] = raw_line + '"'
+    return raw_line + '"'
+
+
+def repair_unclosed_step_quotes(text: str) -> str:
+    """Repair legacy step lines that lost the closing double quote."""
+    lines = text.splitlines()
+    changed = False
+    for index, raw_line in enumerate(lines):
+        repaired = _repair_unclosed_quote_line(raw_line)
+        if repaired is None:
+            continue
+        lines[index] = repaired
+        changed = True
+    if not changed:
+        return text
     suffix = "\n" if text.endswith("\n") else ""
     return "\n".join(lines) + suffix
 
 
 def parse_gherkin_steps(text: str) -> tuple[list[dict[str, Any]], str]:
     """Parse steps and return canonical text (normalized or repaired)."""
-    normalized = normalize_gherkin_text(text)
-    try:
-        return _parse_gherkin_to_steps(normalized), normalized
-    except GherkinParseError as exc:
-        repaired = try_repair_terminal_step_quote(normalized, exc)
-        if repaired is not None:
-            return _parse_gherkin_to_steps(repaired), repaired
-        raise
+    normalized = repair_unclosed_step_quotes(
+        normalize_legacy_has_text_escapes(normalize_gherkin_text(text))
+    )
+    current = normalized
+    while True:
+        try:
+            return _parse_gherkin_to_steps(current), current
+        except GherkinParseError as exc:
+            repaired = try_repair_step_quote_on_line(current, exc)
+            if repaired is None or repaired == current:
+                raise
+            current = repaired
 
 
 def gherkin_to_steps(text: str) -> list[dict[str, Any]]:
