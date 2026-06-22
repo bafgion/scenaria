@@ -78,12 +78,27 @@ def test_prepare_update_script_waits_for_exe_and_logs(tmp_path: Path) -> None:
     script = prepare_update_script(staging_dir, install_dir, parent_pid=4242)
     text = script.read_text(encoding="ascii")
     assert 'set "PID=4242"' in text
-    assert 'tasklist /FI "PID eq %PID%"' in text
+    assert "EnableDelayedExpansion" in text
+    assert 'find /C "%PID%"' in text
     assert "goto force_kill" in text
     assert "taskkill /PID %PID% /T /F" in text
+    assert f"taskkill /IM {EXE_NAME} /T /F" in text
     assert "robocopy" in text
     assert "_update_staging" not in text
     assert str(staging_dir.resolve()) in text
     assert "if %RC% GEQ 8" in text
     assert 'start "" "%TARGET%\\Scenaria.exe"' in text
     assert "exit /b 0" in text
+
+
+def test_write_hidden_launcher(tmp_path: Path) -> None:
+    from app.update.installer import _write_hidden_launcher
+
+    script = tmp_path / "_apply_update.bat"
+    script.write_text("@echo off\r\n", encoding="ascii")
+    vbs = _write_hidden_launcher(script)
+    text = vbs.read_text(encoding="ascii")
+    assert vbs.name == "_apply_update.vbs"
+    assert "WScript.Shell" in text
+    assert str(script.resolve()) in text
+    assert ", 0, False" in text

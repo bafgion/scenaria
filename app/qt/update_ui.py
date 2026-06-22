@@ -36,6 +36,7 @@ class UpdateDownloadRunner(QObject):
     progress = Signal(int, int)
     phase = Signal(str, int, int, str)
     finished = Signal(object)  # error str | None
+    exit_requested = Signal()
 
     def __init__(self, info: UpdateInfo) -> None:
         super().__init__()
@@ -54,6 +55,7 @@ class UpdateDownloadRunner(QObject):
                 asset,
                 on_progress=self.progress.emit,
                 on_phase=self.phase.emit,
+                on_exit_requested=self.exit_requested.emit,
             )
         except UpdateCheckError as exc:
             self.finished.emit(str(exc))

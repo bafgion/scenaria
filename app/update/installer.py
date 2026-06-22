@@ -21,6 +21,7 @@ from app.update.http_download import download_url_resilient
 _STAGING_DIR_NAME = "_update_staging"
 _LOG_NAME = "_apply_update.log"
 _BAT_NAME = "_apply_update.bat"
+_VBS_NAME = "_apply_update.vbs"
 
 
 def _sha256_file(path: Path) -> str:
@@ -102,7 +103,7 @@ def prepare_update_script(
     log_file = _quote_batch_path(log_path)
     lines = [
         "@echo off",
-        "setlocal EnableExtensions",
+        "setlocal EnableExtensions EnableDelayedExpansion",
         f'set "TARGET={target}"',
         f'set "STAGING={staging}"',
         f'set "LOG={log_file}"',
@@ -110,17 +111,20 @@ def prepare_update_script(
         f'set "WAIT_SEC=0"',
         f'set "MAX_WAIT={int(max_wait_sec)}"',
         f'echo [%date% %time%] Update started PID=%PID% >"%LOG%"',
+        "ping -n 3 127.0.0.1 >nul",
         ":wait_exit",
-        'tasklist /FI "PID eq %PID%" 2>nul | find /I "%PID%" >nul',
-        "if errorlevel 1 goto do_copy",
+        'for /f %%C in (\'tasklist /FI "PID eq %PID%" /NH 2^>nul ^| find /C "%PID%"\') do set "FOUND=%%C"',
+        'if not defined FOUND set "FOUND=0"',
+        'if "!FOUND!"=="0" goto do_copy',
         "set /a WAIT_SEC+=1",
-        "if %WAIT_SEC% GEQ %MAX_WAIT% goto force_kill",
-        "timeout /t 1 /nobreak >nul",
+        "if !WAIT_SEC! GEQ !MAX_WAIT! goto force_kill",
+        "ping -n 2 127.0.0.1 >nul",
         "goto wait_exit",
         ":force_kill",
         f'echo [%date% %time%] Force kill PID %PID% >>"%LOG%"',
         "taskkill /PID %PID% /T /F >>\"%LOG%\" 2>&1",
-        "timeout /t 2 /nobreak >nul",
+        f'taskkill /IM {exe_name} /T /F >>"%LOG%" 2>&1',
+        "ping -n 3 127.0.0.1 >nul",
         ":do_copy",
         f'echo [%date% %time%] Copying update files >>"%LOG%"',
         (
@@ -142,6 +146,17 @@ def prepare_update_script(
     ]
     script_path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="strict")
     return script_path
+
+
+def _write_hidden_launcher(script: Path) -> Path:
+    vbs_path = script.with_name(_VBS_NAME)
+    bat_quoted = str(script.resolve()).replace('"', '""')
+    vbs_path.write_text(
+        f'CreateObject("WScript.Shell").Run "cmd /c ""{bat_quoted}""", 0, False\r\n',
+        encoding="ascii",
+        errors="strict",
+    )
+    return vbs_path
 
 
 def stage_update_package(zip_path: Path, on_phase=None) -> Path:
@@ -172,6 +187,7 @@ def _launch_update_script(script: Path, install_dir: Path) -> None:
     if os.name != "nt":
         raise UpdateCheckError("Обновление поддерживается только в Windows")
 
+    launcher = _write_hidden_launcher(script)
     create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     create_flags = (
         subprocess.DETACHED_PROCESS
@@ -188,16 +204,22 @@ def _launch_update_script(script: Path, install_dir: Path) -> None:
         startupinfo.wShowWindow = 0
 
     subprocess.Popen(
-        ["cmd.exe", "/c", str(script)],
+        ["wscript.exe", "//Nologo", str(launcher)],
         cwd=str(install_dir),
         creationflags=create_flags,
         startupinfo=startupinfo,
         close_fds=True,
     )
-    time.sleep(0.3)
+    time.sleep(0.5)
 
 
-def apply_update(asset: UpdateAsset, on_progress=None, on_phase=None) -> None:
+def apply_update(
+    asset: UpdateAsset,
+    on_progress=None,
+    on_phase=None,
+    *,
+    on_exit_requested=None,
+) -> None:
     if not getattr(sys, "frozen", False):
         raise UpdateCheckError("Обновление доступно только в portable EXE")
 
@@ -233,4 +255,7 @@ def apply_update(asset: UpdateAsset, on_progress=None, on_phase=None) -> None:
 
     emit_phase("launch", 1, 1, "")
     _launch_update_script(script, install_dir)
-    os._exit(0)
+    if on_exit_requested is not None:
+        on_exit_requested()
+    else:
+        os._exit(0)

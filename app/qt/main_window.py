@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget, QApplication
 
 from app.feature_store import get_root, resolve_project_root
 from app.plugins.installer import PluginInstallError, install_from_zip, install_plugin
@@ -1925,6 +1926,7 @@ class MainWindow(QMainWindow):
         self._download_runner = UpdateDownloadRunner(info)
         self._download_runner.phase.connect(self._on_update_download_phase)
         self._download_runner.finished.connect(self._on_update_download_finished)
+        self._download_runner.exit_requested.connect(self._exit_for_update)
         self._download_runner.start()
 
     def _on_update_download_phase(self, phase: str, current: int, total: int, detail: str) -> None:
@@ -1959,6 +1961,20 @@ class MainWindow(QMainWindow):
         box.exec()
         if box.clickedButton() == open_page:
             QDesktopServices.openUrl(QUrl(f"https://github.com/{github_repo()}/releases/latest"))
+
+    def _exit_for_update(self) -> None:
+        """Shut down on the GUI thread so the updater can replace files."""
+        self._dismiss_download_progress()
+        self._cancel_update_check()
+        self._browser_watch_timer.stop()
+        self._browser_overlay.hide()
+        editor_text = self.workspace.prepare_shutdown()
+        self._bridge.stop()
+        self._controller.shutdown(editor_text=editor_text)
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+        QTimer.singleShot(2000, lambda: os._exit(0))
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._dismiss_download_progress()

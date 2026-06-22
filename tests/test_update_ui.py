@@ -78,13 +78,15 @@ def test_download_runner_emits_phase_signal(qapp):
     runner.phase.connect(lambda phase, current, total, detail: phases.append((phase, current, total, detail)))
     runner.finished.connect(loop.quit)
 
-    def fake_apply(_asset, on_progress=None, on_phase=None):
+    def fake_apply(_asset, on_progress=None, on_phase=None, on_exit_requested=None):
         if on_progress is not None:
             on_progress(50, 100)
         if on_phase is not None:
             on_phase("download", 50, 100, "Scenaria-update.zip")
             on_phase("extract", 1, 2, "Scenaria/Scenaria.exe")
             on_phase("stage", 2, 2, "Scenaria.exe")
+        if on_exit_requested is not None:
+            on_exit_requested()
 
     with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
         runner.start()
@@ -94,6 +96,35 @@ def test_download_runner_emits_phase_signal(qapp):
     assert ("download", 50, 100, "Scenaria-update.zip") in phases
     assert ("extract", 1, 2, "Scenaria/Scenaria.exe") in phases
     assert ("stage", 2, 2, "Scenaria.exe") in phases
+
+
+def test_download_runner_emits_exit_requested(qapp):
+    loop = QEventLoop()
+    exit_hits: list[int] = []
+    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
+    info = UpdateInfo(
+        version="9.9.9",
+        title="Scenaria v9.9.9",
+        notes="",
+        published_at="2026-01-01T00:00:00Z",
+        portable=None,
+        update=asset,
+    )
+
+    runner = UpdateDownloadRunner(info)
+    runner.exit_requested.connect(lambda: (exit_hits.append(1), loop.quit()))
+    runner.finished.connect(loop.quit)
+
+    def fake_apply(_asset, on_progress=None, on_phase=None, on_exit_requested=None):
+        if on_exit_requested is not None:
+            on_exit_requested()
+
+    with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
+        runner.start()
+        QTimer.singleShot(5000, loop.quit)
+        loop.exec()
+
+    assert exit_hits == [1]
 
 
 def test_update_progress_dialog_updates_bar(qapp):
