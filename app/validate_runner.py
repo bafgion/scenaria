@@ -45,6 +45,7 @@ def validate_feature_file(
             playwright,
             engine=browser_engine,
             headless=headless,
+            on_status=on_log,
         )
         try:
             context = browser.new_context(**browser_context_options(start_url, headless=headless))

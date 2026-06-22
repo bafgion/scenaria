@@ -7,14 +7,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.progress_state import ProgressState
 from app.feature_store import get_root
 from app.project_config import default_runner
 from app.run_display import compare_run_with_recording
 from app.run_status_store import record_run
-from app.run_suite import collect_feature_files, format_suite_summary
+from app.run_suite import collect_feature_files, collect_play_scenarios, format_suite_summary
 from app.plugins.models import RunMode, RunRequest
 from app.plugins.registry import get_registry
 from app.mvc.models.catalog_model import CatalogModel
@@ -71,6 +71,132 @@ class RecordingController(QObject):
         self._parent_widget = None
         self._bridge: WorkerBridge | None = None
         self._append_base_steps: list[dict[str, Any]] | None = None
+        self._play_scenario_queue: list[dict[str, Any]] = []
+        self._play_queue_index = 0
+
+    def _resolve_play_scenarios(self) -> list[dict[str, Any]]:
+        path = self._scenario.feature_path
+        text = self._scenario.source_text
+        if path is not None or text:
+            try:
+                scenarios = collect_play_scenarios(path, text=text)
+                if scenarios:
+                    return scenarios
+            except (OSError, ValueError):
+                pass
+        return [self._scenario_controller.current_scenario_dict()]
+
+    def play(self, *, start_step: int = 0, end_step: int | None = None) -> None:
+        bridge = self._bridge_ref()
+        try:
+            self._play_scenario_queue = self._resolve_play_scenarios()
+        except ScenarioNotFoundError:
+            self.log.emit("Загрузите сценарий или запишите шаги", "error")
+            if self._parent_widget:
+                alert(self._parent_widget, BRAND_NAME, "Загрузите сценарий или запишите шаги")
+            return
+        if self._session.pending or self._recorder.is_busy:
+            self.log.emit("Подождите завершения текущей операции", "error")
+            return
+        if self._player.worker_alive:
+            self.log.emit("Предыдущий сеанс теста ещё активен — нажмите Стоп", "error")
+            return
+
+        self._play_queue_index = 0
+        self._play_start_step = start_step
+        self._play_end_step = end_step
+        if len(self._play_scenario_queue) > 1:
+            self.log.emit(f"Таблица примеров: {len(self._play_scenario_queue)} прогонов", "info")
+        self._run_next_queued_play(bridge)
+
+    def _run_next_queued_play(self, bridge: WorkerBridge) -> None:
+        if self._play_queue_index >= len(self._play_scenario_queue):
+            self._play_scenario_queue = []
+            return
+
+        scenario = self._play_scenario_queue[self._play_queue_index]
+        start_step = self._play_start_step
+        end_step = self._play_end_step
+
+        if self._play_queue_index == 0:
+            self._sync_player_browser_state()
+            if self._session.player_browser and not self._player.browser_open:
+                self._session.player_browser = False
+            self._play_log_buffer = []
+            self._play_started_at = time.time()
+            self._session.playing = True
+            self._session.last_failed_step_index = None
+            self._set_pending(True, "Воспроизведение...")
+            self.status.emit("Воспроизведение сценария", "playing")
+            self._emit_session()
+        elif len(self._play_scenario_queue) > 1:
+            title = str(scenario.get("name", "") or f"пример {self._play_queue_index + 1}")
+            self.log.emit(f"Прогон: {title}", "info")
+
+        def on_log(message: str) -> None:
+            bridge.emit_event("play_log", message)
+
+        def on_done(payload: dict[str, Any]) -> None:
+            if not payload.get("success"):
+                self._play_scenario_queue = []
+                bridge.emit_event("play_done", payload)
+                return
+            self._play_queue_index += 1
+            if self._play_queue_index < len(self._play_scenario_queue):
+                bridge.emit_event("play_queue_continue", None)
+                return
+            total_examples = len(self._play_scenario_queue)
+            if total_examples > 1:
+                payload = dict(payload)
+                payload["message"] = f"Все {total_examples} примеров выполнены успешно"
+            self._play_scenario_queue = []
+            bridge.emit_event("play_done", payload)
+
+        def on_step(display_index: int, step_index: int, _step: dict[str, Any]) -> None:
+            bridge.emit_event(
+                "play_step",
+                {"display": display_index, "step_index": step_index},
+            )
+
+        if self._session.headless:
+            if self._play_queue_index == 0:
+                self.log.emit("Запуск теста в отдельном headless-браузере", "info")
+            self._start_player_play(
+                scenario,
+                on_log,
+                on_done,
+                headless=True,
+                start_step=start_step,
+                end_step=end_step,
+            )
+            return
+
+        if not self._recorder.browser_open:
+            if self._play_queue_index == 0:
+                self.log.emit("Браузер не открыт — запускаю новый сеанс для теста", "info")
+            self._start_player_play(
+                scenario,
+                on_log,
+                on_done,
+                headless=False,
+                start_step=start_step,
+                end_step=end_step,
+            )
+            return
+
+        if self._play_queue_index == 0:
+            self.log.emit("Запуск теста в открытом браузере (активная вкладка)", "info")
+        self._set_pending(False)
+        self._recorder.play_scenario(
+            scenario,
+            on_log,
+            on_complete=on_done,
+            on_error=lambda exc: bridge.emit_event("error", str(exc)),
+            on_status=self._recorder_status,
+            on_step=on_step,
+            start_step=start_step,
+            end_step=end_step,
+        )
 
     def set_parent_widget(self, widget) -> None:
         self._parent_widget = widget
@@ -93,6 +219,7 @@ class RecordingController(QObject):
         bridge.on("error", self._on_error)
         bridge.on("play_log", self._on_play_log)
         bridge.on("play_done", self._on_play_done)
+        bridge.on("play_queue_continue", lambda _: self._on_play_queue_continue())
         bridge.on("play_step", self._on_play_step)
         bridge.on("player_browser_started", lambda _: self._on_player_browser_started())
         bridge.on("picker_done", self._on_picker_done)
@@ -708,83 +835,6 @@ class RecordingController(QObject):
     def player_worker_active(self) -> bool:
         return self._player.worker_alive
 
-    def play(self, *, start_step: int = 0, end_step: int | None = None) -> None:
-        bridge = self._bridge_ref()
-        try:
-            scenario = self._scenario_controller.current_scenario_dict()
-        except ScenarioNotFoundError:
-            self.log.emit("Загрузите сценарий или запишите шаги", "error")
-            if self._parent_widget:
-                alert(self._parent_widget, BRAND_NAME, "Загрузите сценарий или запишите шаги")
-            return
-        if self._session.pending or self._recorder.is_busy:
-            self.log.emit("Подождите завершения текущей операции", "error")
-            return
-        if self._player.worker_alive:
-            self.log.emit("Предыдущий сеанс теста ещё активен — нажмите Стоп", "error")
-            return
-
-        self._sync_player_browser_state()
-        if self._session.player_browser and not self._player.browser_open:
-            self._session.player_browser = False
-
-        self._play_log_buffer = []
-        self._play_started_at = time.time()
-        self._session.playing = True
-        self._session.last_failed_step_index = None
-        self._set_pending(True, "Воспроизведение...")
-        self.status.emit("Воспроизведение сценария", "playing")
-        self._emit_session()
-
-        def on_log(message: str) -> None:
-            bridge.emit_event("play_log", message)
-
-        def on_done(payload: dict[str, Any]) -> None:
-            bridge.emit_event("play_done", payload)
-
-        def on_step(display_index: int, step_index: int, _step: dict[str, Any]) -> None:
-            bridge.emit_event(
-                "play_step",
-                {"display": display_index, "step_index": step_index},
-            )
-
-        if self._session.headless:
-            self.log.emit("Запуск теста в отдельном headless-браузере", "info")
-            self._start_player_play(
-                scenario,
-                on_log,
-                on_done,
-                headless=True,
-                start_step=start_step,
-                end_step=end_step,
-            )
-            return
-
-        if not self._recorder.browser_open:
-            self.log.emit("Браузер не открыт — запускаю новый сеанс для теста", "info")
-            self._start_player_play(
-                scenario,
-                on_log,
-                on_done,
-                headless=False,
-                start_step=start_step,
-                end_step=end_step,
-            )
-            return
-
-        self.log.emit("Запуск теста в открытом браузере (активная вкладка)", "info")
-        self._set_pending(False)
-        self._recorder.play_scenario(
-            scenario,
-            on_log,
-            on_complete=on_done,
-            on_error=lambda exc: bridge.emit_event("error", str(exc)),
-            on_status=self._recorder_status,
-            on_step=on_step,
-            start_step=start_step,
-            end_step=end_step,
-        )
-
     def _start_player_play(
         self,
         scenario: dict[str, Any],
@@ -1028,6 +1078,17 @@ class RecordingController(QObject):
         if step_index >= 0:
             self.switch_tab.emit("editor")
             self.play_step.emit(step_index)
+
+    def _on_play_queue_continue(self) -> None:
+        """Start the next outline example after the player worker thread has exited."""
+        if not self._play_scenario_queue or self._play_queue_index >= len(self._play_scenario_queue):
+            return
+        if self._player.worker_alive:
+            if self._player.browser_open:
+                self._player.stop()
+            QTimer.singleShot(50, self._on_play_queue_continue)
+            return
+        self._run_next_queued_play(self._bridge_ref())
 
     def _on_play_done(self, payload: dict[str, Any]) -> None:
         try:

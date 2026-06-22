@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, is_step_indented, leading_indent
+from app.gherkin_ru import GherkinParseError, STEP_INDENT, coalesce_mixed_step_indents_in_text, gherkin_to_steps, is_step_indented, leading_indent
 
 _KEYWORD_FIXES: dict[str, str] = {
     "дапустим": "Допустим",
@@ -114,4 +114,22 @@ def suggest_quick_fixes(text: str, line_no: int) -> list[tuple[QuickFix, str]]:
                 )
             )
 
+    return fixes
+
+
+def suggest_quick_fixes_for_error(text: str, line_no: int) -> list[tuple[QuickFix, str]]:
+    """Line fixes plus whole-file indent repair when applicable."""
+    fixes = list(suggest_quick_fixes(text, line_no))
+    coalesced = coalesce_mixed_step_indents_in_text(text)
+    if coalesced != text and not any(item[0].label == "Исправить отступы во всём файле" for item in fixes):
+        fixes.insert(
+            0,
+            (
+                QuickFix(
+                    "Исправить отступы во всём файле",
+                    "Заменить пробельные отступы шагов на табы",
+                ),
+                coalesced,
+            ),
+        )
     return fixes

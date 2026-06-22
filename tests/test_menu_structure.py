@@ -61,7 +61,25 @@ def test_scenario_menu_has_file_and_edit_actions(qapp) -> None:
     assert "Сохранить" in labels
     assert "Найти и заменить…" in labels
     assert "Теги сценария…" in labels
+    assert "Синтаксис Gherkin" in labels
     assert "Отменить шаг записи" not in labels
+
+
+def test_project_menu_has_settings(qapp) -> None:
+    from app.mvc.controllers.app_controller import AppController
+    from app.qt.main_window import MainWindow
+
+    window = MainWindow(AppController())
+    bar = window.menuBar()
+    project_menu = None
+    for action in bar.actions():
+        if action.text() == "Проект":
+            project_menu = action.menu()
+            break
+    assert project_menu is not None
+    labels = _menu_action_labels(project_menu)
+    assert "Настройки…" in labels
+    assert window._act_settings.shortcut().toString() in {"Ctrl+,", "Ctrl+,"}
 
 
 def test_record_test_menu_has_playback_and_undo_record_step(qapp) -> None:
@@ -72,6 +90,8 @@ def test_record_test_menu_has_playback_and_undo_record_step(qapp) -> None:
     labels = _menu_action_labels(window._record_test_menu)
     assert "Запись" in labels
     assert "Запустить" in labels
+    assert "Селекторы на странице" in labels
+    assert "Настройки…" in labels
     assert "Отменить шаг записи" in labels
     assert "Открыть последний отчёт" in labels
 

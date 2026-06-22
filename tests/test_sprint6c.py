@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.gherkin_quick_fixes import suggest_quick_fixes
+from app.gherkin_quick_fixes import suggest_quick_fixes, suggest_quick_fixes_for_error, suggest_quick_fixes_for_error
 from app.gherkin_ru import STEP_INDENT, gherkin_to_steps, steps_to_gherkin
 from app.gherkin_outline import expand_outline_steps, outline_example_count, parse_outline, substitute_outline_value
 from app.player import _evaluate_condition, execute_step
@@ -155,3 +155,16 @@ def test_quick_fix_missing_quote() -> None:
     fixes = suggest_quick_fixes(text, 1)
     assert fixes
     assert fixes[0][1].endswith('"')
+
+
+def test_quick_fix_whole_file_indents() -> None:
+    text = (
+        "Сценарий: T\n"
+        f"{TAB}Допустим открыт \"https://a.com\"\n"
+        f'    И нажимаю "#id"\n'
+    )
+    fixes = suggest_quick_fixes_for_error(text, 3)
+    labels = [item[0].label for item in fixes]
+    assert "Исправить отступы во всём файле" in labels
+    whole = next(item[1] for item in fixes if item[0].label == "Исправить отступы во всём файле")
+    assert '    И нажимаю' not in whole

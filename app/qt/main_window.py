@@ -203,15 +203,9 @@ class MainWindow(QMainWindow):
         self.workspace.welcome_panel.quick_start.connect(self._quick_start)
         self.workspace.welcome_panel.insert_template.connect(self._new_scenario_with_template)
         self.workspace.welcome_panel.open_examples.connect(self._open_examples_project)
+        self.workspace.welcome_panel.checklist_step_clicked.connect(self._on_welcome_checklist_step)
         self.workspace.welcome_activated.connect(self._refresh_welcome_recents)
         self.workspace.welcome_activated.connect(self._sync_menu_states)
-        self.workspace.empty_panel.show_start.connect(
-            lambda: self.workspace.ensure_welcome_tab(activate=True)
-        )
-        self.workspace.empty_panel.open_project.connect(self._open_project)
-        self.workspace.empty_panel.open_examples.connect(self._open_examples_project)
-        self.workspace.empty_panel.create_feature.connect(self._new_scenario)
-        self.workspace.empty_panel.open_feature.connect(self._open_feature_file)
         self.workspace.state_changed.connect(self.status_bar.set_session_state)
 
         ws = self.workspace
@@ -490,6 +484,10 @@ class MainWindow(QMainWindow):
 
         project_menu = bar.addMenu("Проект")
         project_menu.addAction("Открыть проект…", self._open_project)
+        self._act_settings = QAction("Настройки…", self)
+        self._act_settings.setShortcut(QKeySequence("Ctrl+,"))
+        self._act_settings.triggered.connect(self._open_settings)
+        project_menu.addAction(self._act_settings)
         project_menu.addSeparator()
         quit_action = QAction("Выход", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -537,7 +535,7 @@ class MainWindow(QMainWindow):
         scenario_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
             QKeySequence("Ctrl+Shift+S")
         )
-        scenario_menu.addAction("Проверить текст сценария", self.workspace.gherkin_panel._validate)
+        scenario_menu.addAction("Синтаксис Gherkin", self.workspace.gherkin_panel._validate)
         scenario_menu.addSeparator()
         scenario_menu.addAction(
             "Наведение для меню…",
@@ -577,7 +575,7 @@ class MainWindow(QMainWindow):
         self._act_play.setShortcut(QKeySequence("Ctrl+Return"))
         self._act_play.triggered.connect(self._play_with_apply)
         record_test_menu.addAction(self._act_play)
-        record_test_menu.addAction("Проверить элементы", self._validate_with_apply)
+        record_test_menu.addAction("Селекторы на странице", self._validate_with_apply)
         self._act_run_selected = QAction("Запустить выбранные", self)
         self._act_run_selected.triggered.connect(self._run_selected_features)
         record_test_menu.addAction(self._act_run_selected)
@@ -607,7 +605,7 @@ class MainWindow(QMainWindow):
         self._act_saved_session.toggled.connect(self._on_saved_session_toggled)
         record_test_menu.addAction(self._act_saved_session)
         record_test_menu.addSeparator()
-        record_test_menu.addAction("Запись и селекторы…", self._open_recording_settings)
+        record_test_menu.addAction("Настройки…", lambda: self._open_settings(tab="recording"))
         record_test_menu.addAction("Открыть последний отчёт", self._open_latest_report)
 
         self._plugins_menu = bar.addMenu("Плагины")
@@ -620,18 +618,18 @@ class MainWindow(QMainWindow):
         view_menu.addAction("Сценарии", lambda: self.activity_bar.explorer_btn.setChecked(True))
         view_menu.addAction("Журнал", lambda: self._show_bottom_panel("log"))
         view_menu.addAction("Результаты", lambda: self._show_bottom_panel("results"))
-        view_menu.addAction("Проверка элементов", lambda: self._show_bottom_panel("validate"))
+        view_menu.addAction("Проверка селекторов", lambda: self._show_bottom_panel("validate"))
         view_menu.addAction("Ошибка", lambda: self._show_bottom_panel("error"))
         view_menu.addSeparator()
         view_menu.addAction("Сбросить макет окон", self._reset_layout)
-        self._act_toolbar_compact = QAction("Компактная панель инструментов", self)
+        self._act_toolbar_compact = QAction("Компактная панель", self)
         self._act_toolbar_compact.setCheckable(True)
         self._act_toolbar_compact.setChecked(bool(load_settings().get("toolbar_compact")))
         self._act_toolbar_compact.toggled.connect(self._on_toolbar_compact_toggled)
         view_menu.addAction(self._act_toolbar_compact)
 
         help_menu = bar.addMenu("Справка")
-        help_menu.addAction("Шаги…", self._open_step_help).setShortcut("F1")
+        help_menu.addAction("Справка…", self._open_step_help).setShortcut("F1")
         help_menu.addAction("Горячие клавиши", self._show_hotkeys).setShortcut("Shift+F1")
         if updates_supported():
             help_menu.addAction("Проверить обновления…", self._check_updates_manual)
@@ -827,9 +825,12 @@ class MainWindow(QMainWindow):
         return editor, editor.toPlainText()
 
     def _set_active_editor_text(self, editor: object, text: str) -> None:
-        editor.setPlainText(text)
-        self.workspace.gherkin_panel._auto_apply_timer.stop()
-        self.workspace.gherkin_panel._auto_apply_if_valid()
+        panel = self.workspace.gherkin_panel
+        panel._block = True
+        editor.replace_plain_text_preserve_caret(text)
+        panel._block = False
+        panel._auto_apply_timer.stop()
+        panel._auto_apply_if_valid()
 
     def _refactor_update_start_urls(self) -> None:
         from PySide6.QtWidgets import QInputDialog
@@ -1080,6 +1081,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_act_toolbar_compact"):
             blocked = self._act_toolbar_compact.blockSignals(True)
             self._act_toolbar_compact.setChecked(enabled)
+            self._act_toolbar_compact.setText(
+                "Расширенная панель" if enabled else "Компактная панель"
+            )
             self._act_toolbar_compact.blockSignals(blocked)
 
     def _on_toolbar_compact_toggled(self, checked: bool) -> None:
@@ -1184,9 +1188,12 @@ class MainWindow(QMainWindow):
     def _sync_menu_states(self) -> None:
         s = self._controller.session
         editor_active = self.workspace.is_editor_tab_active()
+        panel = self.workspace.gherkin_panel
         has_steps = editor_active and bool(self._controller.scenario.steps)
         pending = s.pending
-        unapplied = self.workspace.gherkin_panel.has_parse_error if editor_active else False
+        parse_error = editor_active and panel.has_parse_error
+        text_unapplied = editor_active and panel.is_unapplied and not parse_error
+        block_play = editor_active and (panel.has_parse_error or panel.is_unapplied)
         batch_running = self._controller.recording.is_batch_running or s.vanessa_running
         browser_active = s.browser_session_active()
         for action in (self._act_save, self._act_browser, self._act_record, self._act_play):
@@ -1209,7 +1216,7 @@ class MainWindow(QMainWindow):
                 and has_steps
                 and not batch_running
                 and not self._controller.recording.player_worker_active
-                and not unapplied
+                and not block_play
             )
             self._act_save.setEnabled(editor_active and not s.recording)
         self._act_stop.setEnabled(
@@ -1232,7 +1239,8 @@ class MainWindow(QMainWindow):
             recording=s.recording,
             playing=s.playing,
             has_steps=has_steps,
-            unapplied=unapplied,
+            unapplied=text_unapplied,
+            parse_error=parse_error,
             batch_running=batch_running,
             picking=self._controller.recording.is_picking,
             editor_active=editor_active,
@@ -1263,11 +1271,50 @@ class MainWindow(QMainWindow):
             browser_open=browser_active,
             recording=s.recording,
             step_count=len(scenario.steps) if editor_active else 0,
-            gherkin_unapplied=unapplied,
+            gherkin_unapplied=block_play,
             project_label=project,
         )
         self._sync_status_runner()
         self._sync_browser_overlay()
+        self._sync_welcome_checklist()
+
+    def _sync_welcome_checklist(self) -> None:
+        from app.feature_store import get_root
+        from app.settings import load_settings
+
+        settings = load_settings()
+        dismissed = bool(settings.get("first_run_checklist_done"))
+        project_open = get_root() is not None
+        scenario = self._controller.scenario
+        s = self._controller.session
+        recorded = bool(scenario.steps) or s.recording
+        played_success = dismissed
+        self.workspace.welcome_panel.update_checklist(
+            project_open=project_open,
+            recorded=recorded,
+            played_success=played_success,
+            dismissed=dismissed,
+        )
+
+    def _on_welcome_checklist_step(self, step_id: int) -> None:
+        if step_id == 1:
+            self._open_project()
+            return
+        if step_id == 2:
+            url = self.workspace.welcome_panel.quick_url()
+            self._quick_start(url)
+            return
+        if step_id == 3:
+            if not self.workspace.has_editor_tabs():
+                self._new_scenario()
+            else:
+                self.workspace.show_editor()
+            self._sync_menu_states()
+            play_btn = self.workspace.quick_toolbar._buttons.get("play")
+            if play_btn is not None and play_btn.isEnabled():
+                play_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+            else:
+                self.status_bar.set_message("Добавьте шаги и примените текст перед запуском")
 
     def _resolve_active_runner_id(self) -> str:
         from app.project_config import default_runner
@@ -1431,12 +1478,44 @@ class MainWindow(QMainWindow):
         self._sync_menu_states()
 
     def _open_recording_settings(self) -> None:
-        from app.qt.widgets.recording_settings_dialog import open_recording_settings_dialog
+        self._open_settings(tab="recording")
 
-        if open_recording_settings_dialog(self):
-            self._controller.recording.apply_recording_modes()
-            self.status_bar.set_message("Настройки записи сохранены", "success")
-            self._sync_menu_states()
+    def _open_settings(self, *, tab: str = "interface") -> None:
+        from app.qt.widgets.settings_dialog import open_settings_dialog
+
+        result = open_settings_dialog(
+            self,
+            initial_tab=tab,  # type: ignore[arg-type]
+            on_vanessa_settings=self._open_vanessa_settings,
+        )
+        if not result.saved:
+            return
+        self._apply_saved_settings(result)
+        self.status_bar.set_message("Настройки сохранены", "success")
+
+    def _open_vanessa_settings(self) -> None:
+        if not self._is_plugin_installed("vanessa"):
+            alert(self, BRAND_NAME, "Add-on Vanessa не установлен")
+            return
+        from scenaria_vanessa.qt.vanessa_settings_dialog import VanessaSettingsDialog
+
+        dialog = VanessaSettingsDialog(self)
+        if dialog.exec():
+            self._refresh_plugins_menu()
+
+    def _apply_saved_settings(self, result) -> None:
+        settings = load_settings()
+        session = self._controller.session
+        session.filter_recording = bool(settings.get("filter_recording"))
+        session.nav_only_recording = bool(settings.get("nav_only_recording"))
+        session.headless = bool(settings.get("headless"))
+        session.hover_recording = bool(settings.get("hover_record_enabled"))
+        self._controller.recording.apply_recording_modes()
+        if result.toolbar_compact_changed:
+            self._apply_toolbar_compact(result.toolbar_compact)
+        if result.interface_changed:
+            self.workspace.reload_interface_settings()
+        self._sync_menu_states()
 
     def _update_window_title(self) -> None:
         title = BRAND_NAME
@@ -1678,6 +1757,14 @@ class MainWindow(QMainWindow):
 
     def _on_play_results(self, payload: dict, _duration_ms: int) -> None:
         has_failed = self._controller.session.last_failed_step_index is not None
+        if not has_failed:
+            from app.settings import load_settings, save_settings
+
+            settings = load_settings()
+            if not settings.get("first_run_checklist_done"):
+                settings["first_run_checklist_done"] = True
+                save_settings(settings)
+                self._sync_welcome_checklist()
         self.bottom_panel.results_panel.show_results(payload, has_failed_step=has_failed)
         self.workspace.clear_play_highlight()
         if has_failed:

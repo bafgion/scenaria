@@ -17,7 +17,11 @@ def test_load_browser_engine_from_settings() -> None:
     assert load_browser_engine({"browser_engine": "webkit"}) == "webkit"
 
 
-def test_launch_browser_uses_engine() -> None:
+def test_launch_browser_uses_engine(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.playwright_browsers.ensure_browser_engine",
+        lambda engine, on_line=None: None,
+    )
     playwright = MagicMock()
     chromium = MagicMock()
     firefox = MagicMock()

@@ -761,6 +761,13 @@ def _parse_indented_steps(
         if level < base_level:
             break
         if level > base_level:
+            indent = leading_indent(raw)
+            if "\t" not in indent and indent.strip() == "":
+                raise GherkinParseError(
+                    line_no,
+                    raw.strip(),
+                    "Отступ пробелами вместо таба — используйте таб или Рефакторинг → Нормализовать отступы",
+                )
             raise GherkinParseError(line_no, raw.strip(), "Неожиданный отступ")
 
         line = raw.strip()
@@ -815,9 +822,51 @@ def _parse_indented_steps(
     return steps, index
 
 
+def _coalesce_mixed_step_indents(items: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """If the scenario uses tab-indented steps, normalize stray 2/4-space indents to one tab."""
+    if not items:
+        return items
+    if not any(leading_indent(raw).startswith("\t") for _, raw in items):
+        return items
+    coalesced: list[tuple[int, str]] = []
+    for line_no, raw in items:
+        indent = leading_indent(raw)
+        if "\t" not in indent and indent.strip() == "" and len(indent) in (2, 4):
+            raw = f"{STEP_INDENT}{raw.lstrip()}"
+        coalesced.append((line_no, raw))
+    return coalesced
+
+
+def coalesce_mixed_step_indents_in_text(text: str) -> str:
+    """Rewrite stray 2/4-space step indents to tabs when the file already uses tab indents."""
+    if not text:
+        return text
+    lines = text.replace("\r\n", "\n").splitlines()
+    if not any(is_gherkin_step_line(raw) and leading_indent(raw).startswith("\t") for raw in lines):
+        return text
+    changed = False
+    result: list[str] = []
+    for raw in lines:
+        if not is_gherkin_step_line(raw):
+            result.append(raw)
+            continue
+        indent = leading_indent(raw)
+        if "\t" not in indent and indent.strip() == "" and len(indent) in (2, 4):
+            raw = f"{STEP_INDENT}{raw.lstrip()}"
+            changed = True
+        result.append(raw)
+    if not changed:
+        return text
+    suffix = "\n" if text.endswith("\n") else ""
+    payload = "\n".join(result)
+    if suffix and payload:
+        payload += "\n"
+    return payload
+
+
 def _parse_gherkin_to_steps(text: str) -> list[dict[str, Any]]:
     """Parse already-normalized Gherkin-like text into step dictionaries."""
-    items = _collect_step_lines(text)
+    items = _coalesce_mixed_step_indents(_collect_step_lines(text))
     steps, _ = _parse_indented_steps(items)
     return steps
 
@@ -915,7 +964,9 @@ def parse_gherkin_steps(text: str) -> tuple[list[dict[str, Any]], str]:
     current = normalized
     while True:
         try:
-            return _parse_gherkin_to_steps(current), current
+            steps = _parse_gherkin_to_steps(current)
+            canonical = coalesce_mixed_step_indents_in_text(current)
+            return steps, canonical
         except GherkinParseError as exc:
             repaired = try_repair_step_quote_on_line(current, exc)
             if repaired is None or repaired == current:

@@ -9,6 +9,7 @@ from app.mvc.controllers.catalog_controller import CatalogController
 from app.mvc.models.catalog_model import CatalogModel, CatalogViewState
 from app.qt import icons
 from app.qt.widgets.catalog_panel import CatalogPanel
+from app.settings import load_settings, save_settings
 
 
 class Sidebar(QWidget):
@@ -28,6 +29,8 @@ class Sidebar(QWidget):
     ) -> None:
         super().__init__(parent)
         self._model = model
+        self._selection_mode = False
+        self._tree_visible = False
         self.setProperty("role", "sidebar")
         self.setMinimumWidth(120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -60,13 +63,20 @@ class Sidebar(QWidget):
         self.new_btn.setProperty("compact-icon", True)
         self.new_btn.setToolTip("Новый сценарий")
         search_row.addWidget(self.new_btn)
+        self._selection_mode_btn = QToolButton()
+        self._selection_mode_btn.setText("Выбор")
+        self._selection_mode_btn.setCheckable(True)
+        self._selection_mode_btn.setAutoRaise(True)
+        self._selection_mode_btn.setToolTip("Режим выбора сценариев для пакетного запуска")
+        self._selection_mode_btn.toggled.connect(self._on_selection_mode_toggled)
+        search_row.addWidget(self._selection_mode_btn)
         header_layout.addLayout(search_row)
 
         self._run_row = QWidget(header)
         run_row_layout = QHBoxLayout(self._run_row)
         run_row_layout.setContentsMargins(0, 0, 0, 0)
         run_row_layout.setSpacing(4)
-        self.run_selection_label = QLabel("Выбрано: 0")
+        self.run_selection_label = QLabel("Выбрано для запуска: 0")
         self.run_selection_label.setProperty("role", "muted")
         run_row_layout.addWidget(self.run_selection_label, stretch=1)
         self.clear_run_selection_btn = QToolButton()
@@ -82,10 +92,18 @@ class Sidebar(QWidget):
         self.run_selected_btn.setFixedSize(24, 24)
         self.run_selected_btn.setAutoRaise(True)
         self.run_selected_btn.setProperty("compact-icon", True)
-        self.run_selected_btn.setToolTip("Запустить выбранные сценарии (Ctrl+клик в дереве)")
+        self.run_selected_btn.setToolTip("Запустить выбранные сценарии")
         self.run_selected_btn.clicked.connect(self.run_selected_requested.emit)
         run_row_layout.addWidget(self.run_selected_btn)
         header_layout.addWidget(self._run_row)
+
+        self._batch_hint = QLabel(
+            "Кликните «Выбор» или Ctrl+клик по файлу — пакетный запуск"
+        )
+        self._batch_hint.setProperty("role", "muted")
+        self._batch_hint.setWordWrap(True)
+        self._batch_hint.setStyleSheet("font-size: 8pt; padding-top: 2px;")
+        header_layout.addWidget(self._batch_hint)
 
         layout.addWidget(header)
 
@@ -108,8 +126,16 @@ class Sidebar(QWidget):
         model.run_selection_changed.connect(self._on_run_selection_changed)
 
         self._update_run_selection_ui()
+        self._update_batch_hint()
+
+    def _on_selection_mode_toggled(self, checked: bool) -> None:
+        self._selection_mode = checked
+        self.catalog_panel.set_selection_mode(checked)
+        self._model.refresh_tree()
 
     def _on_run_selection_changed(self) -> None:
+        if self._model.run_selection_count > 0:
+            self._dismiss_batch_hint()
         self._update_run_selection_ui()
         self.catalog_panel.tree.update_run_selection_marks(self._model.run_selection_keys)
 
@@ -118,17 +144,33 @@ class Sidebar(QWidget):
 
     def _on_tree_changed(self, state: object) -> None:
         if isinstance(state, CatalogViewState):
+            self._tree_visible = state.tree is not None and not state.show_empty_message
             self.catalog_panel.display_state(
                 state,
                 collapsed=self._model.collapsed_keys,
                 run_selection=self._model.run_selection_keys,
             )
         else:
+            self._tree_visible = False
             self.catalog_panel.display_tree(None)
+        self._update_batch_hint()
 
     def _update_run_selection_ui(self) -> None:
         count = self._model.run_selection_count
-        self.run_selection_label.setText(f"Выбрано: {count}")
+        self.run_selection_label.setText(f"Выбрано для запуска: {count}")
         enabled = count > 0
         self.run_selected_btn.setEnabled(enabled)
         self.clear_run_selection_btn.setEnabled(enabled)
+
+    def _update_batch_hint(self) -> None:
+        dismissed = bool(load_settings().get("catalog_batch_hint_dismissed"))
+        visible = self._tree_visible and not dismissed and self._model.run_selection_count == 0
+        self._batch_hint.setVisible(visible)
+
+    def _dismiss_batch_hint(self) -> None:
+        settings = load_settings()
+        if settings.get("catalog_batch_hint_dismissed"):
+            return
+        settings["catalog_batch_hint_dismissed"] = True
+        save_settings(settings)
+        self._update_batch_hint()

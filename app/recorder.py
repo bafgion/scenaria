@@ -612,7 +612,12 @@ class ScenarioRecorder:
         if self._browser is None or not self._browser.is_connected():
             label = wanted_engine.capitalize()
             self._emit_status(f"Запуск {label}...")
-            self._browser = launch_browser(self._playwright, engine=wanted_engine, headless=False)
+            self._browser = launch_browser(
+                self._playwright,
+                engine=wanted_engine,
+                headless=False,
+                on_status=self._emit_status,
+            )
             self._browser_engine = wanted_engine
             context_options = browser_context_options(start_url)
             self._context = self._browser.new_context(**context_options)

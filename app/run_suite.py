@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 from app.feature_store import load_feature
 
+from app.gherkin_ru import gherkin_to_steps
 from app.gherkin_outline import expand_outline_steps, parse_outline
 
 from app.mvc.models.catalog_model import collect_feature_paths_with_tag, feature_has_tag
@@ -237,85 +238,79 @@ def _expand_cases_with_params(cases: list[FeatureRunCase], path: Path) -> list[F
 
 
 
-def expand_feature_cases(path: Path) -> list[FeatureRunCase]:
+def _start_url_from_steps(steps: list[dict[str, Any]]) -> str:
+    for step in steps:
+        if step.get("action") == "goto":
+            url = str(step.get("url", "") or "").strip()
+            if url:
+                return url
+    return ""
 
-    text = path.read_text(encoding="utf-8")
 
+def expand_feature_cases_from_text(text: str, path: Path) -> list[FeatureRunCase]:
     outline = parse_outline(text)
-
     if outline is None:
-
-        loaded = load_feature(path)
-
+        steps = gherkin_to_steps(text)
         return _expand_cases_with_params(
-
             [
-
                 FeatureRunCase(
-
                     path=path,
-
                     label=path.stem,
-
-                    steps=list(loaded.get("steps", []) or []),
-
-                    start_url=str(loaded.get("startUrl", "") or ""),
-
+                    steps=list(steps),
+                    start_url=_start_url_from_steps(steps),
                 )
-
             ],
-
             path,
-
         )
-
-
 
     cases: list[FeatureRunCase] = []
-
     for index, row in enumerate(outline.rows, start=1):
-
         steps = expand_outline_steps(outline.template_steps, row)
-
-        start_url = ""
-
-        for step in steps:
-
-            if step.get("action") == "goto":
-
-                start_url = str(step.get("url", "") or "").strip()
-
-                if start_url:
-
-                    break
-
+        start_url = _start_url_from_steps(steps)
         sample = next((value for value in row.values() if str(value).strip()), "")
-
         label = f"{path.stem} ({index})"
-
         if sample:
-
             label = f"{path.stem} — {sample}"
-
         cases.append(
-
             FeatureRunCase(
-
                 path=path,
-
                 label=label,
-
                 steps=steps,
-
                 start_url=start_url,
-
                 example_index=index,
-
             )
-
         )
-
     return _expand_cases_with_params(cases, path)
+
+
+def feature_case_to_scenario(case: FeatureRunCase) -> dict[str, Any]:
+    scenario: dict[str, Any] = {
+        "name": case.label,
+        "startUrl": case.start_url,
+        "steps": list(case.steps),
+    }
+    if case.variables:
+        scenario["variables"] = dict(case.variables)
+    return scenario
+
+
+def collect_play_scenarios(
+    path: Path | None,
+    *,
+    text: str | None = None,
+) -> list[dict[str, Any]]:
+    """Expand outline/examples and .params.json into runnable scenario dicts."""
+    if text is None:
+        if path is None or not path.is_file():
+            raise FileNotFoundError("Нет файла сценария для прогона")
+        text = path.read_text(encoding="utf-8")
+    resolved_path = path if path is not None else Path("scenario.feature")
+    return [feature_case_to_scenario(case) for case in expand_feature_cases_from_text(text, resolved_path)]
+
+
+def expand_feature_cases(path: Path) -> list[FeatureRunCase]:
+    text = path.read_text(encoding="utf-8")
+    return expand_feature_cases_from_text(text, path)
 
 
 

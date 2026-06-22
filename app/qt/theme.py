@@ -562,5 +562,105 @@ def apply_dark_theme(app: QApplication) -> None:
             padding: 2px 4px;
             font-size: 8pt;
         }}
+        QDialog[role="settings-dialog"] {{
+            background: {COLOR_BG};
+        }}
+        QWidget[role="settings-search-header"] {{
+            background: {COLOR_SIDEBAR};
+            border-bottom: 1px solid {COLOR_DIVIDER};
+        }}
+        QWidget[role="settings-search-header"] QLineEdit {{
+            background: {COLOR_INPUT};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 9pt;
+        }}
+        QLabel[role="settings-empty-search"] {{
+            color: {COLOR_MUTED};
+            font-size: 10pt;
+            padding: 32px;
+        }}
+        QListWidget[role="settings-nav"] {{
+            background: {COLOR_SIDEBAR};
+            border: none;
+            outline: none;
+            padding: 8px 6px;
+            font-size: 9pt;
+        }}
+        QListWidget[role="settings-nav"]::item {{
+            color: {COLOR_MUTED};
+            padding: 8px 10px;
+            border-radius: 4px;
+            margin: 1px 0;
+        }}
+        QListWidget[role="settings-nav"]::item:selected {{
+            background: {COLOR_DIR_SELECTED};
+            color: {COLOR_TEXT};
+        }}
+        QListWidget[role="settings-nav"]::item:hover:!selected {{
+            background: {COLOR_INPUT};
+            color: {COLOR_TEXT};
+        }}
+        QFrame[role="settings-nav-divider"] {{
+            background: {COLOR_DIVIDER};
+            max-width: 1px;
+            min-width: 1px;
+            border: none;
+        }}
+        QFrame[role="settings-footer-line"] {{
+            background: {COLOR_DIVIDER};
+            max-height: 1px;
+            min-height: 1px;
+            border: none;
+        }}
+        QWidget[role="settings-footer"] {{
+            background: {COLOR_SIDEBAR};
+        }}
+        QStackedWidget[role="settings-content"] {{
+            background: {COLOR_EDITOR};
+        }}
+        QScrollArea[role="settings-scroll"] {{
+            background: transparent;
+            border: none;
+        }}
+        QLabel[role="settings-section-title"] {{
+            color: {COLOR_TEXT};
+            font-size: 11pt;
+            font-weight: 600;
+            padding-bottom: 2px;
+        }}
+        QLabel[role="settings-section-hint"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+            line-height: 130%;
+            padding-bottom: 4px;
+        }}
+        QWidget[role="settings-option"] {{
+            background: #2a2d2e;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 6px;
+        }}
+        QLabel[role="settings-option-title"] {{
+            color: {COLOR_TEXT};
+            font-size: 9pt;
+            font-weight: 500;
+        }}
+        QLabel[role="settings-option-hint"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+            line-height: 130%;
+        }}
+        QWidget[role="settings-plugin-card"] {{
+            background: #2a2d2e;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 6px;
+        }}
+        QListWidget[role="settings-list"] {{
+            background: {COLOR_INPUT};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 4px;
+            padding: 4px;
+        }}
         """
     )

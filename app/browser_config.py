@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.http_auth import playwright_http_credentials
 
@@ -49,8 +49,14 @@ def launch_browser(
     headless: bool = False,
     slow_mo_ms: int = 0,
     settings: dict[str, Any] | None = None,
+    on_status: Callable[[str], None] | None = None,
 ):
     resolved = normalize_browser_engine(engine) if engine else load_browser_engine(settings)
+    from app.paths import configure_playwright_browsers
+    from app.playwright_browsers import ensure_browser_engine
+
+    ensure_browser_engine(resolved, on_line=on_status)
+    configure_playwright_browsers(engine=resolved)
     launcher = getattr(playwright, resolved)
     kwargs: dict[str, Any] = {"headless": headless}
     if slow_mo_ms > 0:

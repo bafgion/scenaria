@@ -36,6 +36,17 @@ def test_normalize_step_indents_uses_tabs() -> None:
     assert normalized.startswith(f"{TAB}Допустим")
 
 
+def test_normalize_step_indents_preserves_selectors() -> None:
+    text = (
+        "Сценарий: T\n"
+        f'{TAB}Допустим открыт "https://a.com"\n'
+        f'    И нажимаю "button:has-text(\\"Далее\\")"\n'
+    )
+    normalized = normalize_step_indents(text)
+    assert ':has-text(\\"Далее\\")' in normalized
+    assert '    И нажимаю' not in normalized
+
+
 def test_collapse_blank_lines_between_steps() -> None:
     text = f"{TAB}Допустим открыт \"https://a.com\"\n\n{TAB}И нажимаю \"x\""
     collapsed = collapse_blank_lines_between_steps(text)

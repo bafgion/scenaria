@@ -1713,6 +1713,7 @@ class ScenarioPlayer:
                 engine=engine,
                 headless=headless,
                 slow_mo_ms=slow_mo_ms,
+                on_status=on_log,
             )
             start_url = scenario.get("startUrl") or ""
             steps = scenario.get("steps") or []

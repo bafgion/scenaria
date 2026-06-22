@@ -35,13 +35,17 @@ DEFAULTS: dict[str, Any] = {
     "max_loop_iterations": 100,
     "palette_recent_commands": [],
     "toolbar_compact": False,
+    "first_run_checklist_done": False,
+    "catalog_batch_hint_dismissed": False,
 }
 
 
 def load_settings() -> dict[str, Any]:
     path = settings_path()
     if not path.exists():
-        return dict(DEFAULTS)
+        merged = dict(DEFAULTS)
+        merged["toolbar_compact"] = True
+        return merged
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):

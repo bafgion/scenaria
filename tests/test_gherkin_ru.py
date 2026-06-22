@@ -454,3 +454,31 @@ def test_parse_normalizes_legacy_unescaped_has_text_quotes() -> None:
     assert steps[1]["selector"] == 'button:has-text("Далее")'
     assert '\\"Далее\\"' in canonical.splitlines()[3]
     assert ':has-text("Далее")' not in canonical
+
+
+def test_parse_mixed_tab_and_space_step_indents() -> None:
+    from app.gherkin_ru import parse_gherkin_steps
+
+    text = (
+        "Сценарий: T\n"
+        f'{TAB}Допустим открыт "https://example.com"\n'
+        f'    И нажимаю "button.next"\n'
+        f'{TAB}И жду 1 сек\n'
+    )
+    steps = gherkin_to_steps(text)
+    assert [step["action"] for step in steps] == ["goto", "click", "wait"]
+    _, canonical = parse_gherkin_steps(text)
+    assert canonical.splitlines()[2].startswith(f"{TAB}И нажимаю")
+
+
+def test_coalesce_mixed_step_indents_in_text() -> None:
+    from app.gherkin_ru import coalesce_mixed_step_indents_in_text
+
+    text = (
+        "Сценарий: T\n"
+        f'{TAB}Допустим открыт "https://example.com"\n'
+        f'    И нажимаю "#taxationSystem"\n'
+    )
+    coalesced = coalesce_mixed_step_indents_in_text(text)
+    assert '    И нажимаю' not in coalesced
+    assert f'{TAB}И нажимаю "#taxationSystem"' in coalesced

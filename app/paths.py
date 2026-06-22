@@ -100,11 +100,79 @@ def examples_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "examples"
 
 
-def configure_playwright_browsers() -> None:
-    bundled = app_root() / "browsers"
-    if bundled.is_dir():
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(bundled)
-        return
-    local = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
+def ms_playwright_dir() -> Path:
+    return Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
+
+
+def bundled_browsers_dir() -> Path:
+    return app_root() / "browsers"
+
+
+_ENGINE_PREFIXES: dict[str, str] = {
+    "chromium": "chromium-",
+    "firefox": "firefox-",
+    "webkit": "webkit-",
+}
+
+
+def directory_has_engine(path: Path, engine: str) -> bool:
+    prefix = _ENGINE_PREFIXES.get(engine, "")
+    if not prefix or not path.is_dir():
+        return False
+    try:
+        return any(
+            item.is_dir() and item.name.startswith(prefix) for item in path.iterdir()
+        )
+    except OSError:
+        return False
+
+
+def browser_cache_candidates(*, engine: str | None = None) -> list[Path]:
+    """Ordered Playwright cache directories to search for browser binaries."""
+    bundled = bundled_browsers_dir()
+    local = ms_playwright_dir()
+    resolved = None
+    if engine:
+        from app.browser_config import normalize_browser_engine
+
+        resolved = normalize_browser_engine(engine)
+
+    candidates: list[Path] = []
+    if bundled.is_dir() and directory_has_engine(bundled, "chromium"):
+        candidates.append(bundled)
     if local.is_dir():
-        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(local))
+        candidates.append(local)
+    elif local not in candidates:
+        candidates.append(local)
+
+    if resolved:
+        preferred = [path for path in candidates if directory_has_engine(path, resolved)]
+        if preferred:
+            return preferred
+    return candidates
+
+
+def resolve_playwright_browsers_path(*, engine: str | None = None) -> Path:
+    if engine is None:
+        from app.browser_config import load_browser_engine
+
+        engine = load_browser_engine()
+    candidates = browser_cache_candidates(engine=engine)
+    return candidates[0] if candidates else ms_playwright_dir()
+
+
+def install_playwright_browsers_path(*, engine: str) -> Path:
+    """Writable cache directory for ``playwright install``."""
+    bundled = bundled_browsers_dir()
+    local = ms_playwright_dir()
+    if bundled.is_dir() and directory_has_engine(bundled, "chromium"):
+        bundled.mkdir(parents=True, exist_ok=True)
+        return bundled
+    local.mkdir(parents=True, exist_ok=True)
+    return local
+
+
+def configure_playwright_browsers(*, engine: str | None = None) -> None:
+    path = resolve_playwright_browsers_path(engine=engine)
+    path.mkdir(parents=True, exist_ok=True)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(path)

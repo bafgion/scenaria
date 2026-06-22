@@ -56,16 +56,42 @@ def update_start_urls(text: str, new_url: str) -> tuple[str, int]:
 
 
 def normalize_step_indents(text: str) -> str:
-    """Convert step lines to a single tab indent."""
-    lines: list[str] = []
-    for raw in text.replace("\r\n", "\n").splitlines():
+    """Convert step lines to tab indents without rewriting step bodies."""
+    from app.gherkin_blocks import line_indent_level
+
+    lines_in = text.replace("\r\n", "\n").splitlines()
+    has_tab_steps = any(
+        _is_step_block_line(line.strip(), line) and leading_indent(line).startswith("\t")
+        for line in lines_in
+    )
+    lines_out: list[str] = []
+    for raw in lines_in:
         stripped = raw.strip()
         if not _is_step_block_line(stripped, raw):
-            lines.append(raw)
+            lines_out.append(raw)
             continue
-        lines.append(f"{STEP_INDENT}{stripped}")
+        indent = leading_indent(raw)
+        if has_tab_steps:
+            if "\t" not in indent and indent.strip() == "" and len(indent) in (2, 4):
+                lines_out.append(f"{STEP_INDENT}{stripped}")
+                continue
+            if "\t" in indent:
+                level = max(1, indent.count("\t"))
+                lines_out.append(STEP_INDENT * level + stripped)
+                continue
+            lines_out.append(f"{STEP_INDENT}{stripped}")
+            continue
+        if "\t" in indent:
+            level = max(1, indent.count("\t"))
+            lines_out.append(STEP_INDENT * level + stripped)
+            continue
+        if indent.strip() == "" and len(indent) >= 2:
+            level = max(1, line_indent_level(raw))
+            lines_out.append(STEP_INDENT * level + stripped)
+            continue
+        lines_out.append(f"{STEP_INDENT}{stripped}")
     suffix = "\n" if text.endswith("\n") else ""
-    payload = "\n".join(lines)
+    payload = "\n".join(lines_out)
     if suffix and payload:
         payload += "\n"
     return payload

@@ -7,8 +7,14 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
-from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY
+from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_SUCCESS, COLOR_TEXT
 from app.brand import BRAND_NAME
+
+_CHECKLIST_STEPS = (
+    (1, "Открыть проект"),
+    (2, "Записать сценарий"),
+    (3, "Запустить тест"),
+)
 
 
 class WelcomePanel(QWidget):
@@ -20,6 +26,7 @@ class WelcomePanel(QWidget):
     quick_start = Signal(str)
     insert_template = Signal()
     open_examples = Signal()
+    checklist_step_clicked = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -40,10 +47,28 @@ class WelcomePanel(QWidget):
         title.setStyleSheet("font-size: 18pt; font-weight: 300;")
         layout.addWidget(title)
 
-        subtitle = QLabel("1. Откройте сайт → 2. Запишите → 3. Запустите тест")
-        subtitle.setProperty("muted", True)
-        subtitle.setStyleSheet(f"color: {COLOR_MUTED}; margin-bottom: 8px;")
-        layout.addWidget(subtitle)
+        self._checklist_box = QWidget(card)
+        self._checklist_box.setProperty("role", "welcome-checklist")
+        checklist_layout = QVBoxLayout(self._checklist_box)
+        checklist_layout.setContentsMargins(0, 4, 0, 8)
+        checklist_layout.setSpacing(2)
+        self._checklist_rows: dict[int, QLabel] = {}
+        for step_id, label in _CHECKLIST_STEPS:
+            row = QLabel()
+            row.setTextFormat(Qt.TextFormat.RichText)
+            row.setOpenExternalLinks(False)
+            row.linkActivated.connect(
+                lambda _href, sid=step_id: self.checklist_step_clicked.emit(sid)
+            )
+            checklist_layout.addWidget(row)
+            self._checklist_rows[step_id] = row
+        layout.addWidget(self._checklist_box)
+
+        self._subtitle = QLabel("1. Откройте сайт → 2. Запишите → 3. Запустите тест")
+        self._subtitle.setProperty("muted", True)
+        self._subtitle.setStyleSheet(f"color: {COLOR_MUTED}; margin-bottom: 8px;")
+        self._subtitle.hide()
+        layout.addWidget(self._subtitle)
 
         quick_row = QHBoxLayout()
         self._quick_url = QLineEdit()
@@ -85,6 +110,47 @@ class WelcomePanel(QWidget):
 
     def _emit_quick_start(self) -> None:
         self.quick_start.emit(self._quick_url.text().strip())
+
+    def quick_url(self) -> str:
+        return self._quick_url.text().strip()
+
+    def update_checklist(
+        self,
+        *,
+        project_open: bool,
+        recorded: bool,
+        played_success: bool,
+        dismissed: bool,
+    ) -> None:
+        if dismissed:
+            self._checklist_box.hide()
+            self._subtitle.hide()
+            return
+        self._checklist_box.show()
+        self._subtitle.hide()
+        done_flags = (project_open, recorded, played_success)
+        current_index = next((i for i, done in enumerate(done_flags) if not done), len(done_flags) - 1)
+        for index, (step_id, label) in enumerate(_CHECKLIST_STEPS):
+            row = self._checklist_rows[step_id]
+            if done_flags[index]:
+                icon = "✓"
+                color = COLOR_SUCCESS
+                weight = "normal"
+                clickable = False
+            elif index == current_index:
+                icon = "→"
+                color = COLOR_TEXT
+                weight = "600"
+                clickable = True
+            else:
+                icon = "○"
+                color = COLOR_MUTED
+                weight = "normal"
+                clickable = False
+            text = f'{icon} <span style="color:{color}; font-weight:{weight};">{label}</span>'
+            if clickable:
+                text = f'<a href="#" style="text-decoration:none; color:{color};">{text}</a>'
+            row.setText(text)
 
     def refresh_recents(self, features: list[Path], projects: list[Path]) -> None:
         self._fill_recents(self._recent_features_box, "Недавние файлы", features, self.open_recent_feature)

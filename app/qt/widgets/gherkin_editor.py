@@ -109,19 +109,31 @@ class GherkinEditor(QPlainTextEdit):
         complete = menu.addAction("Автодополнение")
         complete.setShortcut("Ctrl+Space")
         complete.triggered.connect(self._completer.trigger)
-        from app.gherkin_quick_fixes import suggest_quick_fixes
+        from app.gherkin_quick_fixes import suggest_quick_fixes, suggest_quick_fixes_for_error
 
-        fixes = suggest_quick_fixes(self.toPlainText(), cursor.blockNumber() + 1)
+        line_no = cursor.blockNumber() + 1
+        source_text = self.toPlainText()
+        panel = self.parent()
+        if panel is not None and getattr(panel, "has_parse_error", False):
+            fixes = suggest_quick_fixes_for_error(source_text, line_no)
+        else:
+            fixes = suggest_quick_fixes(source_text, line_no)
         actionable = [item for item in fixes if item[0].label != "Открыть палитру шагов (Ctrl+Shift+Space)"]
         if actionable:
             menu.addSeparator()
             fix_menu = menu.addMenu("Исправить")
             for quick_fix, new_text in actionable:
+                if new_text == source_text:
+                    continue
                 action = fix_menu.addAction(quick_fix.label)
                 action.setToolTip(quick_fix.description)
 
                 def _apply_fix(_checked=False, payload=new_text) -> None:
-                    self.setPlainText(payload)
+                    parent = self.parent()
+                    if parent is not None and hasattr(parent, "_apply_editor_text_fix"):
+                        parent._apply_editor_text_fix(payload)
+                        return
+                    self.replace_plain_text_preserve_caret(payload)
 
                 action.triggered.connect(_apply_fix)
             palette_fix = next(

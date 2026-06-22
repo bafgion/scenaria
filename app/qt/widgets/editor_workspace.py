@@ -24,7 +24,6 @@ from app.qt.widgets.post_record_banner import PostRecordBanner
 from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.recording_modes_bar import RecordingModesBar
 from app.qt.widgets.steps_strip import StepsStrip
-from app.qt.widgets.empty_editor_panel import EmptyEditorPanel
 from app.qt.widgets.welcome_panel import WelcomePanel
 from app.scenario_hints import ScenarioHint, collect_all_hints
 from app.settings import load_settings, save_settings
@@ -32,7 +31,6 @@ from app.brand import BRAND_NAME
 
 _PAGE_WELCOME = 0
 _PAGE_EDITOR = 1
-_PAGE_EMPTY = 2
 _WELCOME_KEY = "__welcome__"
 
 
@@ -150,12 +148,10 @@ class EditorWorkspace(QWidget):
 
         self.stack.addWidget(editor_page)
 
-        self.empty_panel = EmptyEditorPanel(self.stack)
-        self.stack.addWidget(self.empty_panel)
-
         layout.addWidget(self.stack, stretch=1)
 
         self.dirty_banner.discard_clicked.connect(self.gherkin_panel.discard_changes)
+        self.dirty_banner.apply_clicked.connect(self.gherkin_panel._apply)
         self.steps_strip.step_selected.connect(self.gherkin_panel.focus_step)
         self.steps_strip.fix_menu_clicked.connect(self._fix_menu_for_step)
         self.steps_strip.step_delete.connect(self._on_step_delete)
@@ -292,7 +288,9 @@ class EditorWorkspace(QWidget):
         if not recorder_browser_open:
             recorder_browser_open = browser_open
         editor_active = self.is_editor_tab_active()
-        parse_error = self.gherkin_panel.has_parse_error if editor_active else False
+        panel = self.gherkin_panel
+        parse_error = panel.has_parse_error if editor_active else False
+        text_unapplied = panel.is_unapplied if editor_active else False
         self.editor_action_bar.set_url(self._model.start_url)
         self.editor_action_bar.set_editor_fields_enabled(editor_active)
         self._update_run_target()
@@ -304,7 +302,15 @@ class EditorWorkspace(QWidget):
             use_saved_session=bool(load_settings().get("use_saved_browser_session", True)),
             hover_recording=self._session.hover_recording,
         )
-        self.dirty_banner.set_visible(parse_error and not recording)
+        if editor_active and not recording:
+            if parse_error:
+                self.dirty_banner.set_banner(visible=True, mode="parse_error")
+            elif text_unapplied:
+                self.dirty_banner.set_banner(visible=True, mode="unapplied")
+            else:
+                self.dirty_banner.set_visible(False)
+        else:
+            self.dirty_banner.set_visible(False)
         self._refresh_steps_strip()
 
     def show_post_record(self, steps: list[dict]) -> None:
@@ -744,20 +750,18 @@ class EditorWorkspace(QWidget):
         return True
 
     def _show_empty_workspace(self) -> None:
-        self.tab_bar.setVisible(False)
-        self._current_index = -1
         self._scenario_controller.new_scenario()
         self.gherkin_panel.set_text("", clean=True)
         self.steps_strip.set_steps([])
         self.dirty_banner.set_visible(False)
         self.post_record_banner.hide_banner()
-        self.stack.setCurrentIndex(_PAGE_EMPTY)
         self.editor_action_bar.set_run_target(
             title="—",
             path=None,
             unapplied=False,
             unsaved=False,
         )
+        self.ensure_welcome_tab(activate=True)
 
     def _on_editor_dirty_changed(self, dirty: bool) -> None:
         if self._current_index < 0 or self._current_index >= len(self._tabs):
@@ -770,7 +774,15 @@ class EditorWorkspace(QWidget):
         tab.text = panel.get_text()
         tab.unsaved = self._is_file_unsaved()
         self._update_tab_bar_item(self._current_index)
-        self.dirty_banner.set_visible(panel.has_parse_error and not self._session.recording)
+        if not self._session.recording:
+            if panel.has_parse_error:
+                self.dirty_banner.set_banner(visible=True, mode="parse_error")
+            elif panel.is_unapplied:
+                self.dirty_banner.set_banner(visible=True, mode="unapplied")
+            else:
+                self.dirty_banner.set_visible(False)
+        else:
+            self.dirty_banner.set_visible(False)
         self._update_run_target()
 
     def _on_gherkin_applied(self) -> None:
@@ -839,6 +851,10 @@ class EditorWorkspace(QWidget):
         settings = load_settings()
         self._steps_panel_height = max(80, int(settings.get("steps_panel_height", 160)))
         self._steps_panel_visible = bool(settings.get("steps_panel_visible", True))
+
+    def reload_interface_settings(self) -> None:
+        self._load_steps_panel_settings()
+        self._apply_steps_panel_layout()
 
     def _save_steps_panel_settings(self) -> None:
         settings = load_settings()

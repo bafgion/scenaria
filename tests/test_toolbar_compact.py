@@ -30,6 +30,24 @@ def test_simple_mode_hides_secondary_row(qapp) -> None:
     assert toolbar._secondary_wrap.isVisible()
 
 
+def test_fresh_install_defaults_to_compact_toolbar(tmp_path, monkeypatch) -> None:
+    from app import settings as settings_mod
+
+    monkeypatch.setattr(settings_mod, "settings_path", lambda: tmp_path / "settings.json")
+    loaded = settings_mod.load_settings()
+    assert loaded["toolbar_compact"] is True
+
+
+def test_existing_settings_keep_toolbar_compact_false(tmp_path, monkeypatch) -> None:
+    from app import settings as settings_mod
+
+    path = tmp_path / "settings.json"
+    path.write_text('{"toolbar_compact": false}', encoding="utf-8")
+    monkeypatch.setattr(settings_mod, "settings_path", lambda: path)
+    loaded = settings_mod.load_settings()
+    assert loaded["toolbar_compact"] is False
+
+
 def test_main_window_toolbar_compact_setting(qapp) -> None:
     from app.mvc.controllers.app_controller import AppController
     from app.qt.main_window import MainWindow

@@ -22,6 +22,24 @@ def test_example_features_parse() -> None:
         assert steps, f"{path.name} produced no steps"
 
 
+def test_outline_example_expands() -> None:
+    from app.gherkin_outline import outline_example_count, parse_outline
+    from app.run_suite import collect_play_scenarios
+
+    path = examples_dir() / "04-tablica-primerov.feature"
+    text = path.read_text(encoding="utf-8")
+    assert outline_example_count(text) == 2
+    outline = parse_outline(text)
+    assert outline is not None
+    assert outline.rows[0]["url"] == "https://example.com"
+
+    scenarios = collect_play_scenarios(path, text=text)
+    assert len(scenarios) == 2
+    assert scenarios[0]["steps"][0]["url"] == "https://example.com"
+    assert scenarios[1]["steps"][0]["url"] == "https://www.example.org"
+    assert "<url>" not in scenarios[0]["steps"][0]["url"]
+
+
 def test_first_example_is_simple_goto_assert() -> None:
     path = examples_dir() / "01-pervaya-proverka.feature"
     steps = gherkin_to_steps(path.read_text(encoding="utf-8"))

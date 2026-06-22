@@ -226,7 +226,8 @@ def build_catalog_view_state(root: Path | None, filter_text: str) -> CatalogView
             empty_title="Нет сценариев",
             empty_hint=(
                 f"В «{root.name}» пока нет .feature файлов.\n"
-                "Нажмите + или Сценарий → Новый."
+                "Нажмите + или Сценарий → Новый.\n"
+                "Для пакетного запуска: режим «Выбор» или Ctrl+клик по файлу."
             ),
             empty_kind="no_files",
         )

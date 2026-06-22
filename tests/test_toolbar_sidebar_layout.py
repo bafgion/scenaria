@@ -47,7 +47,7 @@ def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
     full_width = _expand_until_full_toolbar(bar, qapp)
-    assert bar.toolbar._buttons["validate"].text() == "Проверить элементы"
+    assert bar.toolbar._buttons["validate"].text() == "Селекторы на странице"
 
     bar.resize(max(400, full_width - 500), bar.sizeHint().height())
     qapp.processEvents()
@@ -140,7 +140,7 @@ def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
     _expand_until_full_toolbar(bar, qapp)
-    assert bar.toolbar._buttons["validate"].text() == "Проверить элементы"
+    assert bar.toolbar._buttons["validate"].text() == "Селекторы на странице"
 
 
 @_skip_layout_on_ci

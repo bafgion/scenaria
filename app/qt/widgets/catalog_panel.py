@@ -39,6 +39,7 @@ class CatalogTreeView(QTreeView):
         self._on_expansion_changed = None
         self._on_toggle_run_selection = None
         self._run_selection: frozenset[str] = frozenset()
+        self._selection_mode = False
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         hint = super().minimumSizeHint()
@@ -59,6 +60,9 @@ class CatalogTreeView(QTreeView):
 
     def set_toggle_run_selection_handler(self, handler) -> None:
         self._on_toggle_run_selection = handler
+
+    def set_selection_mode(self, enabled: bool) -> None:
+        self._selection_mode = enabled
 
     def set_run_selection(self, keys: frozenset[str]) -> None:
         self._run_selection = keys
@@ -107,9 +111,12 @@ class CatalogTreeView(QTreeView):
             if data:
                 path_str, kind = data
                 if (
-                    event.modifiers() & Qt.KeyboardModifier.ControlModifier
-                    and kind == "file"
+                    kind == "file"
                     and self._on_toggle_run_selection
+                    and (
+                        event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                        or self._selection_mode
+                    )
                 ):
                     self._on_toggle_run_selection(Path(path_str))
                     event.accept()
@@ -266,7 +273,11 @@ class CatalogTreeView(QTreeView):
         else:
             badge = "○"
         selected = str(node.path.resolve()) in self._run_selection
-        mark = "◉ " if selected else ""
+        if self._selection_mode and node.kind == "file":
+            box = "☑" if selected else "☐"
+            mark = f"{box} "
+        else:
+            mark = "◉ " if selected else ""
         parts = [node.name]
         if node.parse_error:
             parts.append("ошибка")
@@ -395,3 +406,6 @@ class CatalogPanel(QWidget):
         from app.mvc.models.catalog_model import CatalogViewState
 
         self.display_state(CatalogViewState(tree=tree))
+
+    def set_selection_mode(self, enabled: bool) -> None:
+        self.tree.set_selection_mode(enabled)

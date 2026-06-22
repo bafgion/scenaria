@@ -40,13 +40,13 @@ def test_ensure_welcome_tab_is_closable(qapp) -> None:
     assert workspace._tabs[0].is_welcome
 
     assert workspace._close_tab_at(0, force=False)
-    assert workspace.tab_bar.count() == 0
-    assert not workspace.has_open_tabs()
+    assert workspace.tab_bar.count() == 1
+    assert workspace._tabs[0].is_welcome
 
 
-def test_close_welcome_shows_empty_workspace(qapp) -> None:
+def test_close_welcome_reopens_start_tab(qapp) -> None:
     from app.mvc.controllers.app_controller import AppController
-    from app.qt.widgets.editor_workspace import EditorWorkspace, _PAGE_EMPTY
+    from app.qt.widgets.editor_workspace import EditorWorkspace, _PAGE_WELCOME
 
     controller = AppController()
     workspace = EditorWorkspace(controller)
@@ -54,8 +54,9 @@ def test_close_welcome_shows_empty_workspace(qapp) -> None:
 
     workspace.ensure_welcome_tab(activate=True)
     assert workspace._close_tab_at(0, force=False)
-    assert workspace.tab_bar.count() == 0
-    assert workspace.stack.currentIndex() == _PAGE_EMPTY
+    assert workspace.tab_bar.count() == 1
+    assert workspace._tabs[0].is_welcome
+    assert workspace.stack.currentIndex() == _PAGE_WELCOME
 
 
 def test_welcome_tab_reopens_without_duplicates(qapp) -> None:

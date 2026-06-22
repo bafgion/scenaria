@@ -16,6 +16,7 @@ from app.qt.dialogs import prompt_text
 from app.qt.widgets.picker_step_dialog import pick_picker_step
 from app.qt.theme import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
 from app.qt.widgets.gherkin_editor import GherkinEditor
+from app.qt.widgets.gherkin_error_bar import GherkinErrorBar
 from app.qt.widgets.gherkin_hints import GherkinHintsBar
 from app.brand import BRAND_NAME
 
@@ -49,6 +50,10 @@ class GherkinPanel(QWidget):
         self.hints_bar = GherkinHintsBar(self)
         self.hints_bar.insert_template_clicked.connect(self._insert_template)
         layout.addWidget(self.hints_bar)
+
+        self.error_bar = GherkinErrorBar(self)
+        self.error_bar.fix_requested.connect(self._apply_editor_text_fix)
+        layout.addWidget(self.error_bar)
 
         self.editor = GherkinEditor(self)
         self.editor.setPlaceholderText(
@@ -158,11 +163,22 @@ class GherkinPanel(QWidget):
         return canonical
 
     def _report_parse_error(self, exc: GherkinParseError) -> None:
+        from app.gherkin_quick_fixes import suggest_quick_fixes_for_error
+
         self._set_editor_state(parse_error=True, unapplied=True)
         self._emit_status(str(exc), COLOR_ERROR)
         line_no = max(1, int(exc.line_no))
         self.editor.set_syntax_error_line(line_no)
         self.editor.set_step_line_highlights([line_no], failed=True)
+        raw = self.editor.toPlainText()
+        fixes = suggest_quick_fixes_for_error(raw, line_no)
+        self.error_bar.show_error(str(exc), fixes, source_text=raw)
+
+    def _apply_editor_text_fix(self, new_text: str) -> None:
+        self._block = True
+        self.editor.replace_plain_text_preserve_caret(new_text)
+        self._block = False
+        self._auto_apply_if_valid()
 
     def _apply_parsed_steps(self, raw: str, steps: list[dict[str, Any]]) -> None:
         self._block = True
@@ -174,6 +190,7 @@ class GherkinPanel(QWidget):
         self._set_editor_state(parse_error=False, unapplied=False)
         self.editor.set_syntax_error_line(None)
         self.editor.clear_step_line_highlights()
+        self.error_bar.hide_error()
         self.applied.emit()
 
     def _auto_apply_if_valid(self) -> None:
@@ -209,6 +226,7 @@ class GherkinPanel(QWidget):
         if parse_cleared:
             self.editor.set_syntax_error_line(None)
             self.editor.clear_step_line_highlights()
+            self.error_bar.hide_error()
         if not changed:
             return
         self.dirty_changed.emit(self._parse_error or self._unapplied)

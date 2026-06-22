@@ -131,8 +131,8 @@ class QuickToolBar(QWidget):
             secondary_row,
             "validate",
             icons.toolbar_icon("validate"),
-            "Проверить элементы",
-            "Убедиться, что все элементы сценария находятся на странице",
+            "Селекторы на странице",
+            "Проверить, что элементы сценария видны на текущей странице",
             self.validate_clicked,
             primary=False,
         )
@@ -158,7 +158,7 @@ class QuickToolBar(QWidget):
             secondary_row,
             "check",
             icons.toolbar_icon("check"),
-            "Проверить текст",
+            "Синтаксис Gherkin",
             "Проверить синтаксис текста сценария",
             self.check_clicked,
             primary=False,
@@ -325,6 +325,7 @@ class QuickToolBar(QWidget):
         playing: bool,
         has_steps: bool,
         unapplied: bool = False,
+        parse_error: bool = False,
         batch_running: bool = False,
         picking: bool = False,
         editor_active: bool = True,
@@ -334,18 +335,28 @@ class QuickToolBar(QWidget):
             recorder_browser_open = browser_open
         reasons = disable_reasons or {}
         lock_all = pending and not playing and not batch_running and not picking
+        block_play = unapplied or parse_error
         for key, btn in self._buttons.items():
             btn.setEnabled(not lock_all)
             btn.setToolTip(reasons.get(key, self._default_tooltips.get(key, "")))
 
         if lock_all:
+            busy = "Дождитесь окончания операции"
+            for key in self._buttons:
+                if key not in reasons:
+                    self._buttons[key].setToolTip(busy)
             return
 
         self._buttons["browser"].setEnabled(not browser_open and not recording and not batch_running)
+        if not self._buttons["browser"].isEnabled() and (recording or batch_running or pending):
+            self._buttons["browser"].setToolTip("Дождитесь окончания операции")
         self._buttons["focus_browser"].setEnabled(browser_open or playing)
         self._buttons["record"].setEnabled(
             editor_active and recorder_browser_open and not recording and not playing and not batch_running
         )
+        if not self._buttons["record"].isEnabled() and editor_active and not recording:
+            if not recorder_browser_open:
+                self._buttons["record"].setToolTip("Сначала откройте браузер (Ctrl+B)")
         self._buttons["continue_record"].setEnabled(
             editor_active
             and recorder_browser_open
@@ -362,7 +373,7 @@ class QuickToolBar(QWidget):
         )
         self._buttons["pause"].setEnabled(recording)
         can_play = editor_active and not recording and not playing and has_steps and not batch_running
-        self._buttons["play"].setEnabled(can_play and not unapplied)
+        self._buttons["play"].setEnabled(can_play and not block_play)
         self._buttons["validate"].setEnabled(
             editor_active and not recording and not playing and not batch_running
         )
@@ -378,6 +389,8 @@ class QuickToolBar(QWidget):
         self._buttons["undo"].setEnabled(recording)
 
         if not can_play and not has_steps:
-            self._buttons["play"].setToolTip("Нет шагов — запишите действия или введите сценарий")
-        elif unapplied:
+            self._buttons["play"].setToolTip("Начните запись или добавьте шаги")
+        elif parse_error:
             self._buttons["play"].setToolTip("Исправьте ошибки в тексте сценария")
+        elif unapplied:
+            self._buttons["play"].setToolTip("Примените текст к шагам (Ctrl+Shift+S)")
