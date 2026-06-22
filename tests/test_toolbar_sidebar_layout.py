@@ -56,6 +56,7 @@ def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     assert bar.toolbar._buttons["validate"].text() == ""
 
 
+@_skip_layout_on_ci
 def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
