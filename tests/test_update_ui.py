@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,12 @@ from app.qt.main_window import MainWindow
 from app.qt.update_ui import UpdateCheckRunner, UpdateDownloadRunner
 from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
 from app.update.checker import UpdateAsset, UpdateInfo
+
+_CI = os.environ.get("GITHUB_ACTIONS") == "true"
+_skip_qt_thread_on_ci = pytest.mark.skipif(
+    _CI,
+    reason="Qt QEventLoop with background threads crashes headless Windows CI",
+)
 
 
 @pytest.fixture(scope="module")
