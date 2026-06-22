@@ -113,6 +113,6 @@ def test_list_palette_filters_by_query(tmp_path: Path, monkeypatch) -> None:
             UserSnippet(id="b", label="Login flow", description="", text="step b"),
         ],
     )
-    items = list_palette_snippets(tmp_path, query="checkout")
+    items = list_palette_snippets(tmp_path, query="checkout flow")
     assert len(items) == 1
     assert items[0].id == "a"

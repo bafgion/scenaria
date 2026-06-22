@@ -230,7 +230,7 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
     ),
     GherkinSnippet(
         "если url",
-        f'Если url содержит "/checkout"\n{_TAB}нажимаю "button.pay"',
+        f'Если url содержит "/shop"\n{_TAB}нажимаю "button.next"',
         "Условный блок: шаги внутри выполняются, если URL содержит подстроку (action: if)",
     ),
     GherkinSnippet(
