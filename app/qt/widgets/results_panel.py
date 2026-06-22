@@ -5,28 +5,37 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from app.qt.fonts import editor_font
-from app.run_display import format_duration
+from app.qt.icons import toolbar_icon
+from app.qt.theme import COLOR_ERROR, COLOR_SUCCESS
+from app.run_result_display import (
+    brief_error_message,
+    format_run_status_text,
+    format_single_run_summary,
+    summarize_suite_cases,
+)
+
+
+def _status_color(success: bool) -> QColor:
+    return QColor(COLOR_SUCCESS if success else COLOR_ERROR)
 
 
 class ResultsPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setProperty("role", "results-panel")
         self._on_jump = None
         self._on_history = None
         self._on_rerun_failed = None
@@ -36,24 +45,32 @@ class ResultsPanel(QWidget):
         self._allure_dir: Path | None = None
         self._live_mode = False
         self._rendered_case_count = 0
+        self._suite_cases: list[dict] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         header = QHBoxLayout()
-        header.setContentsMargins(8, 4, 8, 0)
-        self.open_report_btn = QPushButton("Открыть HTML-отчёт")
+        header.setContentsMargins(8, 6, 8, 4)
+        self.open_report_btn = QPushButton("HTML-отчёт")
+        self.open_report_btn.setIcon(toolbar_icon("feature"))
         self.open_report_btn.hide()
+        self.open_report_btn.setToolTip("Открыть HTML-отчёт последнего прогона")
         self.open_report_btn.clicked.connect(self._open_report)
         header.addWidget(self.open_report_btn)
 
-        self.history_btn = QPushButton("История прогонов")
+        self.history_btn = QPushButton("История")
+        self.history_btn.setIcon(toolbar_icon("results"))
         self.history_btn.hide()
+        self.history_btn.setToolTip("История прогонов этого сценария")
         self.history_btn.clicked.connect(self._open_history)
         header.addWidget(self.history_btn)
 
-        self.allure_btn = QPushButton("Открыть Allure")
+        self.allure_btn = QPushButton("Allure")
+        self.allure_btn.setIcon(toolbar_icon("results"))
         self.allure_btn.hide()
+        self.allure_btn.setToolTip("Открыть отчёт Allure")
         self.allure_btn.clicked.connect(self._open_allure)
         header.addWidget(self.allure_btn)
 
@@ -65,17 +82,21 @@ class ResultsPanel(QWidget):
 
         self.jump_btn = QPushButton("К ошибке")
         self.jump_btn.hide()
+        self.jump_btn.setToolTip("Перейти к шагу с ошибкой в редакторе")
         self.jump_btn.clicked.connect(self._jump)
         header.addWidget(self.jump_btn)
         layout.addLayout(header)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
-        self._summary.setContentsMargins(8, 4, 8, 0)
+        self._summary.setContentsMargins(8, 0, 8, 4)
+        self._summary.setProperty("role", "results-summary")
 
         self._cases_table = QTableWidget(0, 3)
-        self._cases_table.setHorizontalHeaderLabels(["Сценарий", "Статус", "Сообщение"])
+        self._cases_table.setProperty("role", "run-results-table")
+        self._cases_table.setHorizontalHeaderLabels(["Сценарий", "Результат", "Сообщение"])
         self._cases_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._cases_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._cases_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._cases_table.setAlternatingRowColors(True)
         self._cases_table.verticalHeader().setVisible(False)
@@ -83,24 +104,30 @@ class ResultsPanel(QWidget):
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._cases_table.itemSelectionChanged.connect(self._on_case_selection_changed)
 
-        self.editor = QPlainTextEdit()
-        self.editor.setReadOnly(True)
-        self.editor.setProperty("role", "mono-panel")
-        self.editor.setFont(editor_font())
+        self._case_detail = QLabel("")
+        self._case_detail.setWordWrap(True)
+        self._case_detail.setContentsMargins(8, 0, 8, 4)
+        self._case_detail.setProperty("role", "run-history-detail")
+        self._case_detail.hide()
 
-        top = QWidget()
-        top_layout = QVBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.addWidget(self._summary)
-        top_layout.addWidget(self._cases_table)
+        self._comparison = QLabel("")
+        self._comparison.setWordWrap(True)
+        self._comparison.setContentsMargins(8, 0, 8, 8)
+        self._comparison.setProperty("muted", True)
+        self._comparison.hide()
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(top)
-        splitter.addWidget(self.editor)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(4)
+        body_layout.addWidget(self._summary)
+        body_layout.addWidget(self._cases_table)
+        body_layout.addWidget(self._case_detail)
+        body_layout.addWidget(self._comparison)
+        body_layout.addStretch()
+        layout.addWidget(body)
 
     def set_jump_handler(self, handler) -> None:
         self._on_jump = handler
@@ -117,7 +144,10 @@ class ResultsPanel(QWidget):
     def begin_live_suite(self, *, total_hint: int = 0) -> None:
         self._live_mode = True
         self._rendered_case_count = 0
+        self._suite_cases = []
         self._cases_table.setRowCount(0)
+        self._cases_table.show()
+        self._case_detail.hide()
         hint = f" из ~{total_hint}" if total_hint > 0 else ""
         self._summary.setText(f"Прогон выполняется… загружено 0 сценариев{hint}")
         self.rerun_failed_btn.hide()
@@ -126,6 +156,7 @@ class ResultsPanel(QWidget):
     def update_suite_cases(self, cases: list[dict]) -> None:
         if not cases:
             return
+        self._suite_cases = list(cases)
         previous = self._rendered_case_count
         row_count = len(cases)
         if row_count < self._cases_table.rowCount():
@@ -141,16 +172,15 @@ class ResultsPanel(QWidget):
             self._set_case_row(row_count - 1, cases[-1])
 
         self._rendered_case_count = row_count
-        failed = sum(1 for case in cases if not case.get("success"))
-        ok = row_count - failed
-        prefix = "Прогон выполняется" if self._live_mode else "Итог"
-        self._summary.setText(f"{prefix}: {ok} OK, {failed} FAIL — показано {row_count}")
+        self._summary.setText(summarize_suite_cases(cases, live=self._live_mode))
+        self._on_case_selection_changed()
 
     def _set_case_row(self, row: int, case: dict) -> None:
         path = case.get("path")
         label = path.name if hasattr(path, "name") else str(case.get("name", "?"))
-        status = "OK" if case.get("success") else "FAIL"
-        brief = str(case.get("message", "")).splitlines()[0][:240]
+        success = bool(case.get("success"))
+        status = format_run_status_text(success)
+        brief = brief_error_message(str(case.get("message", "")))
         values = (label, status, brief)
         for column, text in enumerate(values):
             item = self._cases_table.item(row, column)
@@ -160,10 +190,25 @@ class ResultsPanel(QWidget):
             else:
                 item.setText(text)
             if column == 1:
-                from PySide6.QtGui import QColor
+                item.setForeground(_status_color(success))
+            if column == 2 and case.get("message"):
+                item.setToolTip(str(case.get("message", "")))
 
-                color = QColor(Qt.GlobalColor.darkGreen if case.get("success") else Qt.GlobalColor.red)
-                item.setForeground(color)
+    def _on_case_selection_changed(self) -> None:
+        rows = self._cases_table.selectionModel().selectedRows()
+        if not rows or not self._suite_cases:
+            self._case_detail.hide()
+            return
+        row = int(rows[0].row())
+        if row < 0 or row >= len(self._suite_cases):
+            self._case_detail.hide()
+            return
+        case = self._suite_cases[row]
+        if case.get("success") or not case.get("message"):
+            self._case_detail.hide()
+            return
+        self._case_detail.setText(f"Ошибка: {str(case.get('message', '')).strip()}")
+        self._case_detail.show()
 
     def _jump(self) -> None:
         if self._on_jump:
@@ -198,6 +243,15 @@ class ResultsPanel(QWidget):
             "allure_dir": allure,
         }
 
+    def _show_comparison(self, payload: dict) -> None:
+        comparison = str(payload.get("comparison", "") or "").strip()
+        if comparison:
+            self._comparison.setText(comparison)
+            self._comparison.show()
+        else:
+            self._comparison.clear()
+            self._comparison.hide()
+
     def show_results(self, payload: dict, *, has_failed_step: bool) -> None:
         self._live_mode = False
         report_path = payload.get("html_report_path")
@@ -213,29 +267,21 @@ class ResultsPanel(QWidget):
         self.allure_btn.setVisible(self._allure_dir is not None and self._allure_dir.is_dir())
         self.rerun_failed_btn.setVisible(bool(payload.get("can_rerun_failed")) and self._on_rerun_failed is not None)
 
-        duration_ms = int(payload.get("duration_ms", 0))
-        lines = [f"Длительность: {format_duration(duration_ms)}"]
-        if payload.get("runner"):
-            lines.append(f"Runner: {payload.get('runner')}")
-        if payload.get("run_dir"):
-            lines.append(f"Каталог прогона: {payload.get('run_dir')}")
-        lines.append(str(payload.get("comparison", "")))
-        suite_index = payload.get("suite_html_index")
-        if suite_index:
-            lines.append(f"Сводный отчёт: {suite_index}")
-        if self._html_report_path:
-            lines.append(f"HTML-отчёт: {self._html_report_path}")
-        if self._allure_dir:
-            lines.append(f"Allure: {self._allure_dir}")
-
         suite_cases = list(payload.get("suite_cases") or [])
+        self._suite_cases = suite_cases
         if suite_cases:
+            self._cases_table.show()
             self.update_suite_cases(suite_cases)
         else:
             self._cases_table.setRowCount(0)
+            self._cases_table.hide()
             self._rendered_case_count = 0
-            self._summary.setText("\n".join(lines))
+            self._case_detail.hide()
+            self._summary.setText(format_single_run_summary(payload))
+            success = bool(payload.get("success"))
+            self._summary.setProperty("success", success)
+            self._summary.style().unpolish(self._summary)
+            self._summary.style().polish(self._summary)
 
-        lines.extend(["", "Журнал:", *list(payload.get("log_lines", []))])
-        self.editor.setPlainText("\n".join(lines))
+        self._show_comparison(payload)
         self.jump_btn.setVisible(has_failed_step and not suite_cases)

@@ -12,6 +12,10 @@ from app.qt import icons
 from app.qt.theme import COLOR_MUTED, COLOR_TEXT
 from app.qt.widgets.quick_toolbar import QuickToolBar
 
+_SCENARIO_CHIP_ICON = 14
+_SCENARIO_CHIP_ICON_SLOT = 18
+_SCENARIO_CHIP_HEIGHT = 24
+
 
 class EditorActionBar(QWidget):
     """Window-level action bar: toolbar icons, active scenario, URL."""
@@ -40,27 +44,31 @@ class EditorActionBar(QWidget):
         run_box = QWidget()
         self._run_box = run_box
         run_box.setProperty("role", "scenario-chip")
-        run_box.setFixedHeight(22)
+        run_box.setFixedHeight(_SCENARIO_CHIP_HEIGHT)
         run_box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         run_layout = QHBoxLayout(run_box)
-        run_layout.setContentsMargins(8, 0, 8, 0)
+        run_layout.setContentsMargins(7, 2, 8, 2)
         run_layout.setSpacing(5)
         run_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        self._file_icon = QLabel()
-        self._file_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._file_icon.setPixmap(icons.scenario_file_icon(size=12).pixmap(12, 12))
-        self._file_icon.setFixedSize(12, 12)
+        self._file_icon = QToolButton(run_box)
+        self._file_icon.setIcon(icons.scenario_file_icon(size=_SCENARIO_CHIP_ICON))
+        self._file_icon.setIconSize(QSize(_SCENARIO_CHIP_ICON, _SCENARIO_CHIP_ICON))
+        self._file_icon.setFixedSize(_SCENARIO_CHIP_ICON_SLOT, _SCENARIO_CHIP_ICON_SLOT)
+        self._file_icon.setAutoRaise(True)
+        self._file_icon.setEnabled(False)
+        self._file_icon.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._file_icon.setProperty("role", "scenario-chip-icon")
         self._file_icon.setToolTip("Текущий сценарий")
         run_layout.addWidget(self._file_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._file_name = QLabel("—")
-        self._file_name.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 8pt;")
+        self._file_name.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 9pt;")
         self._file_name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         run_layout.addWidget(self._file_name, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._file_hint = QLabel("")
-        self._file_hint.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        self._file_hint.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8.5pt;")
         run_layout.addWidget(self._file_hint, 0, Qt.AlignmentFlag.AlignVCenter)
 
         root.addWidget(run_box, 0, Qt.AlignmentFlag.AlignVCenter)

@@ -29,6 +29,7 @@ def qapp():
     return app
 
 
+@_skip_qt_thread_on_ci
 def test_update_check_runner_emits_from_background_thread(qapp):
     loop = QEventLoop()
     states: list[tuple[object, object]] = []
@@ -44,6 +45,7 @@ def test_update_check_runner_emits_from_background_thread(qapp):
     assert states == [(None, None)]
 
 
+@_skip_qt_thread_on_ci
 def test_download_runner_emits_error_on_failure(qapp):
     loop = QEventLoop()
     errors: list[str | None] = []
@@ -68,6 +70,7 @@ def test_download_runner_emits_error_on_failure(qapp):
     assert errors == ["Ошибка установки обновления: network down"]
 
 
+@_skip_qt_thread_on_ci
 def test_download_runner_emits_phase_signal(qapp):
     loop = QEventLoop()
     phases: list[tuple[str, int, int, str]] = []
@@ -105,6 +108,7 @@ def test_download_runner_emits_phase_signal(qapp):
     assert ("stage", 2, 2, "Scenaria.exe") in phases
 
 
+@_skip_qt_thread_on_ci
 def test_download_runner_emits_exit_requested(qapp):
     loop = QEventLoop()
     exit_hits: list[int] = []

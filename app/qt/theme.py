@@ -448,6 +448,52 @@ def apply_dark_theme(app: QApplication) -> None:
         QWidget[role="panel"] {{
             background: {COLOR_PANEL};
         }}
+        QWidget[role="run-history-dialog"] {{
+            background: {COLOR_PANEL};
+        }}
+        QLabel[role="run-history-title"] {{
+            font-size: 11pt;
+            font-weight: 600;
+            padding-bottom: 2px;
+        }}
+        QLabel[role="run-history-empty"] {{
+            color: {COLOR_MUTED};
+            padding: 24px 16px;
+            border: 1px dashed {COLOR_BORDER};
+            border-radius: 4px;
+            background: {COLOR_SIDEBAR};
+        }}
+        QLabel[role="run-history-detail"] {{
+            color: {COLOR_TEXT};
+            background: #2a1f1f;
+            border: 1px solid {COLOR_ERROR};
+            border-radius: 4px;
+            padding: 8px 10px;
+        }}
+        QLabel[role="results-summary"] {{
+            font-weight: 500;
+        }}
+        QLabel[role="results-summary"][success="true"] {{
+            color: {COLOR_SUCCESS};
+        }}
+        QLabel[role="results-summary"][success="false"] {{
+            color: {COLOR_ERROR};
+        }}
+        QTableWidget[role="run-results-table"] {{
+            background: {COLOR_PANEL};
+            alternate-background-color: {COLOR_SIDEBAR};
+            border: 1px solid {COLOR_DIVIDER};
+            gridline-color: {COLOR_DIVIDER};
+        }}
+        QTableWidget[role="run-results-table"]::item {{
+            padding: 4px 6px;
+        }}
+        QTableWidget[role="run-results-table"]::item:selected {{
+            background: {COLOR_DIR_SELECTED};
+        }}
+        QWidget[role="results-panel"] {{
+            background: {COLOR_PANEL};
+        }}
         QFrame[role="v-divider"] {{
             background: {COLOR_ZONE_LINE};
             max-width: 1px;
@@ -466,9 +512,15 @@ def apply_dark_theme(app: QApplication) -> None:
             background: #2a2d2e;
             border: 1px solid {COLOR_BORDER};
             border-radius: 4px;
-            min-height: 22px;
-            max-height: 22px;
+            min-height: 24px;
+            max-height: 24px;
             margin: 0 10px;
+        }}
+        QToolButton[role="scenario-chip-icon"] {{
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
         }}
         QStackedWidget[role="editor-stack"] {{
             background: {COLOR_WORKSPACE};
