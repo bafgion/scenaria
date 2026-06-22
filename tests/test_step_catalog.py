@@ -47,6 +47,20 @@ def test_entry_for_action_fill_generated_disambiguation() -> None:
     assert "телефон" in phone.label
 
 
+def test_format_entry_help_structured_html() -> None:
+    from app.step_catalog import format_entry_help
+
+    entry = entry_for_action("goto")
+    assert entry is not None
+    html_text = format_entry_help(entry)
+    assert "открыт" in html_text
+    assert "goto" in html_text
+    assert "Навигация" in html_text
+    assert "https://" in html_text
+    assert "param-line" in html_text
+    assert "example-box" in html_text
+
+
 def test_category_labels_complete() -> None:
     categories = {entry.category for entry in CATALOG}
     for category in categories:

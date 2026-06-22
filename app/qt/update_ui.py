@@ -34,6 +34,7 @@ class UpdateCheckRunner(QObject):
 
 class UpdateDownloadRunner(QObject):
     progress = Signal(int, int)
+    phase = Signal(str, int, int, str)
     finished = Signal(object)  # error str | None
 
     def __init__(self, info: UpdateInfo) -> None:
@@ -49,7 +50,11 @@ class UpdateDownloadRunner(QObject):
             self.finished.emit("В релизе нет файла обновления")
             return
         try:
-            apply_update(asset, on_progress=self.progress.emit)
+            apply_update(
+                asset,
+                on_progress=self.progress.emit,
+                on_phase=self.phase.emit,
+            )
         except UpdateCheckError as exc:
             self.finished.emit(str(exc))
             return

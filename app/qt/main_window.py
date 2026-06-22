@@ -25,6 +25,7 @@ from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.widgets.browser_overlay import BrowserOverlayPanel
 from app.qt.widgets.activity_bar import ActivityBar
 from app.qt.widgets.bottom_panel import BottomPanel
+from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
 from app.qt.widgets.editor_workspace import EditorWorkspace
 from app.qt.widgets.hotkeys_dialog import HotkeysDialog
 from app.qt.widgets.ide_status_bar import IdeStatusBar
@@ -212,7 +213,6 @@ class MainWindow(QMainWindow):
 
         ws = self.workspace
         bar = ws.editor_action_bar
-        bar.next_step_clicked.connect(self._on_workflow_next_step)
         bar.url_changed.connect(self._set_start_url)
         bar.fetch_url_from_tab_requested.connect(rec.fetch_url_from_tab)
         ws.recording_modes.filter_toggled.connect(self._on_filter_toggled)
@@ -782,19 +782,6 @@ class MainWindow(QMainWindow):
             alert(self, BRAND_NAME, "Укажите корректный URL (https://…)")
             self.workspace.editor_action_bar.set_url(self._start_url())
             return
-
-    def _on_workflow_next_step(self, action: str) -> None:
-        rec = self._controller.recording
-        if action == "browser":
-            rec.open_browser(self._start_url())
-        elif action == "record":
-            rec.start_recording(self._start_url())
-        elif action == "apply":
-            self.workspace.gherkin_panel._apply()
-        elif action == "save":
-            self._save_current()
-        elif action == "play":
-            self._play_with_apply()
 
     def _raise_browser_window(self, title_hint: str) -> None:
         from app.browser_focus import activate_browser_window_ui_thread
@@ -1899,32 +1886,31 @@ class MainWindow(QMainWindow):
             alert(self, BRAND_NAME, "Загрузка обновления уже выполняется…")
             return
 
-        progress = QMessageBox(self)
-        progress.setWindowTitle("Загрузка обновления")
-        progress.setText("Скачивание и установка…")
-        progress.setStandardButtons(QMessageBox.StandardButton.NoButton)
-        progress.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        progress = UpdateProgressDialog(
+            self,
+            from_version=current_version_label(),
+            to_version=f"v{info.version}",
+        )
         progress.show()
 
         self._download_progress = progress
         self._download_runner = UpdateDownloadRunner(info)
-        self._download_runner.progress.connect(self._on_update_download_progress)
+        self._download_runner.phase.connect(self._on_update_download_phase)
         self._download_runner.finished.connect(self._on_update_download_finished)
         self._download_runner.start()
 
-    def _on_update_download_progress(self, done: int, total: int) -> None:
+    def _on_update_download_phase(self, phase: str, current: int, total: int, detail: str) -> None:
         progress = getattr(self, "_download_progress", None)
         if progress is None:
             return
-        percent = int(done * 100 / total) if total else 0
-        progress.setText(f"Скачивание… {percent}%")
+        progress.set_phase(phase, current, total, detail)
 
     def _on_update_download_finished(self, error: str | None) -> None:
         runner = self._download_runner
         self._download_runner = None
         if runner is not None:
             try:
-                runner.progress.disconnect(self._on_update_download_progress)
+                runner.phase.disconnect(self._on_update_download_phase)
             except (RuntimeError, TypeError):
                 pass
             try:

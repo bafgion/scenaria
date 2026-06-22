@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.step_catalog import CATEGORY_LABELS, StepEntry, format_entry_help, list_step_entries
+from app.qt.theme import COLOR_BORDER, COLOR_SIDEBAR
 
 
 class StepHelpPanel(QDialog):
@@ -61,6 +62,18 @@ class StepHelpPanel(QDialog):
 
         self._detail = QTextBrowser()
         self._detail.setOpenExternalLinks(True)
+        self._detail.setFrameShape(QTextBrowser.Shape.NoFrame)
+        self._detail.setStyleSheet(
+            f"""
+            QTextBrowser {{
+                background: {COLOR_SIDEBAR};
+                border: 1px solid {COLOR_BORDER};
+                border-radius: 6px;
+                padding: 12px 14px;
+            }}
+            """
+        )
+        self._detail.setPlaceholderText("Выберите шаг в списке слева")
         splitter.addWidget(self._detail)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)

@@ -6,10 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from app.qt.main_window import MainWindow
 from app.qt.update_ui import UpdateCheckRunner, UpdateDownloadRunner
+from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
 from app.update.checker import UpdateAsset, UpdateInfo
 
 
@@ -60,9 +61,54 @@ def test_download_runner_emits_error_on_failure(qapp):
     assert errors == ["Ошибка установки обновления: network down"]
 
 
+def test_download_runner_emits_phase_signal(qapp):
+    loop = QEventLoop()
+    phases: list[tuple[str, int, int, str]] = []
+    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
+    info = UpdateInfo(
+        version="9.9.9",
+        title="Scenaria v9.9.9",
+        notes="",
+        published_at="2026-01-01T00:00:00Z",
+        portable=None,
+        update=asset,
+    )
+
+    runner = UpdateDownloadRunner(info)
+    runner.phase.connect(lambda phase, current, total, detail: phases.append((phase, current, total, detail)))
+    runner.finished.connect(loop.quit)
+
+    def fake_apply(_asset, on_progress=None, on_phase=None):
+        if on_progress is not None:
+            on_progress(50, 100)
+        if on_phase is not None:
+            on_phase("download", 50, 100, "Scenaria-update.zip")
+            on_phase("extract", 1, 2, "Scenaria/Scenaria.exe")
+            on_phase("stage", 2, 2, "Scenaria.exe")
+
+    with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
+        runner.start()
+        QTimer.singleShot(5000, loop.quit)
+        loop.exec()
+
+    assert ("download", 50, 100, "Scenaria-update.zip") in phases
+    assert ("extract", 1, 2, "Scenaria/Scenaria.exe") in phases
+    assert ("stage", 2, 2, "Scenaria.exe") in phases
+
+
+def test_update_progress_dialog_updates_bar(qapp):
+    dialog = UpdateProgressDialog(None, from_version="v0.5.8", to_version="v0.5.9")
+    dialog.set_phase("download", 50, 100, "Scenaria-update.zip")
+    assert dialog._bar.value() > 0
+    assert "Скачивание" in dialog._phase.text()
+    dialog.set_phase("extract", 1, 3, "Scenaria/Scenaria.exe")
+    assert "Распаковка" in dialog._phase.text()
+    assert dialog._bar.value() > dialog._bar.minimum()
+
+
 def test_dismiss_download_progress_hides_dialog(qapp):
     host = MagicMock()
-    progress = QMessageBox()
+    progress = UpdateProgressDialog(None, from_version="v0.5.8", to_version="v0.5.9")
     progress.show()
     host._download_progress = progress
 

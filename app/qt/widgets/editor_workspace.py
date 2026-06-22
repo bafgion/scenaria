@@ -292,26 +292,9 @@ class EditorWorkspace(QWidget):
         if not recorder_browser_open:
             recorder_browser_open = browser_open
         editor_active = self.is_editor_tab_active()
-        if not editor_active:
-            has_steps = False
-        unapplied = (
-            (self.gherkin_panel.is_unapplied or self.gherkin_panel.has_parse_error)
-            if editor_active
-            else False
-        )
         parse_error = self.gherkin_panel.has_parse_error if editor_active else False
-        file_unsaved = self._is_file_unsaved() if editor_active else False
         self.editor_action_bar.set_url(self._model.start_url)
-        self.editor_action_bar.sync_workflow(
-            pending=pending,
-            browser_open=browser_open,
-            recording=recording,
-            playing=playing,
-            has_steps=has_steps,
-            unapplied=parse_error,
-            file_unsaved=file_unsaved,
-            editor_active=editor_active,
-        )
+        self.editor_action_bar.set_editor_fields_enabled(editor_active)
         self._update_run_target()
         self.recording_modes.sync(
             visible=(browser_open or recording) and editor_active,

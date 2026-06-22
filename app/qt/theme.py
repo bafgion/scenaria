@@ -465,13 +465,6 @@ def apply_dark_theme(app: QApplication) -> None:
             background: transparent;
             border: none;
         }}
-        QToolButton[workflow-next="true"] {{
-            padding: 2px 10px;
-            font-size: 8pt;
-        }}
-        QToolButton[workflow-next="true"]:hover {{
-            background: {COLOR_INPUT};
-        }}
         QWidget[role="dirty-banner"] {{
             background: #3a2f00;
             border-bottom: 1px solid {COLOR_WARNING};

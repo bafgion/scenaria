@@ -111,7 +111,7 @@ def test_welcome_tab_does_not_enable_scenario_actions(qapp) -> None:
     assert not workspace.quick_toolbar._buttons["record"].isEnabled()
     assert not workspace.quick_toolbar._buttons["validate"].isEnabled()
     assert workspace.editor_action_bar._file_hint.text() == ""
-    assert workspace.editor_action_bar._next_step.text() == "Откройте сценарий"
+    assert not workspace.editor_action_bar._url_edit.isEnabled()
 
 
 def test_toolbar_density_stable_when_switching_to_welcome(qapp) -> None:

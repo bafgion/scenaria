@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -226,14 +227,151 @@ def resolve_step_entry(*, text: str = "", line_no: int | None = None, line: str 
 
 
 def format_entry_help(entry: StepEntry) -> str:
-    lines = [
-        f"<h3>{entry.label}</h3>",
-        f"<p><b>Действие:</b> <code>{entry.action or '—'}</code></p>",
-        f"<p><b>Категория:</b> {CATEGORY_LABELS.get(entry.category, entry.category)}</p>",
-        f"<p>{entry.description}</p>",
-    ]
-    if entry.parameters:
-        items = "".join(f"<li>{param}</li>" for param in entry.parameters)
-        lines.append(f"<p><b>Параметры:</b></p><ul>{items}</ul>")
-    lines.append(f'<p><b>Пример:</b></p><pre>{entry.example}</pre>')
-    return "\n".join(lines)
+    """Rich HTML for the step help detail pane (colors aligned with app.qt.theme)."""
+    category_label = CATEGORY_LABELS.get(entry.category, entry.category)
+    action = entry.action or "—"
+    description = html.escape(entry.description)
+    example = html.escape(entry.example)
+
+    param_rows = ""
+    for param in entry.parameters:
+        name, _, desc = param.partition("—")
+        if not desc.strip():
+            name, _, desc = param.partition("-")
+        name = name.strip()
+        desc = desc.strip() or param.strip()
+        param_rows += (
+            '<p class="param-line">'
+            f'<span class="param-name">{html.escape(name)}</span>'
+            f'<span class="param-sep"> — </span>'
+            f'<span class="param-desc">{html.escape(desc)}</span>'
+            "</p>"
+        )
+
+    params_block = ""
+    if param_rows:
+        params_block = (
+            '<section class="block">'
+            '<div class="block-title">Параметры</div>'
+            f"{param_rows}"
+            "</section>"
+        )
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body {{
+  margin: 0;
+  padding: 4px 2px 12px 2px;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 10pt;
+  color: #cccccc;
+  background-color: transparent;
+}}
+p, div, span, code, pre, table, td, th, header, section {{
+  background-color: transparent;
+}}
+.header {{
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #3c3c3c;
+}}
+.title {{
+  font-size: 18pt;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}}
+.meta {{
+  margin-top: 8px;
+}}
+.badge {{
+  display: inline;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 8pt;
+  font-weight: 600;
+  color: #858585;
+  background: transparent;
+  border: 1px solid #454545;
+}}
+.action {{
+  display: inline;
+  padding: 0;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 9pt;
+  color: #9cdc8a;
+  background-color: transparent;
+  border: none;
+}}
+.desc {{
+  margin: 0;
+  line-height: 1.45;
+  color: #cccccc;
+}}
+.block {{
+  margin-top: 14px;
+}}
+.block-title {{
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #858585;
+  margin-bottom: 8px;
+}}
+.param-line {{
+  margin: 0 0 6px 0;
+  line-height: 1.45;
+}}
+.param-name {{
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 10pt;
+  color: #ce9178;
+}}
+.param-sep {{
+  color: #858585;
+}}
+.param-desc {{
+  color: #cccccc;
+}}
+.example-box {{
+  margin-top: 4px;
+  padding: 0 0 0 10px;
+  background-color: transparent;
+  border: none;
+  border-left: 2px solid #454545;
+}}
+.example-code {{
+  margin: 0;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #ce9178;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: transparent;
+}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="title">{html.escape(entry.label)}</div>
+  <p class="meta">
+    <span class="badge">{html.escape(category_label)}</span>
+    <span class="action">{html.escape(action)}</span>
+  </p>
+</header>
+<p class="desc">{description}</p>
+{params_block}
+<section class="block">
+  <div class="block-title">Пример</div>
+  <div class="example-box">
+    <span class="example-code">{example}</span>
+  </div>
+</section>
+</body>
+</html>"""

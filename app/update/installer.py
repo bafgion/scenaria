@@ -65,10 +65,15 @@ def download_asset(asset: UpdateAsset, destination: Path, on_progress=None) -> P
     return destination
 
 
-def _extract_zip(zip_path: Path, target_dir: Path) -> None:
+def _extract_zip(zip_path: Path, target_dir: Path, on_phase=None) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as archive:
-        archive.extractall(target_dir)
+        names = archive.namelist()
+        total = len(names) or 1
+        for index, name in enumerate(names, start=1):
+            archive.extract(name, target_dir)
+            if on_phase is not None:
+                on_phase("extract", index, total, name)
 
 
 def _find_payload_root(extracted_dir: Path) -> Path:
@@ -139,18 +144,27 @@ def prepare_update_script(
     return script_path
 
 
-def stage_update_package(zip_path: Path) -> Path:
+def stage_update_package(zip_path: Path, on_phase=None) -> Path:
     temp_root = Path(tempfile.mkdtemp(prefix="scenaria-update-"))
     extracted = temp_root / "extracted"
-    _extract_zip(zip_path, extracted)
+    _extract_zip(zip_path, extracted, on_phase=on_phase)
     return _find_payload_root(extracted)
 
 
-def _copy_to_local_staging(source: Path, install_dir: Path) -> Path:
+def _copy_to_local_staging(source: Path, install_dir: Path, on_phase=None) -> Path:
     local_staging = install_dir / _STAGING_DIR_NAME
     if local_staging.exists():
         shutil.rmtree(local_staging, ignore_errors=True)
-    shutil.copytree(source, local_staging)
+    files = [path for path in source.rglob("*") if path.is_file()]
+    total = len(files) or 1
+    local_staging.mkdir(parents=True, exist_ok=True)
+    for index, src_file in enumerate(files, start=1):
+        rel = src_file.relative_to(source)
+        dest = local_staging / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, dest)
+        if on_phase is not None:
+            on_phase("stage", index, total, str(rel))
     return local_staging
 
 
@@ -183,19 +197,29 @@ def _launch_update_script(script: Path, install_dir: Path) -> None:
     time.sleep(0.3)
 
 
-def apply_update(asset: UpdateAsset, on_progress=None) -> None:
+def apply_update(asset: UpdateAsset, on_progress=None, on_phase=None) -> None:
     if not getattr(sys, "frozen", False):
         raise UpdateCheckError("Обновление доступно только в portable EXE")
+
+    def emit_phase(phase: str, current: int, total: int, detail: str = "") -> None:
+        if on_phase is not None:
+            on_phase(phase, current, total, detail)
+
+    def download_progress(done: int, total: int) -> None:
+        if on_progress is not None:
+            on_progress(done, total)
+        emit_phase("download", done, total, asset.name)
 
     install_dir = app_root()
     download_temp = Path(tempfile.mkdtemp(prefix="scenaria-download-"))
     zip_path = download_temp / asset.name
     remote_staging_parent: Path | None = None
     try:
-        download_asset(asset, zip_path, on_progress=on_progress)
-        remote_staging = stage_update_package(zip_path)
+        download_asset(asset, zip_path, on_progress=download_progress)
+        emit_phase("verify", 1, 1, "")
+        remote_staging = stage_update_package(zip_path, on_phase=emit_phase)
         remote_staging_parent = remote_staging.parent.parent
-        local_staging = _copy_to_local_staging(remote_staging, install_dir)
+        local_staging = _copy_to_local_staging(remote_staging, install_dir, on_phase=emit_phase)
         script = prepare_update_script(local_staging, install_dir, parent_pid=os.getpid())
     except Exception:
         shutil.rmtree(download_temp, ignore_errors=True)
@@ -207,5 +231,6 @@ def apply_update(asset: UpdateAsset, on_progress=None) -> None:
         if remote_staging_parent is not None:
             shutil.rmtree(remote_staging_parent, ignore_errors=True)
 
+    emit_phase("launch", 1, 1, "")
     _launch_update_script(script, install_dir)
     os._exit(0)

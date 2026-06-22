@@ -1,4 +1,4 @@
-"""Editor toolbar row: actions + run target (PyCharm style) + URL + next step."""
+"""Editor toolbar row: actions + run target (PyCharm style) + URL."""
 
 from __future__ import annotations
 
@@ -9,17 +9,16 @@ from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QToolButton, QWidget
 
 from app.qt import icons
-from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_TEXT, COLOR_WARNING
+from app.qt.theme import COLOR_MUTED, COLOR_TEXT
 from app.qt.widgets.quick_toolbar import QuickToolBar
 
 
 class EditorActionBar(QWidget):
-    """Window-level action bar: toolbar icons, active scenario, URL, workflow hint."""
+    """Window-level action bar: toolbar icons, active scenario, URL."""
 
     url_edit_requested = Signal()
     url_changed = Signal(str)
     fetch_url_from_tab_requested = Signal()
-    next_step_clicked = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -98,18 +97,6 @@ class EditorActionBar(QWidget):
 
         root.addWidget(url_box, 0)
 
-        root.addWidget(self._separator())
-
-        self._next_step = QToolButton()
-        self._next_step.setProperty("workflow-next", True)
-        self._next_step.setAutoRaise(True)
-        self._next_step.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._next_step.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        self._set_next_step_label("Далее: Браузер", f"color: {COLOR_PRIMARY}; font-size: 8pt;")
-        self._next_step.clicked.connect(self._on_next_step)
-        root.addWidget(self._next_step, 0)
-
-        self._next_action = "browser"
         self._density_chrome_width = 0
         self._user_simple_toolbar = False
         self._reserve_chrome_layout()
@@ -127,22 +114,6 @@ class EditorActionBar(QWidget):
         hint_metrics = QFontMetrics(self._file_hint.font())
         self._file_hint.setFixedWidth(hint_metrics.horizontalAdvance("не сохранён") + 8)
 
-        next_font = self._next_step.font()
-        next_font.setPointSize(8)
-        next_metrics = QFontMetrics(next_font)
-        next_labels = (
-            "Откройте сценарий",
-            "Далее: Сохранить",
-            "Исправьте сценарий",
-            "Далее: Запустить",
-            "Далее: Браузер",
-            "Далее: Запись",
-            "Ожидание…",
-            "Идёт запись…",
-        )
-        next_width = max(next_metrics.horizontalAdvance(label) + 20 for label in next_labels)
-        self._next_step.setFixedWidth(next_width)
-
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         hint = super().minimumSizeHint()
         return QSize(self._minimum_width(compact_toolbar=True), hint.height())
@@ -152,12 +123,7 @@ class EditorActionBar(QWidget):
         self._sync_toolbar_density()
 
     def _measured_chrome_width(self) -> int:
-        return (
-            self._run_box.sizeHint().width()
-            + self._url_box.sizeHint().width()
-            + self._next_step.width()
-            + 20
-        )
+        return self._run_box.sizeHint().width() + self._url_box.sizeHint().width() + 20
 
     def _fixed_chrome_width(self) -> int:
         measured = self._measured_chrome_width()
@@ -191,13 +157,6 @@ class EditorActionBar(QWidget):
         line.setProperty("role", "v-divider")
         line.setFixedWidth(1)
         return line
-
-    def _set_next_step_label(self, text: str, style: str) -> None:
-        self._next_step.setText(text)
-        self._next_step.setStyleSheet(style)
-
-    def _on_next_step(self) -> None:
-        self.next_step_clicked.emit(self._next_action)
 
     def _commit_url(self) -> None:
         self.url_changed.emit(self._url_edit.text().strip())
@@ -238,60 +197,3 @@ class EditorActionBar(QWidget):
         self._url_edit.setEnabled(enabled)
         for child in self._url_box.findChildren(QToolButton):
             child.setEnabled(enabled)
-
-    def sync_workflow(
-        self,
-        *,
-        pending: bool,
-        browser_open: bool,
-        recording: bool,
-        playing: bool,
-        has_steps: bool,
-        unapplied: bool,
-        file_unsaved: bool,
-        editor_active: bool = True,
-    ) -> None:
-        self.set_editor_fields_enabled(editor_active)
-        self._next_step.setEnabled(not pending and not playing and editor_active)
-
-        if not editor_active:
-            self._next_action = ""
-            self._set_next_step_label("Откройте сценарий", f"color: {COLOR_MUTED}; font-size: 8pt;")
-            return
-
-        if pending or playing:
-            self._next_action = ""
-            self._set_next_step_label("Ожидание…", f"color: {COLOR_MUTED}; font-size: 8pt;")
-            return
-
-        if not browser_open:
-            self._next_action = "browser"
-            self._set_next_step_label("Далее: Браузер", f"color: {COLOR_PRIMARY}; font-size: 8pt;")
-            return
-
-        if recording:
-            self._next_action = ""
-            self._next_step.setEnabled(False)
-            self._set_next_step_label("Идёт запись…", "color: #f48771; font-size: 8pt;")
-            return
-
-        self._next_step.setEnabled(True)
-
-        if unapplied:
-            self._next_action = ""
-            self._next_step.setEnabled(False)
-            self._set_next_step_label("Исправьте сценарий", f"color: {COLOR_WARNING}; font-size: 8pt;")
-            return
-
-        if not has_steps:
-            self._next_action = "record"
-            self._set_next_step_label("Далее: Запись", f"color: {COLOR_PRIMARY}; font-size: 8pt;")
-            return
-
-        if file_unsaved:
-            self._next_action = "save"
-            self._set_next_step_label("Далее: Сохранить", f"color: {COLOR_TEXT}; font-size: 8pt;")
-            return
-
-        self._next_action = "play"
-        self._set_next_step_label("Далее: Запустить", f"color: {COLOR_PRIMARY}; font-size: 8pt;")

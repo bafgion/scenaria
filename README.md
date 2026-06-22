@@ -107,3 +107,7 @@ app/
   qt/                # интерфейс PySide6
 tests/               # pytest
 ```
+
+## Сторонние компоненты
+
+Иконки в интерфейсе — [Lucide](https://lucide.dev) (MIT License). SVG-разметка встроена в `app/qt/lucide_svgs.py`.

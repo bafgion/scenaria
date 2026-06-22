@@ -62,7 +62,6 @@ def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     qapp.processEvents()
 
     assert bar._file_hint.width() > 0
-    assert bar._next_step.width() > 0
     assert bar.minimumSizeHint().width() > bar.toolbar.compact_layout_min_width()
 
 
