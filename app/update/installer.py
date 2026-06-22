@@ -82,7 +82,14 @@ def _quote_batch_path(path: Path) -> str:
     return str(path.resolve())
 
 
-def prepare_update_script(staging_dir: Path, install_dir: Path, exe_name: str = EXE_NAME) -> Path:
+def prepare_update_script(
+    staging_dir: Path,
+    install_dir: Path,
+    *,
+    exe_name: str = EXE_NAME,
+    parent_pid: int,
+    max_wait_sec: int = 120,
+) -> Path:
     script_path = install_dir / _BAT_NAME
     log_path = install_dir / _LOG_NAME
     target = _quote_batch_path(install_dir)
@@ -94,13 +101,22 @@ def prepare_update_script(staging_dir: Path, install_dir: Path, exe_name: str = 
         f'set "TARGET={target}"',
         f'set "STAGING={staging}"',
         f'set "LOG={log_file}"',
-        f'echo [%date% %time%] Update started >"%LOG%"',
+        f'set "PID={int(parent_pid)}"',
+        f'set "WAIT_SEC=0"',
+        f'set "MAX_WAIT={int(max_wait_sec)}"',
+        f'echo [%date% %time%] Update started PID=%PID% >"%LOG%"',
         ":wait_exit",
-        f'tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul',
-        "if %ERRORLEVEL%==0 (",
-        "  timeout /t 1 /nobreak >nul",
-        "  goto wait_exit",
-        ")",
+        'tasklist /FI "PID eq %PID%" 2>nul | find /I "%PID%" >nul',
+        "if errorlevel 1 goto do_copy",
+        "set /a WAIT_SEC+=1",
+        "if %WAIT_SEC% GEQ %MAX_WAIT% goto force_kill",
+        "timeout /t 1 /nobreak >nul",
+        "goto wait_exit",
+        ":force_kill",
+        f'echo [%date% %time%] Force kill PID %PID% >>"%LOG%"',
+        "taskkill /PID %PID% /T /F >>\"%LOG%\" 2>&1",
+        "timeout /t 2 /nobreak >nul",
+        ":do_copy",
         f'echo [%date% %time%] Copying update files >>"%LOG%"',
         (
             f'robocopy "%STAGING%" "%TARGET%" /E /XD data browsers /R:5 /W:2 '
@@ -151,10 +167,17 @@ def _launch_update_script(script: Path, install_dir: Path) -> None:
     breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
     create_flags |= breakaway
 
+    startupinfo = None
+    if hasattr(subprocess, "STARTUPINFO"):
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 1)
+        startupinfo.wShowWindow = 0
+
     subprocess.Popen(
         ["cmd.exe", "/c", str(script)],
         cwd=str(install_dir),
         creationflags=create_flags,
+        startupinfo=startupinfo,
         close_fds=True,
     )
     time.sleep(0.3)
@@ -173,7 +196,7 @@ def apply_update(asset: UpdateAsset, on_progress=None) -> None:
         remote_staging = stage_update_package(zip_path)
         remote_staging_parent = remote_staging.parent.parent
         local_staging = _copy_to_local_staging(remote_staging, install_dir)
-        script = prepare_update_script(local_staging, install_dir)
+        script = prepare_update_script(local_staging, install_dir, parent_pid=os.getpid())
     except Exception:
         shutil.rmtree(download_temp, ignore_errors=True)
         if remote_staging_parent is not None:

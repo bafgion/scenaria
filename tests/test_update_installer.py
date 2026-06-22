@@ -33,9 +33,12 @@ def test_prepare_update_script_waits_for_exe_and_logs(tmp_path: Path) -> None:
     staging_dir = tmp_path / "staging"
     install_dir.mkdir()
     staging_dir.mkdir()
-    script = prepare_update_script(staging_dir, install_dir)
+    script = prepare_update_script(staging_dir, install_dir, parent_pid=4242)
     text = script.read_text(encoding="ascii")
-    assert "tasklist" in text
+    assert 'set "PID=4242"' in text
+    assert 'tasklist /FI "PID eq %PID%"' in text
+    assert "goto force_kill" in text
+    assert "taskkill /PID %PID% /T /F" in text
     assert "robocopy" in text
     assert "_update_staging" not in text
     assert str(staging_dir.resolve()) in text
