@@ -21,6 +21,8 @@ def qapp():
 
 def test_welcome_checklist_states(qapp) -> None:
     panel = WelcomePanel()
+    assert panel._scroll is not None
+    assert not panel._scroll.widgetResizable()
     panel.update_checklist(
         project_open=False,
         recorded=False,

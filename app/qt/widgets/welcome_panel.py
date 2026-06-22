@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_SUCCESS, COLOR_TEXT
 from app.brand import BRAND_NAME
@@ -15,6 +25,47 @@ _CHECKLIST_STEPS = (
     (2, "Записать сценарий"),
     (3, "Запустить тест"),
 )
+
+
+class _WelcomeScrollBody(QWidget):
+    """Scroll content: compact card, vertically centered when space allows."""
+
+    def __init__(self, scroll: QScrollArea, card: QWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._scroll = scroll
+        self._card = card
+        self.setProperty("role", "welcome-scroll-body")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(0)
+        layout.addStretch(1)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch(1)
+        row.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
+        row.addStretch(1)
+        layout.addLayout(row, 0)
+        layout.addStretch(1)
+
+    def sync_height(self) -> None:
+        viewport = self._scroll.viewport()
+        if viewport is None:
+            return
+        margins = self.layout().contentsMargins()
+        content_h = self._card.sizeHint().height() + margins.top() + margins.bottom()
+        viewport_h = max(0, viewport.height())
+        height = max(content_h, viewport_h)
+        width = max(0, viewport.width())
+        if self.minimumHeight() != height or self.width() != width:
+            self.setMinimumHeight(height)
+            self.resize(width, height)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self.sync_height()
 
 
 class WelcomePanel(QWidget):
@@ -31,14 +82,23 @@ class WelcomePanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("role", "welcome")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(24, 24, 24, 24)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        outer.addStretch(1)
 
-        card = QWidget(self)
+        scroll = QScrollArea(self)
+        scroll.setProperty("role", "welcome-scroll")
+        scroll.setWidgetResizable(False)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        card = QWidget()
         card.setProperty("role", "welcome-card")
+        card.setMaximumWidth(520)
+        card.setMinimumWidth(280)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(6)
@@ -105,8 +165,24 @@ class WelcomePanel(QWidget):
         layout.addLayout(self._recent_features_box)
         layout.addLayout(self._recent_projects_box)
 
-        outer.addWidget(card, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        outer.addStretch(2)
+        self._scroll_body = _WelcomeScrollBody(scroll, card)
+        scroll.setWidget(self._scroll_body)
+        outer.addWidget(scroll)
+        self._scroll = scroll
+        scroll.viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if obj is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
+            self._scroll_body.sync_height()
+        return super().eventFilter(obj, event)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._scroll_body.sync_height()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._scroll_body.sync_height()
 
     def _emit_quick_start(self) -> None:
         self.quick_start.emit(self._quick_url.text().strip())
@@ -125,6 +201,7 @@ class WelcomePanel(QWidget):
         if dismissed:
             self._checklist_box.hide()
             self._subtitle.hide()
+            self._scroll_body.sync_height()
             return
         self._checklist_box.show()
         self._subtitle.hide()
@@ -151,10 +228,12 @@ class WelcomePanel(QWidget):
             if clickable:
                 text = f'<a href="#" style="text-decoration:none; color:{color};">{text}</a>'
             row.setText(text)
+        self._scroll_body.sync_height()
 
     def refresh_recents(self, features: list[Path], projects: list[Path]) -> None:
         self._fill_recents(self._recent_features_box, "Недавние файлы", features, self.open_recent_feature)
         self._fill_recents(self._recent_projects_box, "Недавние проекты", projects, self.open_recent_project)
+        self._scroll_body.sync_height()
 
     def _fill_recents(self, box: QVBoxLayout, title: str, paths: list[Path], signal) -> None:
         while box.count():

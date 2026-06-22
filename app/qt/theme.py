@@ -423,6 +423,13 @@ def apply_dark_theme(app: QApplication) -> None:
         QWidget[role="welcome"] {{
             background: {COLOR_WORKSPACE};
         }}
+        QScrollArea[role="welcome-scroll"] {{
+            background: {COLOR_WORKSPACE};
+            border: none;
+        }}
+        QWidget[role="welcome-scroll-body"] {{
+            background: {COLOR_WORKSPACE};
+        }}
         QWidget[role="welcome-card"] {{
             background: #252526;
             border: 1px solid {COLOR_DIVIDER};

@@ -24,6 +24,11 @@ _BAT_NAME = "_apply_update.bat"
 _VBS_NAME = "_apply_update.vbs"
 
 
+def _write_script_file(path: Path, content: str) -> None:
+    """Write helper scripts without relying on the optional ascii codec in frozen builds."""
+    path.write_bytes(content.encode("utf-8"))
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -144,17 +149,16 @@ def prepare_update_script(
         "del \"%~f0\" >nul 2>&1",
         "exit /b 0",
     ]
-    script_path.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="strict")
+    _write_script_file(script_path, "\r\n".join(lines) + "\r\n")
     return script_path
 
 
 def _write_hidden_launcher(script: Path) -> Path:
     vbs_path = script.with_name(_VBS_NAME)
     bat_quoted = str(script.resolve()).replace('"', '""')
-    vbs_path.write_text(
+    _write_script_file(
+        vbs_path,
         f'CreateObject("WScript.Shell").Run "cmd /c ""{bat_quoted}""", 0, False\r\n',
-        encoding="ascii",
-        errors="strict",
     )
     return vbs_path
 

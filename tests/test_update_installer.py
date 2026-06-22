@@ -76,7 +76,7 @@ def test_prepare_update_script_waits_for_exe_and_logs(tmp_path: Path) -> None:
     install_dir.mkdir()
     staging_dir.mkdir()
     script = prepare_update_script(staging_dir, install_dir, parent_pid=4242)
-    text = script.read_text(encoding="ascii")
+    text = script.read_text(encoding="utf-8")
     assert 'set "PID=4242"' in text
     assert "EnableDelayedExpansion" in text
     assert 'find /C "%PID%"' in text
@@ -91,13 +91,30 @@ def test_prepare_update_script_waits_for_exe_and_logs(tmp_path: Path) -> None:
     assert "exit /b 0" in text
 
 
+def test_write_script_file_avoids_ascii_codec(tmp_path: Path, monkeypatch) -> None:
+    from app.update.installer import _write_script_file
+
+    def _reject_ascii(encoding: str, /, *args, **kwargs):
+        if encoding == "ascii":
+            raise LookupError("unknown encoding: ascii")
+        return original_lookup(encoding, *args, **kwargs)
+
+    import codecs
+
+    original_lookup = codecs.lookup
+    monkeypatch.setattr(codecs, "lookup", _reject_ascii)
+    target = tmp_path / "helper.bat"
+    _write_script_file(target, "@echo off\r\ntest\r\n")
+    assert target.read_bytes() == b"@echo off\r\ntest\r\n"
+
+
 def test_write_hidden_launcher(tmp_path: Path) -> None:
     from app.update.installer import _write_hidden_launcher
 
     script = tmp_path / "_apply_update.bat"
-    script.write_text("@echo off\r\n", encoding="ascii")
+    script.write_text("@echo off\r\n", encoding="utf-8")
     vbs = _write_hidden_launcher(script)
-    text = vbs.read_text(encoding="ascii")
+    text = vbs.read_text(encoding="utf-8")
     assert vbs.name == "_apply_update.vbs"
     assert "WScript.Shell" in text
     assert str(script.resolve()) in text
