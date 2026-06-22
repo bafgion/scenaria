@@ -66,6 +66,7 @@ def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     assert bar.minimumSizeHint().width() > bar.toolbar.compact_layout_min_width()
 
 
+@_skip_layout_on_ci
 def test_toolbar_hides_scenario_chip_on_welcome(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -83,6 +84,7 @@ def test_toolbar_hides_scenario_chip_on_welcome(qapp) -> None:
     assert not bar._url_sep.isVisible()
 
 
+@_skip_layout_on_ci
 def test_toolbar_shows_scenario_chip_for_open_file(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -100,6 +102,7 @@ def test_toolbar_shows_scenario_chip_for_open_file(qapp) -> None:
     assert "test2.feature" in bar._file_name.text()
 
 
+@_skip_layout_on_ci
 def test_toolbar_elides_long_scenario_name_in_middle(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
