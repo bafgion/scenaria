@@ -10,16 +10,17 @@ app/
     models/       # state, no widgets
     controllers/  # actions, wiring
   qt/
-    widgets/      # views
+    widgets/      # views (welcome, editor, step help, …)
     theme.py
     main_window.py
   recorder.py
   player.py
+  step_catalog.py # step help categories
   feature_store.py
   gherkin_ru.py
-  scenario_utils.py
-  run_display.py
-  step_display.py
+  gherkin_blocks.py  # Если / Повторяю / Пока / Для каждого
+examples/         # shipped beginner .feature files
+docs/             # user + release docs
 ```
 
 ## Run
@@ -28,4 +29,9 @@ app/
 python main.py
 ```
 
-Portable build: `scripts\build.ps1` → `dist\Scenaria\Scenaria.exe`
+Portable build: `scripts\build.ps1` → `dist\Scenaria\Scenaria.exe` (includes `examples/`).
+
+## User docs
+
+- [GETTING_STARTED.md](GETTING_STARTED.md)
+- [../examples/README.md](../examples/README.md)

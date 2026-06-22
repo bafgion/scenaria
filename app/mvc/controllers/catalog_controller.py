@@ -37,7 +37,12 @@ class CatalogController(QObject):
         )
         if not path:
             return False
-        self._model.set_features_root(Path(path))
+        return self.open_project_at(Path(path))
+
+    def open_project_at(self, path: Path) -> bool:
+        if not path.is_dir():
+            return False
+        self._model.set_features_root(path)
         return True
 
     def choose_root_directory(self) -> None:

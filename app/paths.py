@@ -88,6 +88,18 @@ def plugins_dir() -> Path:
     return path
 
 
+def examples_dir() -> Path:
+    """Shipped beginner sample scenarios (portable: next to exe; dev: repo root)."""
+    for candidate in (
+        app_root() / "examples",
+        bundled_root() / "examples",
+        Path(__file__).resolve().parent.parent / "examples",
+    ):
+        if candidate.is_dir():
+            return candidate
+    return Path(__file__).resolve().parent.parent / "examples"
+
+
 def configure_playwright_browsers() -> None:
     bundled = app_root() / "browsers"
     if bundled.is_dir():

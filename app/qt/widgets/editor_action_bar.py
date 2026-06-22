@@ -34,28 +34,28 @@ class EditorActionBar(QWidget):
         self.toolbar = QuickToolBar(self)
         root.addWidget(self.toolbar, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        root.addWidget(self._separator())
+        self._toolbar_sep = self._separator()
+        root.addWidget(self._toolbar_sep, 0, Qt.AlignmentFlag.AlignVCenter)
 
         run_box = QWidget()
         self._run_box = run_box
-        run_box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        run_box.setProperty("role", "scenario-chip")
+        run_box.setFixedHeight(22)
+        run_box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         run_layout = QHBoxLayout(run_box)
         run_layout.setContentsMargins(8, 0, 8, 0)
-        run_layout.setSpacing(6)
+        run_layout.setSpacing(5)
         run_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        run_caption = QLabel("Сценарий")
-        run_caption.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
-        run_layout.addWidget(run_caption, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._file_icon = QLabel()
         self._file_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._file_icon.setPixmap(icons.scenario_file_icon(size=16).pixmap(16, 16))
-        self._file_icon.setFixedSize(16, 16)
+        self._file_icon.setPixmap(icons.scenario_file_icon(size=12).pixmap(12, 12))
+        self._file_icon.setFixedSize(12, 12)
+        self._file_icon.setToolTip("Текущий сценарий")
         run_layout.addWidget(self._file_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._file_name = QLabel("—")
-        self._file_name.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 9pt; font-weight: 600;")
+        self._file_name.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 8pt;")
         self._file_name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         run_layout.addWidget(self._file_name, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -63,10 +63,10 @@ class EditorActionBar(QWidget):
         self._file_hint.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
         run_layout.addWidget(self._file_hint, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        run_layout.addStretch(0)
-        root.addWidget(run_box, 0)
+        root.addWidget(run_box, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        root.addWidget(self._separator())
+        self._url_sep = self._separator()
+        root.addWidget(self._url_sep, 0, Qt.AlignmentFlag.AlignVCenter)
 
         url_box = QWidget()
         self._url_box = url_box
@@ -95,10 +95,13 @@ class EditorActionBar(QWidget):
         url_from_tab.clicked.connect(self.fetch_url_from_tab_requested.emit)
         url_layout.addWidget(url_from_tab)
 
-        root.addWidget(url_box, 0)
+        root.addWidget(url_box, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._density_chrome_width = 0
         self._user_simple_toolbar = False
+        self._file_title = "—"
+        self._file_badges = ""
+        self._set_scenario_chip_visible(False)
         self._reserve_chrome_layout()
         self._sync_toolbar_density()
 
@@ -112,7 +115,9 @@ class EditorActionBar(QWidget):
     def _reserve_chrome_layout(self) -> None:
         """Keep right-side chrome width stable when labels change."""
         hint_metrics = QFontMetrics(self._file_hint.font())
-        self._file_hint.setFixedWidth(hint_metrics.horizontalAdvance("не сохранён") + 8)
+        self._file_hint.setFixedWidth(hint_metrics.horizontalAdvance("не сохранён") + 4)
+        name_metrics = QFontMetrics(self._file_name.font())
+        self._file_name.setFixedWidth(name_metrics.horizontalAdvance("длинное_имя_сценария.feature") + 2)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         hint = super().minimumSizeHint()
@@ -120,10 +125,20 @@ class EditorActionBar(QWidget):
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
+        self._refresh_file_name()
         self._sync_toolbar_density()
 
     def _measured_chrome_width(self) -> int:
-        return self._run_box.sizeHint().width() + self._url_box.sizeHint().width() + 20
+        chrome = self._url_box.sizeHint().width() + 10
+        if self._run_box.isVisible():
+            chrome += self._run_box.sizeHint().width() + 30
+        return chrome
+
+    def _set_scenario_chip_visible(self, visible: bool) -> None:
+        self._run_box.setVisible(visible)
+        self._toolbar_sep.setVisible(True)
+        self._url_sep.setVisible(visible)
+        self._sync_toolbar_density()
 
     def _fixed_chrome_width(self) -> int:
         measured = self._measured_chrome_width()
@@ -153,13 +168,20 @@ class EditorActionBar(QWidget):
 
     def _separator(self) -> QFrame:
         line = QFrame()
-        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFrameShape(QFrame.Shape.NoFrame)
         line.setProperty("role", "v-divider")
         line.setFixedWidth(1)
+        line.setFixedHeight(32)
         return line
 
     def _commit_url(self) -> None:
         self.url_changed.emit(self._url_edit.text().strip())
+
+    def _refresh_file_name(self) -> None:
+        metrics = QFontMetrics(self._file_name.font())
+        text = f"{self._file_title}{self._file_badges}"
+        width = max(40, self._file_name.width())
+        self._file_name.setText(metrics.elidedText(text, Qt.TextElideMode.ElideMiddle, width))
 
     def set_run_target(
         self,
@@ -171,21 +193,27 @@ class EditorActionBar(QWidget):
         is_welcome: bool = False,
         tags: list[str] | None = None,
     ) -> None:
+        show_chip = not is_welcome and title != "—"
+        self._set_scenario_chip_visible(show_chip)
+        if not show_chip:
+            return
+
         badges = ""
         if unapplied:
             badges += " ●"
         if unsaved:
             badges += " *"
-        self._file_name.setText(f"{title}{badges}")
-        if is_welcome:
-            self._file_hint.setText("")
-            self._file_name.setToolTip("Стартовая страница")
-        elif path is not None:
-            tags = " ".join(f"@{tag}" for tag in (tags or ()))
-            self._file_hint.setText(tags)
+        self._file_title = title
+        self._file_badges = badges
+        self._refresh_file_name()
+        if path is not None:
+            tags_text = " ".join(f"@{tag}" for tag in (tags or ()))
+            self._file_hint.setText(tags_text)
+            self._file_hint.setVisible(bool(tags_text))
             self._file_name.setToolTip(str(path))
         else:
             self._file_hint.setText("не сохранён")
+            self._file_hint.setVisible(True)
             self._file_name.setToolTip("Файл ещё не сохранён на диск")
 
     def set_url(self, url: str) -> None:

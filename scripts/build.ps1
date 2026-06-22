@@ -46,6 +46,11 @@ Get-ChildItem $PlaywrightLocal -Directory | Where-Object {
 }
 
 New-Item -ItemType Directory -Path (Join-Path $Dist "data") -Force | Out-Null
+$ExamplesSource = Join-Path $Root "examples"
+if (Test-Path $ExamplesSource) {
+    Write-Host "==> Copy examples into dist\examples" -ForegroundColor Cyan
+    Copy-Item $ExamplesSource (Join-Path $Dist "examples") -Recurse -Force
+}
 $versionPath = Join-Path $Dist "version.txt"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($versionPath, $Version, $utf8NoBom)

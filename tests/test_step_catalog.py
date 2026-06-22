@@ -47,6 +47,22 @@ def test_entry_for_action_fill_generated_disambiguation() -> None:
     assert "телефон" in phone.label
 
 
+def test_list_step_entries_conditions_and_loops() -> None:
+    conditions = list_step_entries(category="conditions")
+    loops = list_step_entries(category="loops")
+    assert any(entry.action == "if" for entry in conditions)
+    assert any(entry.label.startswith("если") for entry in conditions)
+    assert any(entry.action == "repeat" for entry in loops)
+    assert any(entry.action == "while" for entry in loops)
+    assert any(entry.action == "for_each" for entry in loops)
+
+
+def test_catalog_includes_remember_field() -> None:
+    matches = list_step_entries(query="запоминаю значение поля")
+    assert matches
+    assert matches[0].action == "remember_field"
+
+
 def test_format_entry_help_structured_html() -> None:
     from app.step_catalog import format_entry_help
 

@@ -19,6 +19,7 @@ class WelcomePanel(QWidget):
     open_recent_project = Signal(object)
     quick_start = Signal(str)
     insert_template = Signal()
+    open_examples = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -61,6 +62,7 @@ class WelcomePanel(QWidget):
         layout.addWidget(section)
 
         for text, handler in (
+            ("Открыть примеры сценариев", self.open_examples.emit),
             ("Открыть папку…", self.open_project.emit),
             ("Новый сценарий", self.create_feature.emit),
             ("Открыть файл…", self.open_feature.emit),

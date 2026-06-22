@@ -16,7 +16,17 @@ _KEYWORD_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-StepCategory = Literal["navigation", "forms", "assert", "wait", "session", "files", "generators"]
+StepCategory = Literal[
+    "navigation",
+    "forms",
+    "assert",
+    "wait",
+    "session",
+    "files",
+    "generators",
+    "conditions",
+    "loops",
+]
 
 CATEGORY_LABELS: dict[str, str] = {
     "all": "Все",
@@ -27,6 +37,8 @@ CATEGORY_LABELS: dict[str, str] = {
     "session": "Сессия",
     "files": "Файлы",
     "generators": "Генераторы",
+    "conditions": "Условия",
+    "loops": "Циклы",
 }
 
 ACTION_CATEGORY: dict[str, StepCategory] = {
@@ -59,6 +71,10 @@ ACTION_CATEGORY: dict[str, StepCategory] = {
     "wait_for": "wait",
     "wait_for_hidden": "wait",
     "close_browser": "session",
+    "if": "conditions",
+    "repeat": "loops",
+    "while": "loops",
+    "for_each": "loops",
 }
 
 ACTION_PARAMS: dict[str, tuple[str, ...]] = {
@@ -89,6 +105,20 @@ ACTION_PARAMS: dict[str, tuple[str, ...]] = {
     "wait": ('seconds — длительность паузы',),
     "wait_for": ('selector — элемент, появление которого ждём',),
     "wait_for_hidden": ('selector — элемент, исчезновение которого ждём',),
+    "if": (
+        "condition — вижу / не вижу / url содержит / текст на странице",
+        "steps — вложенные шаги с отступом (таб или 2 пробела)",
+    ),
+    "repeat": ("count — число повторений", "steps — тело цикла с отступом"),
+    "while": (
+        "condition — как в «Если»",
+        "steps — тело цикла; лимит итераций — max_loop_iterations в настройках",
+    ),
+    "for_each": (
+        "selector — CSS селектор элементов списка",
+        "variable — имя переменной для {{имя}} во вложенных шагах",
+        "steps — тело цикла с отступом",
+    ),
 }
 
 

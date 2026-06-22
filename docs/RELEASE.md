@@ -16,7 +16,7 @@ copy release.json.example release.json
 
 ## Версия
 
-Версия хранится в `pyproject.toml` (`version = "…"`). Перед релизом увеличьте её.
+Версия хранится в `pyproject.toml` (`version = "…"`). Перед релизом увеличьте её. Правила SemVer: [VERSIONING.md](VERSIONING.md).
 
 ## Сборка локально
 
@@ -27,9 +27,10 @@ cd scripts
 
 Результат в `dist/`:
 
-| Файл | Назначение |
-|------|------------|
-| `Scenaria-Portable/` | portable-папка |
+| Файл / папка | Назначение |
+|--------------|------------|
+| `Scenaria/` | portable-папка |
+| `Scenaria/examples/` | примеры сценариев для новичков (копируются из `examples/`) |
 | `Scenaria-Portable.zip` | полная установка (с Chromium) |
 | `Scenaria-update.zip` | обновление без `browsers/` и `data/` |
 | `latest.json` | манифест с SHA256 для проверки целостности |
@@ -62,6 +63,20 @@ Workflow `.github/workflows/release.yml` соберёт portable, прогони
 - при наличии версии — скачивание `Scenaria-update.zip` (без браузера), замена `exe` и `_internal`, папки `data/` и `browsers/` не трогаются;
 - перезапуск через `_apply_update.bat`.
 
+### Что видит пользователь при обновлении
+
+Модальное окно **«Загрузка обновления»** с прогресс-баром и фазами:
+
+| Фаза | Подпись |
+|------|---------|
+| Скачивание | Процент и объём файла |
+| Проверка файла | Контрольная сумма |
+| Распаковка | Разбор архива |
+| Подготовка к установке | Копирование в staging |
+| Перезапуск | Запуск `_apply_update.bat` |
+
+При ошибке — диалог с текстом и ссылкой на страницу загрузки. Лог установки: `_apply_update.log` рядом с `Scenaria.exe`.
+
 Первичная установка — полный `Scenaria-Portable.zip`.
 
 ## GitHub CLI
@@ -70,3 +85,8 @@ Workflow `.github/workflows/release.yml` соберёт portable, прогони
 gh auth login
 gh auth status
 ```
+
+## См. также
+
+- [GETTING_STARTED.md](GETTING_STARTED.md) — onboarding и примеры
+- [README.md](../README.md) — обзор продукта

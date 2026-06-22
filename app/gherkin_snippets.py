@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.gherkin_ru import is_step_indented
+from app.gherkin_ru import STEP_INDENT, is_step_indented
+
+_TAB = STEP_INDENT
 
 _KEYWORD_RE = re.compile(r"^(?:(Допустим|Когда|Тогда|И|Но)\s+)?(.*)$", re.IGNORECASE)
 _HEADER_RE = re.compile(r"^\s*(функционал|сценарий|функция)\s*:?", re.IGNORECASE)
@@ -152,6 +154,11 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "Сохранить текущий URL (action: remember_url)",
     ),
     GherkinSnippet(
+        "запоминаю значение поля",
+        'запоминаю значение поля "input#email" как "user_email"',
+        "Сохранить значение поля в переменную (action: remember_field)",
+    ),
+    GherkinSnippet(
         "рисую подпись",
         'рисую подпись в "canvas"',
         "Рисование подписи на canvas (ПЭП, action: draw_signature)",
@@ -210,6 +217,41 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "жду исчезновения",
         'жду исчезновения ".spinner"',
         "Ожидание скрытия лоадера или модалки (action: wait_for_hidden)",
+    ),
+    GherkinSnippet(
+        "если вижу",
+        f'Если вижу ".cookie-banner"\n{_TAB}нажимаю "button.accept"',
+        "Условный блок: шаги внутри выполняются, если элемент виден (action: if)",
+    ),
+    GherkinSnippet(
+        "если не вижу",
+        f'Если не вижу ".spinner"\n{_TAB}нажимаю "button.next"',
+        "Условный блок: шаги внутри выполняются, если элемент скрыт (action: if)",
+    ),
+    GherkinSnippet(
+        "если url",
+        f'Если url содержит "/checkout"\n{_TAB}нажимаю "button.pay"',
+        "Условный блок: шаги внутри выполняются, если URL содержит подстроку (action: if)",
+    ),
+    GherkinSnippet(
+        "если текст",
+        f'Если текст на странице "Готово"\n{_TAB}нажимаю "button.ok"',
+        "Условный блок: шаги внутри выполняются, если текст есть на странице (action: if)",
+    ),
+    GherkinSnippet(
+        "повторяю",
+        f"Повторяю 3 раза\n{_TAB}нажимаю \"button.add\"",
+        "Цикл с фиксированным числом повторений (action: repeat)",
+    ),
+    GherkinSnippet(
+        "пока",
+        f'Пока вижу "button.load-more"\n{_TAB}нажимаю "button.load-more"',
+        "Цикл «пока условие истинно»; лимит итераций — в настройках (action: while)",
+    ),
+    GherkinSnippet(
+        "для каждого",
+        f'Для каждого ".product-card" как "card"\n{_TAB}нажимаю "{{{{card}}}} .buy-btn"',
+        "Цикл по каждому элементу списка; переменная доступна как {{card}} (action: for_each)",
     ),
 )
 

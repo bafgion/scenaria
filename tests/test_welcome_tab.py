@@ -110,7 +110,7 @@ def test_welcome_tab_does_not_enable_scenario_actions(qapp) -> None:
     assert not workspace.quick_toolbar._buttons["play"].isEnabled()
     assert not workspace.quick_toolbar._buttons["record"].isEnabled()
     assert not workspace.quick_toolbar._buttons["validate"].isEnabled()
-    assert workspace.editor_action_bar._file_hint.text() == ""
+    assert not workspace.editor_action_bar._run_box.isVisible()
     assert not workspace.editor_action_bar._url_edit.isEnabled()
 
 

@@ -13,6 +13,7 @@ class EmptyEditorPanel(QWidget):
     open_project = Signal()
     create_feature = Signal()
     open_feature = Signal()
+    open_examples = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -45,6 +46,7 @@ class EmptyEditorPanel(QWidget):
 
         for text, shortcut, handler in (
             ("Страница «Старт»", "", self.show_start.emit),
+            ("Открыть примеры сценариев", "", self.open_examples.emit),
             ("Новый сценарий", "Ctrl+N", self.create_feature.emit),
             ("Открыть файл…", "Ctrl+O", self.open_feature.emit),
             ("Открыть папку…", "", self.open_project.emit),

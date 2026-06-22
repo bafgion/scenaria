@@ -201,12 +201,14 @@ class MainWindow(QMainWindow):
         self.workspace.welcome_panel.open_recent_project.connect(self._open_recent_project)
         self.workspace.welcome_panel.quick_start.connect(self._quick_start)
         self.workspace.welcome_panel.insert_template.connect(self._new_scenario_with_template)
+        self.workspace.welcome_panel.open_examples.connect(self._open_examples_project)
         self.workspace.welcome_activated.connect(self._refresh_welcome_recents)
         self.workspace.welcome_activated.connect(self._sync_menu_states)
         self.workspace.empty_panel.show_start.connect(
             lambda: self.workspace.ensure_welcome_tab(activate=True)
         )
         self.workspace.empty_panel.open_project.connect(self._open_project)
+        self.workspace.empty_panel.open_examples.connect(self._open_examples_project)
         self.workspace.empty_panel.create_feature.connect(self._new_scenario)
         self.workspace.empty_panel.open_feature.connect(self._open_feature_file)
         self.workspace.state_changed.connect(self.status_bar.set_session_state)
@@ -357,6 +359,32 @@ class MainWindow(QMainWindow):
                 self.status_bar.set_message(str(root))
             if not self.workspace.has_editor_tabs():
                 self.workspace.ensure_welcome_tab(activate=True)
+
+    def _open_examples_project(self) -> None:
+        from app.paths import examples_dir
+        from app.qt.dialogs import alert
+
+        examples = examples_dir().resolve()
+        if not examples.is_dir():
+            alert(
+                self,
+                BRAND_NAME,
+                "Папка с примерами не найдена.\n"
+                "См. examples/ в репозитории или переустановите portable-сборку.",
+            )
+            return
+        if not self._catalog_controller.open_project_at(examples):
+            return
+        remember_project(examples)
+        self._refresh_welcome_recents()
+        self.status_bar.set_message(f"Примеры: {examples}")
+        features = sorted(examples.glob("*.feature"))
+        if features:
+            self._controller.catalog.select_feature(features[0])
+            self.workspace.open_file(features[0], reload_if_clean=True)
+            remember_feature(features[0])
+        elif not self.workspace.has_editor_tabs():
+            self.workspace.ensure_welcome_tab(activate=True)
 
     def _new_scenario(self) -> None:
         self.workspace.open_untitled()

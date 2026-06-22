@@ -454,9 +454,21 @@ def apply_dark_theme(app: QApplication) -> None:
             min-width: 1px;
             border: none;
         }}
+        QWidget[role="editor-action-bar"] QFrame[role="v-divider"] {{
+            min-height: 32px;
+            max-height: 32px;
+        }}
         QWidget[role="editor-action-bar"] {{
             background: {COLOR_TOOLBAR};
             border-bottom: 1px solid {COLOR_ZONE_LINE};
+        }}
+        QWidget[role="editor-action-bar"] QWidget[role="scenario-chip"] {{
+            background: #2a2d2e;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 4px;
+            min-height: 22px;
+            max-height: 22px;
+            margin: 0 10px;
         }}
         QStackedWidget[role="editor-stack"] {{
             background: {COLOR_WORKSPACE};

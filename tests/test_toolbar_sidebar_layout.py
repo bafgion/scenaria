@@ -65,6 +65,54 @@ def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     assert bar.minimumSizeHint().width() > bar.toolbar.compact_layout_min_width()
 
 
+def test_toolbar_hides_scenario_chip_on_welcome(qapp) -> None:
+    bar = EditorActionBar()
+    bar.show()
+    bar.set_run_target(
+        title="Старт",
+        path=None,
+        unapplied=False,
+        unsaved=False,
+        is_welcome=True,
+    )
+    qapp.processEvents()
+
+    assert not bar._run_box.isVisible()
+    assert bar._toolbar_sep.isVisible()
+    assert not bar._url_sep.isVisible()
+
+
+def test_toolbar_shows_scenario_chip_for_open_file(qapp) -> None:
+    bar = EditorActionBar()
+    bar.show()
+    bar.set_run_target(
+        title="test2.feature",
+        path=None,
+        unapplied=False,
+        unsaved=True,
+    )
+    qapp.processEvents()
+
+    assert bar._run_box.isVisible()
+    assert bar._toolbar_sep.isVisible()
+    assert bar._url_sep.isVisible()
+    assert "test2.feature" in bar._file_name.text()
+
+
+def test_toolbar_elides_long_scenario_name_in_middle(qapp) -> None:
+    bar = EditorActionBar()
+    bar.show()
+    bar.set_run_target(
+        title="very_long_scenario_name_for_toolbar_preview.feature",
+        path=None,
+        unapplied=False,
+        unsaved=True,
+    )
+    qapp.processEvents()
+
+    assert "..." in bar._file_name.text() or "…" in bar._file_name.text()
+
+
 def _expand_workspace_until_full_toolbar(
     workspace: EditorWorkspace,
     qapp,
