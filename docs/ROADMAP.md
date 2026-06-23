@@ -1,73 +1,101 @@
 # Roadmap Scenaria — технический долг и инфраструктура
 
 **Текущий релиз:** v0.10.1 (спринт 14 — export audit + CHANGELOG)  
-**Продуктовые спринты 1–9:** завершены — см. [archive/COMPLETED_SPRINTS.md](archive/COMPLETED_SPRINTS.md).
+**Следующий план:** спринты 15–20 (фазы T6–T10) — см. ниже.  
+**Продуктовые спринты 1–9:** завершены — [archive/COMPLETED_SPRINTS.md](archive/COMPLETED_SPRINTS.md).
 
-После v0.8.x фокус смещается с новых фич на **устойчивость разработки**: CI, декомпозиция крупных модулей, стабильные тесты, единые зависимости.
+Фазы T1–T5 **закрыты** (v0.9.0 … v0.10.1). Дальше — доводка CI, сопровождение и декомпозиция `player` / `gherkin_ru` по [аудиту 2026-06-23](#контекст-аудит-2026-06-23).
 
 Версионирование: [VERSIONING.md](VERSIONING.md). Детали задач: [ROADMAP_TASKS.md](ROADMAP_TASKS.md).
 
 ---
 
-## Контекст (аудит кодовой базы, 2026-06)
+## Контекст (аудит 2026-06-23)
 
-| Проблема | Риск |
-|----------|------|
-| `main_window.py` ~1 900 строк | Любое изменение UI ломает смежные сценарии |
-| `recording_controller.py` ~1 200 строк | Запись/прогон/validate/picker в одном классе |
-| CI только на тег релиза | Регрессии между релизами не ловятся |
-| Qt + Playwright в одном pytest-процессе | Flaky / access violation на Windows |
-| `requirements.txt` + `pyproject.toml` | Расхождение версий |
-| `playwright_export.py` — часть шагов `TODO` | Экспорт обещает больше, чем делает |
-| Retry pytest ×3 в release workflow | Маскирует нестабильность |
+| Проблема | Риск | Спринт |
+|----------|------|--------|
+| 10 тестов skip на `GITHUB_ACTIONS` | Дыры в CI-покрытии Qt/update/toolbar | **15 (T6)** |
+| `main_window.py` 1222 строк (> цели 1200) | Косметика; T2 почти закрыт | **16 (T7)** |
+| `player.py` ~1 600 строк | Сложность изменений прогона | **17–18 (T8)** |
+| `gherkin_ru.py` ~1 200 строк | Сложность парсера | **19 (T9)** |
+| Нет static typing | Регрессии при split (пример: `_status_brief`) | **20 (T10)** |
+| Архив `COMPLETED_SPRINTS` устарел | Путаница с версией | **16 (T7)** |
 
-**Не в этом roadmap:** новые пользовательские фичи (кроме мелких багфиксов). Их — отдельным эпиком после стабилизации инфраструктуры.
+**Закрыто в T1–T5:** CI на PR, split MainWindow/RecordingController, subprocess-тесты, export audit, CHANGELOG.
+
+**Не в этом roadmap:** новые пользовательские фичи — отдельный продуктовый эпик после T6–T10 (или параллельно мелкими PATCH).
 
 ---
 
-## Фазы
+## Фазы T1–T5 (завершены)
 
-### Фаза T1 — CI и зависимости (спринт 10 → v0.9.0)
+<details>
+<summary>Развернуть T1–T5</summary>
 
-Цель: обратная связь на каждый push/PR, один источник зависимостей.
+### Фаза T1 — CI и зависимости (спринт 10 → v0.9.0) ✅
 
-- Workflow `ci.yml`: `pytest` на `windows-latest` без сборки EXE
-- Job быстрый: unit + Qt; integration — отдельный job или `continue-on-error` до T4
-- `ruff check` в CI
-- Зависимости: `pyproject.toml` — источник правды; `requirements*.txt` синхронизировать или генерировать
+### Фаза T2 — MainWindow (спринт 11 → v0.9.1) ✅
 
-### Фаза T2 — Декомпозиция MainWindow (спринт 11 → v0.9.1)
+### Фаза T3 — RecordingController (спринт 12 → v0.9.2) ✅
 
-Цель: `main_window.py` < **1 200** строк, тестируемые модули.
+### Фаза T4 — Тесты (спринт 13 → v0.10.0) ✅
 
-- `app/qt/main_window_update.py` — проверка/скачивание/установка обновлений
-- `app/qt/main_window_menus.py` — сборка меню и QAction (или фабрика)
-- `app/qt/main_window_batch.py` — пакетный прогон, выбор в каталоге
-- `MainWindow` — только wiring, layout, делегирование
+### Фаза T5 — Export и docs (спринт 14 → v0.10.1) ✅
 
-### Фаза T3 — Декомпозиция RecordingController (спринт 12 → v0.9.2)
+</details>
 
-Цель: `recording_controller.py` < **800** строк.
+---
 
-- `PlaybackCoordinator` — start/stop/pause player, run from step N
-- `ValidateCoordinator` — validate selectors, связь с UI-панелью
-- `RecordingSession` — open browser, record modes, TestClient, picker
-- Контроллер — фасад и сигналы Qt
+## Фазы T6–T10 (план)
 
-### Фаза T4 — Стабильность тестов (спринт 13 → v0.10.0)
+### Фаза T6 — CI без skip (спринт 15 → v0.10.2)
 
-Цель: зелёный CI без retry ×3.
+Цель: **0 skip** на GitHub Actions при полном `pytest`.
 
-- Integration-тесты Playwright — **subprocess** или отдельный pytest worker
-- Безопасные Qt smoke: `MainWindow` с mock `ScenarioRecorder` / без Chromium
-- Убрать skip Qt на `GITHUB_ACTIONS` там, где тесты стабилизированы
-- Снизить retry в `release.yml` до 1 (после зелёного CI)
+- Стабилизировать `test_update_ui.py` (QEventLoop + QThread) через моки/синхронные сигналы
+- Стабилизировать resize-тесты toolbar: фиксированные размеры или helper вместо циклов
+- Регрессионный тест `_status_brief` после split RecordingController
+- Обновить `tests/README.md` (убрать таблицу CI skip, если пусто)
 
-### Фаза T5 — Экспорт и сопровождение (спринт 14 → v0.10.1)
+### Фаза T7 — Сопровождение (спринт 16 → v0.10.3)
 
-- Аудит `playwright_export.py`: реализовать или явно пометить unsupported в CLI/GUI
-- `CHANGELOG.md` — пользовательские изменения по релизам
-- `VERSIONING.md` в репозитории (сейчас локальный)
+Цель: закрыть хвосты T2 и документации.
+
+- `main_window.py` ≤ **1 200** строк
+- Обновить `archive/COMPLETED_SPRINTS.md` (v0.10.x, техдолг)
+- Ruff: явный набор правил в `pyproject.toml` (не только defaults)
+- Чеклист для `scripts/split_*.py`: методы-mixin с `self` (док или lint-скрипт)
+
+### Фаза T8 — Декомпозиция Player (спринты 17–18 → v0.11.0)
+
+Цель: `player.py` < **900** строк, тестируемые модули.
+
+**Спринт 17:** выделить исполнение шагов и контекст прогона.  
+**Спринт 18:** highlight/picker/batch-очередь, фасад `ScenarioPlayer`.
+
+Ориентир по модулям (уточнить в T8-*):
+
+- `player_step_executor.py` — `execute_step`, action dispatch
+- `player_context.py` — `RunContext`, переменные, генераторы
+- `player_highlight.py` — подсветка, scroll, focus
+- `player.py` — фасад, lifecycle, worker thread
+
+### Фаза T9 — Декомпозиция Gherkin (спринт 19 → v0.11.1)
+
+Цель: `gherkin_ru.py` < **800** строк.
+
+- `gherkin_parse.py` — `parse_gherkin_steps`, `_parse_step_body`
+- `gherkin_serialize.py` — `steps_to_gherkin`, outline/tags
+- `gherkin_ru.py` — публичный API, re-export, тонкие обёртки
+- Без изменения синтаксиса `.feature` на диске
+
+### Фаза T10 — Статическая типизация (спринт 20 → v0.11.2)
+
+Цель: mypy на критичных слоях без массового `# type: ignore`.
+
+- `pyproject.toml`: `[tool.mypy]` + optional-dep `dev`
+- CI: job `mypy` (или шаг в `ci.yml`) для `app/mvc/`, `app/playwright_export.py`
+- Постепенно: `app/step_catalog.py`, координаторы recording
 
 ---
 
@@ -75,13 +103,18 @@
 
 | Релиз | Спринт | Содержание | Тип |
 |-------|--------|------------|-----|
-| **v0.9.0** | 10 | **T1** CI на PR, ruff, единые зависимости — **закрыт** | MINOR |
-| **v0.9.1** | 11 | **T2** MainWindow split | PATCH |
-| **v0.9.2** | 12 | **T3** RecordingController split | PATCH |
-| **v0.10.0** | 13 | **T4** стабильные тесты | MINOR |
-| **v0.10.1** | 14 | **T5** export + CHANGELOG — **закрыт** | PATCH |
+| **v0.9.0** | 10 | T1 CI — **закрыт** | MINOR |
+| **v0.9.1** | 11 | T2 MainWindow — **закрыт** | PATCH |
+| **v0.9.2** | 12 | T3 RecordingController — **закрыт** | PATCH |
+| **v0.10.0** | 13 | T4 тесты — **закрыт** | MINOR |
+| **v0.10.1** | 14 | T5 export — **закрыт** | PATCH |
+| **v0.10.2** | 15 | **T6** CI без skip | PATCH |
+| **v0.10.3** | 16 | **T7** сопровождение | PATCH |
+| **v0.11.0** | 17–18 | **T8** Player split | MINOR |
+| **v0.11.1** | 19 | **T9** Gherkin split | PATCH |
+| **v0.11.2** | 20 | **T10** mypy | PATCH |
 
-Порядок T2/T3 можно менять; **T1 желательно первым** — защита рефакторинга.
+T8 — два спринта подряд, один MINOR-релиз. T6 желательно **до** крупного split T8 (защита CI).
 
 ---
 
@@ -89,25 +122,26 @@
 
 | Метрика | Цель | Спринт |
 |---------|------|--------|
-| CI на PR | < 15 мин, без EXE | T1 |
-| `main_window.py` | < 1 200 LOC | T2 |
-| `recording_controller.py` | < 800 LOC | T3 |
-| Release pytest retry | 0–1 | T4 |
-| Export: шаги без `TODO` | 100 % каталога или явный список unsupported | T5 |
+| CI skip на GITHUB_ACTIONS | **0** | T6 |
+| `main_window.py` | ≤ 1 200 LOC | T7 |
+| `player.py` | ≤ 900 LOC | T8 |
+| `gherkin_ru.py` | ≤ 800 LOC | T9 |
+| mypy | 0 errors на `app/mvc/` | T10 |
 
 ---
 
 ## Definition of Done (общий)
 
-1. Код + pytest (unit; integration/Qt по смыслу задачи)
-2. Поведение GUI/CLI не регрессирует (ручной smoke для T2/T3)
-3. CI зелёный на PR
-4. Строка в CHANGELOG при релизе
+1. Код + pytest по задаче
+2. CI зелёный на PR (после T6 — без skip)
+3. Для T8/T9 — ручной smoke: открыть проект → запись → прогон
+4. Секция в CHANGELOG при релизе
 
 ---
 
-## Вне scope
+## Вне scope (T6–T10)
 
 - Сборка macOS/Linux
-- mypy/pyright (отдельный эпик после T4)
-- Разбиение `player.py` / `gherkin_ru.py` (после T2–T3, если понадобится)
+- Продуктовые фичи (новый UX, интеграции) — эпик **P** после T8 или отдельной веткой
+- Vanessa / 1С-шаги в core export
+- Полный mypy на `player.py` до завершения T8

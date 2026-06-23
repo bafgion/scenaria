@@ -504,7 +504,8 @@ class RecordingController(
         self._emit_session()
 
     def _status_brief(self, message: str) -> str:
-        line = (message or "").splitlines()[0].strip()
+        lines = (message or "").splitlines()
+        line = lines[0].strip() if lines else ""
         if "Call log:" in line:
             line = line.split("Call log:", 1)[0].strip()
         if len(line) > 120:

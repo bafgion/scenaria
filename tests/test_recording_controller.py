@@ -68,3 +68,28 @@ def test_open_browser_passes_test_client_name() -> None:
     ctrl._recorder.open_browser.assert_called_once()
     kwargs = ctrl._recorder.open_browser.call_args.kwargs
     assert kwargs.get("test_client") == "DemoUser"
+
+
+def test_status_brief_takes_first_line() -> None:
+    ctrl = _recording_controller()
+    assert ctrl._status_brief("line one\nline two") == "line one"
+
+
+def test_status_brief_strips_call_log_suffix() -> None:
+    ctrl = _recording_controller()
+    message = "Timeout 30000ms exceeded. Call log:\n  - waiting for locator"
+    assert ctrl._status_brief(message) == "Timeout 30000ms exceeded."
+
+
+def test_status_brief_truncates_long_messages() -> None:
+    ctrl = _recording_controller()
+    long_line = "x" * 150
+    brief = ctrl._status_brief(long_line)
+    assert len(brief) == 120
+    assert brief.endswith("...")
+
+
+def test_status_brief_fallback_for_empty_message() -> None:
+    ctrl = _recording_controller()
+    assert ctrl._status_brief("") == "Ошибка"
+    assert ctrl._status_brief("   \n  ") == "Ошибка"

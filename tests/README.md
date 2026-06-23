@@ -68,14 +68,7 @@ Workflow `.github/workflows/ci.yml` на `push` / `pull_request` в `master`:
 
 Release workflow (тег `v*`) — один прогон pytest без retry, затем сборка portable EXE.
 
-### Известные ограничения на CI
-
-| Файл | Поведение | Причина |
-|------|-----------|---------|
-| `test_toolbar_sidebar_layout.py` | skip resize/splitter тестов на CI | Headless: ширина toolbar не растёт как на desktop |
-| `test_update_ui.py` | skip runner-тестов с QEventLoop на CI | QThread + QEventLoop нестабильны на headless Windows |
-
-`test_gherkin_completions.py` и chip-тесты toolbar снова запускаются на CI после изоляции Playwright (спринт 13).
+На CI **0 skipped** тестов (спринт 15): update runners — `QSignalSpy` + фикстура `sync_update_threads` (патч `threading.Thread`); toolbar — расчёт ширины `chrome + full_layout_min_width` вместо resize-циклов.
 
 ## Линтер
 

@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget
+
+from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
 from app.mvc.models.catalog_model import CatalogModel
 from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.editor_workspace import EditorWorkspace
 from app.qt.widgets.ide_splitter import IdeSplitter
 from app.qt.widgets.sidebar import Sidebar
-from PySide6.QtCore import Qt
-
-from app.mvc.controllers.app_controller import AppController
-
-_CI = os.environ.get("GITHUB_ACTIONS") == "true"
-# Resize/splitter loops are flaky on headless Windows; chip visibility tests are safe.
-_skip_resize_loops_on_ci = pytest.mark.skipif(
-    _CI,
-    reason="toolbar width expansion loops are unreliable on headless Windows CI",
-)
 
 
 @pytest.fixture(scope="session")
@@ -32,22 +23,37 @@ def qapp():
     return app
 
 
-def _expand_until_full_toolbar(bar: EditorActionBar, qapp, *, start: int = 1200, step: int = 200, limit: int = 4200) -> int:
-    width = start
-    while width <= limit:
-        bar.resize(width, bar.sizeHint().height())
-        qapp.processEvents()
-        if not bar.toolbar.is_auto_compact():
-            return width
-        width += step
-    pytest.skip(f"toolbar stayed compact up to {limit}px wide (headless/CI)")
+def _full_toolbar_width(bar: EditorActionBar) -> int:
+    return bar._fixed_chrome_width() + bar.toolbar.full_layout_min_width() + 80
 
 
-@_skip_resize_loops_on_ci
+def _resize_for_full_toolbar(bar: EditorActionBar, qapp) -> int:
+    bar.show()
+    qapp.processEvents()
+    width = _full_toolbar_width(bar)
+    bar.resize(width, bar.sizeHint().height())
+    qapp.processEvents()
+    assert not bar.toolbar.is_auto_compact(), (
+        f"expected full toolbar at {width}px (chrome={bar._fixed_chrome_width()})"
+    )
+    return width
+
+
+def _resize_workspace_for_full_toolbar(workspace: EditorWorkspace, qapp, *, width: int | None = None) -> int:
+    workspace.show()
+    qapp.processEvents()
+    bar = workspace.editor_action_bar
+    if width is None:
+        width = _full_toolbar_width(bar)
+    workspace.resize(width, 700)
+    qapp.processEvents()
+    assert not bar.toolbar.is_auto_compact(), f"expected full toolbar at workspace width {width}px"
+    return width
+
+
 def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     bar = EditorActionBar()
-    bar.show()
-    full_width = _expand_until_full_toolbar(bar, qapp)
+    full_width = _resize_for_full_toolbar(bar, qapp)
     assert bar.toolbar._buttons["validate"].text() == "Селекторы на странице"
 
     bar.resize(max(400, full_width - 500), bar.sizeHint().height())
@@ -57,7 +63,6 @@ def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     assert bar.toolbar._buttons["validate"].text() == ""
 
 
-@_skip_resize_loops_on_ci
 def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -115,43 +120,20 @@ def test_toolbar_elides_long_scenario_name_in_middle(qapp) -> None:
     assert "..." in bar._file_name.text() or "…" in bar._file_name.text()
 
 
-def _expand_workspace_until_full_toolbar(
-    workspace: EditorWorkspace,
-    qapp,
-    *,
-    start: int = 1200,
-    step: int = 200,
-    limit: int = 4200,
-) -> int:
-    width = start
-    while width <= limit:
-        workspace.resize(width, 700)
-        qapp.processEvents()
-        if not workspace.editor_action_bar.toolbar.is_auto_compact():
-            return width
-        width += step
-    pytest.skip(f"workspace toolbar stayed compact up to {limit}px wide (headless/CI)")
-
-
-@_skip_resize_loops_on_ci
 def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     bar = EditorActionBar()
-    bar.show()
-    _expand_until_full_toolbar(bar, qapp)
+    _resize_for_full_toolbar(bar, qapp)
     assert bar.toolbar._buttons["validate"].text() == "Селекторы на странице"
 
 
-@_skip_resize_loops_on_ci
 def test_workspace_minimum_width_stays_small_with_labeled_toolbar(qapp) -> None:
     controller = AppController()
     workspace = EditorWorkspace(controller)
-    workspace.show()
-    _expand_workspace_until_full_toolbar(workspace, qapp)
+    _resize_workspace_for_full_toolbar(workspace, qapp)
     chrome = workspace.editor_action_bar._measured_chrome_width()
     assert workspace.minimumSizeHint().width() > chrome
 
 
-@_skip_resize_loops_on_ci
 def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     host = QWidget()
     host.setMinimumSize(0, 0)
@@ -169,17 +151,18 @@ def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     layout.addWidget(splitter)
 
     workspace_min = workspace.minimumSizeHint().width()
-    host_width = max(2600, workspace_min + 1000)
+    host_width = max(3200, workspace_min + 1200)
     splitter.setSizes([320, host_width - 320])
     host.resize(host_width, 700)
     host.show()
     qapp.processEvents()
-    _expand_workspace_until_full_toolbar(workspace, qapp, start=host_width - 320)
+    _resize_workspace_for_full_toolbar(workspace, qapp, width=host_width - 320)
 
     before = splitter.sizes()[0]
-    target_sidebar = before + 180
+    target_sidebar = before + 200
     splitter.setSizes([target_sidebar, host_width - target_sidebar])
     qapp.processEvents()
 
-    if splitter.sizes()[0] <= before:
-        pytest.skip("sidebar width did not grow on this runner")
+    assert splitter.sizes()[0] > before, (
+        f"sidebar width did not grow: before={before}, after={splitter.sizes()[0]}"
+    )

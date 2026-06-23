@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
 from app.qt.main_window import MainWindow
 from app.qt.update_ui import UpdateCheckRunner, UpdateDownloadRunner
 from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
-from app.update.checker import UpdateAsset, UpdateInfo
-
-_CI = os.environ.get("GITHUB_ACTIONS") == "true"
-# QEventLoop + QThread workers are unstable on headless Windows runners.
-_skip_qt_thread_on_ci = pytest.mark.skipif(
-    _CI,
-    reason="QEventLoop waiting on UpdateCheckRunner/DownloadRunner threads fails headless Windows CI",
-)
+from app.update.checker import UpdateAsset, UpdateCheckError, UpdateInfo
 
 
 @pytest.fixture(scope="module")
@@ -30,64 +22,60 @@ def qapp():
     return app
 
 
-@_skip_qt_thread_on_ci
-def test_update_check_runner_emits_from_background_thread(qapp):
-    loop = QEventLoop()
-    states: list[tuple[object, object]] = []
+@pytest.fixture
+def sync_update_threads():
+    """Run update workers synchronously so QSignalSpy does not need QEventLoop."""
 
+    class _SyncThread:
+        def __init__(self, target=None, name=None, daemon=None, args=(), kwargs=None):
+            self._target = target
+
+        def start(self) -> None:
+            if self._target is not None:
+                self._target()
+
+    with patch("app.qt.update_ui.threading.Thread", _SyncThread):
+        yield
+
+
+def _update_info() -> UpdateInfo:
+    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
+    return UpdateInfo(
+        version="9.9.9",
+        title="Scenaria v9.9.9",
+        notes="",
+        published_at="2026-01-01T00:00:00Z",
+        portable=None,
+        update=asset,
+    )
+
+
+def test_update_check_runner_emits_from_background_thread(qapp, sync_update_threads):
     runner = UpdateCheckRunner()
-    runner.finished.connect(lambda info, error: (states.append((info, error)), loop.quit()))
+    spy = QSignalSpy(runner.finished)
 
     with patch("app.qt.update_ui.check_for_updates", return_value=None):
         runner.start()
-        QTimer.singleShot(5000, loop.quit)
-        loop.exec()
 
-    assert states == [(None, None)]
+    assert spy.count() == 1
+    assert spy.at(0) == [None, None]
 
 
-@_skip_qt_thread_on_ci
-def test_download_runner_emits_error_on_failure(qapp):
-    loop = QEventLoop()
-    errors: list[str | None] = []
-    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
-    info = UpdateInfo(
-        version="9.9.9",
-        title="Scenaria v9.9.9",
-        notes="",
-        published_at="2026-01-01T00:00:00Z",
-        portable=None,
-        update=asset,
-    )
-
-    runner = UpdateDownloadRunner(info)
-    runner.finished.connect(lambda error: (errors.append(error), loop.quit()))
+def test_download_runner_emits_error_on_failure(qapp, sync_update_threads):
+    runner = UpdateDownloadRunner(_update_info())
+    spy = QSignalSpy(runner.finished)
 
     with patch("app.qt.update_ui.apply_update", side_effect=RuntimeError("network down")):
         runner.start()
-        QTimer.singleShot(5000, loop.quit)
-        loop.exec()
 
-    assert errors == ["Ошибка установки обновления: network down"]
+    assert spy.count() == 1
+    assert spy.at(0) == ["Ошибка установки обновления: network down"]
 
 
-@_skip_qt_thread_on_ci
-def test_download_runner_emits_phase_signal(qapp):
-    loop = QEventLoop()
-    phases: list[tuple[str, int, int, str]] = []
-    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
-    info = UpdateInfo(
-        version="9.9.9",
-        title="Scenaria v9.9.9",
-        notes="",
-        published_at="2026-01-01T00:00:00Z",
-        portable=None,
-        update=asset,
-    )
-
-    runner = UpdateDownloadRunner(info)
-    runner.phase.connect(lambda phase, current, total, detail: phases.append((phase, current, total, detail)))
-    runner.finished.connect(loop.quit)
+def test_download_runner_emits_phase_signal(qapp, sync_update_threads):
+    runner = UpdateDownloadRunner(_update_info())
+    phase_spy = QSignalSpy(runner.phase)
+    finished_spy = QSignalSpy(runner.finished)
 
     def fake_apply(_asset, on_progress=None, on_phase=None, on_exit_requested=None, should_cancel=None):
         if on_progress is not None:
@@ -101,31 +89,18 @@ def test_download_runner_emits_phase_signal(qapp):
 
     with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
         runner.start()
-        QTimer.singleShot(5000, loop.quit)
-        loop.exec()
 
+    assert finished_spy.count() == 1
+    phases = [tuple(phase_spy.at(i)) for i in range(phase_spy.count())]
     assert ("download", 50, 100, "Scenaria-update.zip") in phases
     assert ("extract", 1, 2, "Scenaria/Scenaria.exe") in phases
     assert ("stage", 2, 2, "Scenaria.exe") in phases
 
 
-@_skip_qt_thread_on_ci
-def test_download_runner_emits_exit_requested(qapp):
-    loop = QEventLoop()
-    exit_hits: list[int] = []
-    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
-    info = UpdateInfo(
-        version="9.9.9",
-        title="Scenaria v9.9.9",
-        notes="",
-        published_at="2026-01-01T00:00:00Z",
-        portable=None,
-        update=asset,
-    )
-
-    runner = UpdateDownloadRunner(info)
-    runner.exit_requested.connect(lambda: (exit_hits.append(1), loop.quit()))
-    runner.finished.connect(loop.quit)
+def test_download_runner_emits_exit_requested(qapp, sync_update_threads):
+    runner = UpdateDownloadRunner(_update_info())
+    exit_spy = QSignalSpy(runner.exit_requested)
+    finished_spy = QSignalSpy(runner.finished)
 
     def fake_apply(_asset, on_progress=None, on_phase=None, on_exit_requested=None, should_cancel=None):
         if on_exit_requested is not None:
@@ -133,10 +108,9 @@ def test_download_runner_emits_exit_requested(qapp):
 
     with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
         runner.start()
-        QTimer.singleShot(5000, loop.quit)
-        loop.exec()
 
-    assert exit_hits == [1]
+    assert finished_spy.count() == 1
+    assert exit_spy.count() == 1
 
 
 def test_update_progress_dialog_updates_bar(qapp):
@@ -158,41 +132,23 @@ def test_update_progress_dialog_indeterminate_without_total(qapp):
     assert dialog._cancel_btn.isEnabled()
 
 
-@_skip_qt_thread_on_ci
-def test_download_runner_cancel_emits_message(qapp):
-    import time
-
-    from app.update.checker import UpdateCheckError
-
-    loop = QEventLoop()
-    errors: list[str | None] = []
-    asset = UpdateAsset(name="Scenaria-update.zip", url="https://example.com/u.zip", size=1, sha256="")
-    info = UpdateInfo(
-        version="9.9.9",
-        title="Scenaria v9.9.9",
-        notes="",
-        published_at="2026-01-01T00:00:00Z",
-        portable=None,
-        update=asset,
-    )
-
-    runner = UpdateDownloadRunner(info)
-    runner.finished.connect(lambda error: (errors.append(error), loop.quit()))
+def test_download_runner_cancel_emits_message(qapp, sync_update_threads):
+    runner = UpdateDownloadRunner(_update_info())
+    spy = QSignalSpy(runner.finished)
 
     def fake_apply(_asset, on_progress=None, on_phase=None, on_exit_requested=None, should_cancel=None):
-        while should_cancel is not None and not should_cancel():
-            if on_progress is not None:
-                on_progress(1024, 0)
-            time.sleep(0.02)
-        raise UpdateCheckError("Обновление отменено")
+        if on_progress is not None:
+            on_progress(1024, 0)
+        if should_cancel is not None and should_cancel():
+            raise UpdateCheckError("Обновление отменено")
+        raise AssertionError("expected cancel flag before apply completes")
 
+    runner.cancel()
     with patch("app.qt.update_ui.apply_update", side_effect=fake_apply):
         runner.start()
-        QTimer.singleShot(100, runner.cancel)
-        QTimer.singleShot(5000, loop.quit)
-        loop.exec()
 
-    assert errors == ["Обновление отменено"]
+    assert spy.count() == 1
+    assert spy.at(0) == ["Обновление отменено"]
 
 
 def test_dismiss_download_progress_hides_dialog(qapp):
