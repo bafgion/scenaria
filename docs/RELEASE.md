@@ -47,9 +47,9 @@ cd scripts
 
 ```powershell
 git add pyproject.toml
-git commit -m "Release v0.2.1"
-git tag v0.2.1
-git push origin main --tags
+git commit -m "Release v0.8.0"
+git tag v0.8.0
+git push origin master --tags
 ```
 
 Workflow `.github/workflows/release.yml` соберёт portable, прогонит тесты и опубликует Release с тремя артефактами.
