@@ -119,7 +119,6 @@ def test_flush_editor_preserves_comments(tmp_path: Path) -> None:
 
     feature = tmp_path / "demo.feature"
     tab = STEP_INDENT
-    steps = [{"action": "goto", "url": "https://example.com"}]
     feature.write_text(
         f"Функционал: UI\nСценарий: Demo\n{tab}Допустим открыт \"https://example.com\"\n",
         encoding="utf-8",

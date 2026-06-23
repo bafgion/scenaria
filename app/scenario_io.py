@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from app.gherkin_ru import gherkin_to_steps, steps_to_gherkin
-from app.feature_store import get_root
 
 
 def export_scenario_feature(target: Path, scenario: dict[str, Any]) -> Path:

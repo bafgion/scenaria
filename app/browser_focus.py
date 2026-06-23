@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from playwright.sync_api import BrowserContext, Page
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 
 def _preferred_page(context: BrowserContext) -> Page | None:

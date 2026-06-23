@@ -15,7 +15,7 @@ if (-not $Version) {
 Write-Host "==> Scenaria build v$Version" -ForegroundColor Cyan
 
 Write-Host "==> Install dependencies" -ForegroundColor Cyan
-python -m pip install -r requirements.txt -r requirements-dev.txt --quiet
+python -m pip install -e ".[dev,build]" --quiet
 python -m playwright install chromium
 
 if (-not $SkipTests) {

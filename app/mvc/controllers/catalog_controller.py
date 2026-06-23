@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from app.feature_store import get_root, resolve_project_root
+from app.feature_store import resolve_project_root
 from app.mvc.models.catalog_model import CatalogModel
 from app.qt.dialogs import alert
 from app.brand import BRAND_NAME

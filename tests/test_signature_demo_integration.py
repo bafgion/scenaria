@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
 
-pytestmark = pytest.mark.integration
-
+from app.gherkin_ru import gherkin_to_steps
 from app.paths import configure_playwright_browsers
 from app.player import run_scenario_on_page
-from app.gherkin_ru import gherkin_to_steps
+
+pytestmark = pytest.mark.integration
 
 
 FIXTURE_HTML = Path(__file__).resolve().parent / "fixtures" / "signature_demo.html"

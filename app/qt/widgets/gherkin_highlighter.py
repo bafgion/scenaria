@@ -7,7 +7,7 @@ import re
 from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 
 from app.gherkin_ru import GHERKIN_KEYWORDS
-from app.qt.theme import COLOR_ERROR, COLOR_MUTED, COLOR_TEXT
+from app.qt.theme import COLOR_ERROR, COLOR_TEXT
 
 # VS Code–like token colors on dark background
 _COLOR_KEYWORD = "#569cd6"

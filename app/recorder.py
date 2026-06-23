@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 from enum import Enum, auto
-from typing import Callable
+from typing import Any, Callable
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 

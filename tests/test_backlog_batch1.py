@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from app.browser_compat import compatibility_warning, list_engine_warnings

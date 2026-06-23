@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
 from app.qt import icons
 from app.qt.labels import caption_label, set_label_tone

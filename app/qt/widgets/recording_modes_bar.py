@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QWidget
 
 from app.qt.labels import caption_label
 

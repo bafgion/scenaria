@@ -981,7 +981,10 @@ class RecordingController(QObject):
     def on_step_row_selected(self, step: object) -> None:
         if not self._recorder.browser_open:
             return
-        on_error = lambda exc: self.log.emit(str(exc), "error")
+
+        def on_error(exc: BaseException) -> None:
+            self.log.emit(str(exc), "error")
+
         if not step or not isinstance(step, dict):
             self._recorder.clear_highlight(on_error=on_error)
             return

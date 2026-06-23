@@ -6,10 +6,10 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QSizePolicy, QToolButton, QWidget
 
 from app.qt import icons
-from app.qt.labels import caption_label, body_label, body_secondary_label, set_label_tone
+from app.qt.labels import caption_label, body_label, body_secondary_label
 from app.qt.widgets.quick_toolbar import QuickToolBar
 
 _SCENARIO_CHIP_ICON = 14

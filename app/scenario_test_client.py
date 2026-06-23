@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.test_clients import TestClientNotFoundError, require_test_client
+from app.test_clients import require_test_client
 
 
 def scenario_test_client_name(scenario: dict[str, Any]) -> str | None:

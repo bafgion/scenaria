@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from app.plugins.models import RunBatchResult, RunCaseResult, RunMode, RunRequest, RunResult
+from app.plugins.models import RunBatchResult, RunCaseResult, RunRequest, RunResult
 from app.progress_state import ProgressState
 from app.run_suite import infer_project_root, resolve_feature_files, run_feature_paths
 

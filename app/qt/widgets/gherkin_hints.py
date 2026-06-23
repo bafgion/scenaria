@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QToolButton, QVBoxLayout, QWidget
 
 from app.gherkin_snippets import STEP_SNIPPETS
 from app.qt.labels import caption_label

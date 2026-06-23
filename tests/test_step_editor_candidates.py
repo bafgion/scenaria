@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from app.qt.widgets.step_editor_dialog import edit_step_dialog
 
 
 @pytest.fixture(scope="session")

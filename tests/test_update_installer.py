@@ -6,7 +6,6 @@ from pathlib import Path
 from app.brand import EXE_NAME
 from app.update.installer import (
     _STAGING_DIR_NAME,
-    _find_payload_root,
     prepare_update_script,
     stage_update_package,
 )
@@ -15,7 +14,7 @@ from app.update.installer import (
 def _write_update_zip(path: Path, version: str) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(f"Scenaria/{EXE_NAME}", b"exe")
-        archive.writestr(f"Scenaria/version.txt", version)
+        archive.writestr("Scenaria/version.txt", version)
         archive.writestr("Scenaria/_internal/app.txt", b"payload")
 
 

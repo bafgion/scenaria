@@ -7,7 +7,6 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
-    QLabel,
     QLineEdit,
     QWidget,
 )

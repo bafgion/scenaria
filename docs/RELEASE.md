@@ -54,6 +54,18 @@ git push origin master --tags
 
 Workflow `.github/workflows/release.yml` соберёт portable, прогонит тесты и опубликует Release с тремя артефактами.
 
+## CI на push и pull request
+
+Workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) запускается при каждом `push` и `pull_request` в `master`:
+
+1. установка `pip install -e ".[dev]"` и Chromium для Playwright;
+2. `ruff check app tests`;
+3. `pytest tests/ -q` (без сборки EXE).
+
+Цель — ловить регрессии до тега релиза. Подробнее о типах тестов и маркерах: [tests/README.md](../tests/README.md).
+
+Зависимости: единый источник — `pyproject.toml`; `requirements.txt` и `requirements-dev.txt` — обёртки `-e .` / `-e ".[dev,build]"`.
+
 ## Автообновление в приложении
 
 В portable EXE:

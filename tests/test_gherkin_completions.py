@@ -46,7 +46,7 @@ def test_completion_delegate_paint_does_not_crash(qapp) -> None:
     option.font = QFont("Segoe UI", 9)
     option.state = option.state | QStyle.StateFlag.State_Selected
 
-    from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
+    from PySide6.QtCore import QAbstractListModel, Qt
 
     class _OneRowModel(QAbstractListModel):
         def rowCount(self, parent=None):

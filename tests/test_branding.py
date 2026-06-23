@@ -5,9 +5,9 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from app.brand import BRAND_TAGLINE
 from app.paths import bundled_root
 from app.qt.branding import about_text, app_icon, brand_mark_pixmap, branding_dir
-from app.qt.theme import BRAND_TAGLINE
 
 
 def test_theme_avoids_unsupported_qss_selectors() -> None:

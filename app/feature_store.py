@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.gherkin_context import parse_feature_test_client
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text, parse_feature_structure, steps_to_gherkin
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps, parse_feature_structure, steps_to_gherkin
 from app.paths import data_dir
 from app.settings import load_settings, save_settings
 

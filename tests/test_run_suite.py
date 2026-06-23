@@ -9,13 +9,13 @@ from app.run_suite import collect_feature_files, format_suite_summary
 
 def test_collect_feature_files_from_directory(tmp_path: Path) -> None:
     (tmp_path / "a.feature").write_text(
-        f'Функционал: UI\nСценарий: A\n\tДопустим открыт "https://a.com"\n',
+        'Функционал: UI\nСценарий: A\n\tДопустим открыт "https://a.com"\n',
         encoding="utf-8",
     )
     sub = tmp_path / "nested"
     sub.mkdir()
     (sub / "b.feature").write_text(
-        f'Функционал: UI\nСценарий: B\n\tДопустим открыт "https://b.com"\n',
+        'Функционал: UI\nСценарий: B\n\tДопустим открыт "https://b.com"\n',
         encoding="utf-8",
     )
     files = collect_feature_files([tmp_path])

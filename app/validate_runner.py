@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from playwright.sync_api import sync_playwright
 
-from app.browser_config import browser_context_options, launch_browser, load_browser_engine
+from app.browser_config import browser_context_options, launch_browser
 from app.feature_store import load_feature
 from app.paths import configure_playwright_browsers
 from app.selector_validate import (

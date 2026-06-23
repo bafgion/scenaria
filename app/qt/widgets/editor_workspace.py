@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QStackedWidget, QTabBar, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSizePolicy, QStackedWidget, QTabBar, QToolButton, QVBoxLayout, QWidget
 
 from app.gherkin_ru import GherkinParseError, gherkin_to_steps
 from app.feature_store import feature_texts_equivalent, normalize_feature_text
@@ -25,7 +25,7 @@ from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.recording_modes_bar import RecordingModesBar
 from app.qt.widgets.steps_strip import StepsStrip
 from app.qt.widgets.welcome_panel import WelcomePanel
-from app.scenario_hints import ScenarioHint, collect_all_hints
+from app.scenario_hints import collect_all_hints
 from app.settings import load_settings, save_settings
 from app.qt.labels import caption_label, strip_title_label
 from app.brand import BRAND_NAME

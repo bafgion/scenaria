@@ -17,7 +17,7 @@ from app.feature_store import (
     save_feature,
     save_feature_text,
 )
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text, steps_to_gherkin
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text
 from app.mvc.models.catalog_model import CatalogModel
 from app.mvc.models.scenario_model import ScenarioModel
 from app.qt.dialogs import alert, confirm, prompt_text

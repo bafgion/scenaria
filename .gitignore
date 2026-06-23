@@ -29,7 +29,5 @@ Desktop.ini
 # Local release override (copy from release.json.example)
 release.json
 
-# Local planning docs (not shared in repo)
-docs/ROADMAP.md
-docs/ROADMAP_TASKS.md
-docs/VERSIONING.md
+# Local release override only; roadmap is tracked in git
+# docs/VERSIONING.md — tracked after sprint 14 (T5-3); until then optional local copy

@@ -16,7 +16,7 @@ from app.http_auth import (
     store_host_credentials,
     strip_url_credentials,
 )
-from app.settings import DEFAULTS, load_settings, save_settings
+from app.settings import DEFAULTS
 
 
 def test_parse_url_credentials() -> None:

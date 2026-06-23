@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QMenu,
     QPushButton,
     QSizePolicy,

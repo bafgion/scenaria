@@ -29,23 +29,19 @@
 
 ## Установка
 
+Версии пакетов задаются в **`pyproject.toml`**. Рекомендуемый способ:
+
 ```powershell
 cd scenaria
-pip install -r requirements.txt
+pip install -e ".[dev]"
 python -m playwright install chromium
-```
-
-Разработка и тесты:
-
-```powershell
-pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-Или через `pyproject.toml`:
+Альтернатива через обёртки `requirements*.txt` (те же зависимости):
 
 ```powershell
-pip install -e ".[dev]"
+pip install -r requirements-dev.txt
 ```
 
 ## Запуск GUI
@@ -136,7 +132,8 @@ cd scenaria\scripts
 | [examples/README.md](examples/README.md) | Готовые примеры для новичков |
 | [docs/RELEASE.md](docs/RELEASE.md) | Сборка, релизы, автообновление |
 | [docs/VERSIONING.md](docs/VERSIONING.md) | SemVer и теги |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Планы развития |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Планы (техдолг, спринты 10+) |
+| [docs/archive/COMPLETED_SPRINTS.md](docs/archive/COMPLETED_SPRINTS.md) | Завершённые спринты 1–9 |
 | [docs/MIGRATION.md](docs/MIGRATION.md) | Структура кода (для разработчиков) |
 
 ## Данные приложения

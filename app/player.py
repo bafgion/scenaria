@@ -14,7 +14,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from app.browser_config import browser_context_options, launch_browser, load_browser_engine
 from app.download_helpers import file_contains_substring, save_playwright_download
-from app.run_variables import RunContext, normalize_generator_name
+from app.run_variables import RunContext
 from app.paths import configure_playwright_browsers, screenshots_dir, traces_dir
 from app.play_log import format_click_log, format_fill_generated_log, format_fill_log, step_log_target
 from app.playwright_lifecycle import release_playwright_session
@@ -1719,7 +1719,7 @@ class ScenarioPlayer:
             steps = scenario.get("steps") or []
             if not start_url and steps and steps[0].get("action") == "goto":
                 start_url = str(steps[0].get("url") or "")
-            from app.scenario_test_client import ensure_scenario_test_client, scenario_test_client_name
+            from app.scenario_test_client import ensure_scenario_test_client
 
             test_client = ensure_scenario_test_client(scenario, project_root)
             context = browser.new_context(

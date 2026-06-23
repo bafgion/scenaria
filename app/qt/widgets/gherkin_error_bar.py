@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from app.gherkin_quick_fixes import QuickFix
 from app.qt.labels import caption_label, error_label

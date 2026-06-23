@@ -37,17 +37,17 @@ def _locator_expr(fmt: ExportFormat, selector: str) -> str:
 def _signature_export_ts(selector: str) -> list[str]:
     loc = _locator_expr(ExportFormat.TYPESCRIPT, selector)
     return [
-        f"  {{",
+        "  {",
         f"    const box = await {loc}.boundingBox();",
-        f"    if (!box) throw new Error('Canvas not found');",
-        f"    const {{ x, y, width: w, height: h }} = box;",
-        f"    await page.mouse.move(x + w * 0.12, y + h * 0.55);",
-        f"    await page.mouse.down();",
-        f"    for (const [px, py] of [[0.28, 0.38], [0.42, 0.62], [0.58, 0.35], [0.72, 0.58], [0.86, 0.42]]) {{",
-        f"      await page.mouse.move(x + w * px, y + h * py, {{ steps: 8 }});",
-        f"    }}",
-        f"    await page.mouse.up();",
-        f"  }}",
+        "    if (!box) throw new Error('Canvas not found');",
+        "    const { x, y, width: w, height: h } = box;",
+        "    await page.mouse.move(x + w * 0.12, y + h * 0.55);",
+        "    await page.mouse.down();",
+        "    for (const [px, py] of [[0.28, 0.38], [0.42, 0.62], [0.58, 0.35], [0.72, 0.58], [0.86, 0.42]]) {",
+        "      await page.mouse.move(x + w * px, y + h * py, { steps: 8 });",
+        "    }",
+        "    await page.mouse.up();",
+        "  }",
     ]
 
 

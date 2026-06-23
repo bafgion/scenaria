@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 )
 
 from app.help_topics import (
-    GUIDE_CATEGORY,
     GUIDE_CATEGORY_LABELS,
     GuideTopic,
     format_guide_help,

@@ -108,7 +108,7 @@ def test_recorder_skips_browser_steps_on_pause() -> None:
 
 def test_recorder_pick_selector_allowed_on_pause() -> None:
     import queue
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from app.recorder import ScenarioRecorder
 

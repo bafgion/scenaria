@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenaria"
-version = "0.8.1"
+version = "0.9.0"
 description = "Scenaria — запись и запуск автотестов сайтов (Gherkin + Playwright)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.4.0",
+    "pillow>=10.0.0",
 ]
 build = [
     "pyinstaller>=6.0.0",
@@ -41,3 +42,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# Re-exports for app.qt.dialogs public API (vanessa add-on, legacy imports).
+"app/qt/dialogs.py" = ["F401"]

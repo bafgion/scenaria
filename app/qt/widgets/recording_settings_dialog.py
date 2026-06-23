@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QDialog, QWidget
+from PySide6.QtWidgets import QWidget
 
 from app.qt.widgets.settings_dialog import open_settings_dialog
 
