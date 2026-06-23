@@ -10,6 +10,25 @@ from app.qt.branding import about_text, app_icon, brand_mark_pixmap, branding_di
 from app.qt.theme import BRAND_TAGLINE
 
 
+def test_theme_avoids_unsupported_qss_selectors() -> None:
+    """Regression guard for Qt stylesheet parse errors on Windows."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "qt" / "theme.py").read_text(
+        encoding="utf-8"
+    )
+    forbidden = [
+        ':not([accent="true"])',
+        ':not([accent])',
+        '[default="true"]',
+        "hover:!selected",
+        "8.5pt",
+        'QLabel[role="link-label"] a',
+    ]
+    for pattern in forbidden:
+        assert pattern not in source, f"unsupported QSS pattern still present: {pattern}"
+
+
 @pytest.fixture(scope="module")
 def qapp():
     app = QApplication.instance()
