@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget, QApplication
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
 from app.feature_store import get_root, resolve_project_root
-from app.plugins.installer import PluginInstallError, install_from_zip, install_plugin
 from app.plugins.registry import get_registry
 from app.progress_state import ProgressState
-from app.qt.plugin_host import PluginsMenuHost
 from app.qt.drag_drop import classify_drop_paths, paths_from_drop_urls
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
 from app.http_auth import apply_url_credentials_to_settings, host_from_url, strip_url_credentials
-from app.qt.dialogs import BTN_OK, alert, confirm, prompt_text
+from app.qt.dialogs import alert, confirm, prompt_text
+from app.qt.main_window_batch import MainWindowBatchMixin
+from app.qt.main_window_menus import build_menus, refresh_plugins_menu
+from app.qt.main_window_palette import MainWindowPaletteMixin
+from app.qt.main_window_update import MainWindowUpdateMixin
+from app.qt.main_window_welcome import MainWindowWelcomeMixin
 from app.qt.widgets.http_auth_dialog import HttpAuthDialog
 from app.qt.widgets.browser_session_dialog import BrowserSessionDialog
 from app.qt.sync_prompts import install_prompt_service
@@ -26,7 +28,6 @@ from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.widgets.browser_overlay import BrowserOverlayPanel
 from app.qt.widgets.activity_bar import ActivityBar
 from app.qt.widgets.bottom_panel import BottomPanel
-from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
 from app.qt.widgets.editor_workspace import EditorWorkspace
 from app.qt.widgets.hotkeys_dialog import HotkeysDialog
 from app.qt.widgets.ide_status_bar import IdeStatusBar
@@ -35,20 +36,20 @@ from app.qt.widgets.zone_divider import zone_divider
 from app.qt.widgets.ide_splitter import IdeSplitter, HIT_SIZE
 from app.qt.worker_bridge import WorkerBridge
 from app.recent import recent_features, recent_projects, remember_feature, remember_project
-from app.release_info import github_repo
 from app.scenario_hints import gherkin_template_text
 from app.qt.branding import about_text, brand_mark_pixmap
 from app.brand import BRAND_NAME
-from app.qt.update_ui import (
-    UpdateCheckRunner,
-    UpdateDownloadRunner,
-    current_version_label,
-    updates_supported,
-)
+from app.qt.update_ui import current_version_label, updates_supported
 from app.settings import load_settings, save_settings
 
 
-class MainWindow(QMainWindow):
+class MainWindow(
+    QMainWindow,
+    MainWindowUpdateMixin,
+    MainWindowBatchMixin,
+    MainWindowPaletteMixin,
+    MainWindowWelcomeMixin,
+):
     def __init__(self, controller: AppController) -> None:
         super().__init__()
         self._controller = controller
@@ -477,257 +478,13 @@ class MainWindow(QMainWindow):
                 self.workspace.close_tabs_for_path(path, force=True)
 
     def _build_menus(self) -> None:
-        bar = self.menuBar()
-        sc = self._controller.scenario_controller
-        rec = self._controller.recording
-
-        project_menu = bar.addMenu("Проект")
-        project_menu.addAction("Открыть проект…", self._open_project)
-        self._act_settings = QAction("Настройки…", self)
-        self._act_settings.setShortcut(QKeySequence("Ctrl+,"))
-        self._act_settings.triggered.connect(self._open_settings)
-        project_menu.addAction(self._act_settings)
-        project_menu.addSeparator()
-        quit_action = QAction("Выход", self)
-        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
-        quit_action.triggered.connect(self.close)
-        project_menu.addAction(quit_action)
-
-        scenario_menu = bar.addMenu("Сценарий")
-        self._scenario_menu = scenario_menu
-        self._act_new = QAction("Новый", self)
-        self._act_new.setShortcut(QKeySequence.StandardKey.New)
-        self._act_new.triggered.connect(self._new_scenario)
-        scenario_menu.addAction(self._act_new)
-        self._act_open_file = QAction("Открыть…", self)
-        self._act_open_file.setShortcut(QKeySequence.StandardKey.Open)
-        self._act_open_file.triggered.connect(self._open_feature_file)
-        scenario_menu.addAction(self._act_open_file)
-        self._act_save = QAction("Сохранить", self)
-        self._act_save.setShortcut(QKeySequence.StandardKey.Save)
-        self._act_save.triggered.connect(self._save_current)
-        scenario_menu.addAction(self._act_save)
-        scenario_menu.addAction("Дублировать", sc.duplicate_selected_feature)
-        scenario_menu.addAction("Удалить", self._delete_selected_feature)
-        scenario_menu.addSeparator()
-        scenario_menu.addAction("Экспорт .feature…", self._export_with_apply(sc.export_feature_file))
-        scenario_menu.addAction("Экспорт Playwright (TypeScript)…", self._export_with_apply(sc.export_playwright_file))
-        scenario_menu.addAction(
-            "Экспорт Playwright (Python)…",
-            self._export_with_apply(lambda: sc.export_playwright_file(python=True)),
-        )
-        scenario_menu.addAction("Экспорт ZIP…", self._export_with_apply(sc.export_zip_file))
-        scenario_menu.addAction("Экспорт JSON…", self._export_with_apply(sc.export_json_file))
-        scenario_menu.addAction("Импорт…", sc.import_feature_file)
-        scenario_menu.addAction("Импорт JSON…", sc.import_json_file)
-        scenario_menu.addSeparator()
-        find_action = scenario_menu.addAction("Найти и заменить…", self._open_find_replace)
-        find_action.setShortcut(QKeySequence("Ctrl+H"))
-        scenario_menu.addAction("Замена по проекту…", self._open_project_replace)
-        refactor_menu = scenario_menu.addMenu("Рефакторинг")
-        refactor_menu.addAction("Обновить стартовый URL…", self._refactor_update_start_urls)
-        refactor_menu.addAction("Нормализовать отступы шагов", self._refactor_normalize_indents)
-        refactor_menu.addAction("Удалить пустые строки между шагами", self._refactor_collapse_blank_lines)
-        palette_action = scenario_menu.addAction("Палитра сниппетов…", self._open_snippet_palette)
-        palette_action.setShortcut(QKeySequence("Ctrl+Shift+Space"))
-        scenario_menu.addSeparator()
-        scenario_menu.addAction("Обновить сценарий", self.workspace.gherkin_panel._apply).setShortcut(
-            QKeySequence("Ctrl+Shift+S")
-        )
-        scenario_menu.addAction("Синтаксис Gherkin", self.workspace.gherkin_panel._validate)
-        scenario_menu.addSeparator()
-        scenario_menu.addAction(
-            "Наведение для меню…",
-            self.workspace.gherkin_panel.insert_hover_step,
-        )
-        scenario_menu.addAction(
-            "Починить клик с hover-меню…",
-            self.workspace.gherkin_panel.fix_menu_click_at_cursor,
-        )
-        scenario_menu.addSeparator()
-        scenario_menu.addAction("Теги сценария…", self._edit_scenario_tags)
-
-        record_test_menu = bar.addMenu("Запись и тест")
-        self._record_test_menu = record_test_menu
-        self._act_browser = QAction("Браузер", self)
-        self._act_browser.setShortcut(QKeySequence("Ctrl+B"))
-        self._act_browser.triggered.connect(lambda: rec.open_browser(self._start_url()))
-        record_test_menu.addAction(self._act_browser)
-        record_test_menu.addAction("Закрыть браузер", rec.close_browser)
-        record_test_menu.addSeparator()
-        record_test_menu.addAction("Стартовый URL…", self._edit_start_url)
-        record_test_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
-        record_test_menu.addAction("TestClient…", self._edit_browser_sessions)
-        record_test_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
-        record_test_menu.addSeparator()
-        self._act_record = QAction("Запись", self)
-        self._act_record.setShortcut(QKeySequence("Ctrl+R"))
-        self._act_record.triggered.connect(lambda: rec.start_recording(self._start_url()))
-        record_test_menu.addAction(self._act_record)
-        self._act_stop = QAction("Стоп", self)
-        self._act_stop.triggered.connect(self._stop_active_run)
-        record_test_menu.addAction(self._act_stop)
-        record_test_menu.addAction("Пауза", rec.toggle_pause)
-        record_test_menu.addAction("Отменить шаг записи", rec.undo_last_step)
-        record_test_menu.addSeparator()
-        self._act_play = QAction("Запустить", self)
-        self._act_play.setShortcut(QKeySequence("Ctrl+Return"))
-        self._act_play.triggered.connect(self._play_with_apply)
-        record_test_menu.addAction(self._act_play)
-        record_test_menu.addAction("Селекторы на странице", self._validate_with_apply)
-        self._act_run_selected = QAction("Запустить выбранные", self)
-        self._act_run_selected.triggered.connect(self._run_selected_features)
-        record_test_menu.addAction(self._act_run_selected)
-        record_test_menu.addAction("Запустить все сценарии проекта", rec.run_project_suite)
-        record_test_menu.addAction("Запустить сценарии с тегом…", self._run_project_tag)
-        record_test_menu.addAction("Указать элемент…", rec.pick_selector)
-        record_test_menu.addAction("Быстрая запись", lambda: rec.quick_record(self._start_url()))
-        record_test_menu.addSeparator()
-        self._act_filter = QAction("Только важные", self)
-        self._act_filter.setCheckable(True)
-        self._act_filter.setChecked(self._controller.session.filter_recording)
-        self._act_filter.toggled.connect(self._on_filter_toggled)
-        record_test_menu.addAction(self._act_filter)
-        self._act_nav_only = QAction("Только ссылки", self)
-        self._act_nav_only.setCheckable(True)
-        self._act_nav_only.setChecked(self._controller.session.nav_only_recording)
-        self._act_nav_only.toggled.connect(self._on_nav_only_toggled)
-        record_test_menu.addAction(self._act_nav_only)
-        self._act_headless = QAction("Без окна браузера", self)
-        self._act_headless.setCheckable(True)
-        self._act_headless.setChecked(self._controller.session.headless)
-        self._act_headless.toggled.connect(self._on_headless_toggled)
-        record_test_menu.addAction(self._act_headless)
-        record_test_menu.addSeparator()
-        record_test_menu.addAction("Настройки…", lambda: self._open_settings(tab="recording"))
-        record_test_menu.addAction("Открыть последний отчёт", self._open_latest_report)
-
-        self._plugins_menu = bar.addMenu("Плагины")
-        self._plugins_menu_actions: list[QAction] = []
-        self._plugins_menu_separator: QAction | None = None
-        self._refresh_plugins_menu()
-
-        view_menu = bar.addMenu("Вид")
-        view_menu.addAction("Старт", lambda: self.workspace.ensure_welcome_tab(activate=True))
-        view_menu.addAction("Сценарии", lambda: self.activity_bar.explorer_btn.setChecked(True))
-        view_menu.addAction("Журнал", lambda: self._show_bottom_panel("log"))
-        view_menu.addAction("Результаты", lambda: self._show_bottom_panel("results"))
-        view_menu.addAction("Проверка селекторов", lambda: self._show_bottom_panel("validate"))
-        view_menu.addAction("Ошибка", lambda: self._show_bottom_panel("error"))
-        view_menu.addSeparator()
-        view_menu.addAction("Сбросить макет окон", self._reset_layout)
-        self._act_toolbar_compact = QAction("Компактная панель", self)
-        self._act_toolbar_compact.setCheckable(True)
-        self._act_toolbar_compact.setChecked(bool(load_settings().get("toolbar_compact")))
-        self._act_toolbar_compact.toggled.connect(self._on_toolbar_compact_toggled)
-        view_menu.addAction(self._act_toolbar_compact)
-
-        help_menu = bar.addMenu("Справка")
-        help_menu.addAction("Справка…", self._open_step_help).setShortcut("F1")
-        help_menu.addAction("Горячие клавиши", self._show_hotkeys).setShortcut("Shift+F1")
-        if updates_supported():
-            help_menu.addAction("Проверить обновления…", self._check_updates_manual)
-        help_menu.addAction("О программе", self._show_about)
+        build_menus(self)
 
     def _refresh_plugins_menu(self) -> None:
-        for action in self._plugins_menu_actions:
-            self._plugins_menu.removeAction(action)
-        self._plugins_menu_actions.clear()
-        if self._plugins_menu_separator is not None:
-            self._plugins_menu.removeAction(self._plugins_menu_separator)
-            self._plugins_menu_separator = None
-
-        registry = get_registry()
-        registry.reload(project_root=get_root())
-        for info in registry.runner_infos():
-            if info.id == "playwright":
-                continue
-            if info.available:
-                action = QAction(f"Пакетный запуск ({info.label})…", self)
-
-                def _run_batch(checked: bool = False, runner_id: str = info.id) -> None:
-                    self._run_batch_with_runner(runner_id)
-
-                action.triggered.connect(_run_batch)
-                self._plugins_menu.addAction(action)
-                self._plugins_menu_actions.append(action)
-            elif not info.installed:
-                action = QAction(f"Установить {info.label}…", self)
-
-                def _install(checked: bool = False, plugin_id: str = info.id) -> None:
-                    self._install_runner_addon(plugin_id)
-
-                action.triggered.connect(_install)
-                self._plugins_menu.addAction(action)
-                self._plugins_menu_actions.append(action)
-
-        host = PluginsMenuHost(self)
-        registry.contribute_menus(host)
-
-        if not self._plugins_menu_actions:
-            placeholder = QAction("Нет установленных плагинов", self)
-            placeholder.setEnabled(False)
-            self._plugins_menu.addAction(placeholder)
-            self._plugins_menu_actions.append(placeholder)
+        refresh_plugins_menu(self)
 
     def _refresh_runner_menu(self) -> None:
-        """Backward-compatible alias."""
         self._refresh_plugins_menu()
-
-    def _is_plugin_installed(self, plugin_id: str) -> bool:
-        return get_registry().get_runner(plugin_id) is not None
-
-    def _run_batch_with_runner(self, runner_id: str) -> None:
-        root = get_root()
-        if root is None:
-            alert(self, BRAND_NAME, "Сначала откройте проект с .feature файлами")
-            return
-        if not self._prepare_batch_run():
-            return
-        self._controller.recording.run_project_suite_with_runner(runner_id)
-
-    def _install_runner_addon(self, plugin_id: str) -> bool:
-        if self._is_plugin_installed(plugin_id):
-            return True
-        if confirm(self, BRAND_NAME, f"Скачать add-on «{plugin_id}» с GitHub Releases?"):
-            try:
-                install_plugin(plugin_id)
-            except PluginInstallError as exc:
-                if not confirm(self, BRAND_NAME, f"{exc}\n\nУказать локальный zip?"):
-                    return False
-                path, _ = QFileDialog.getOpenFileName(
-                    self,
-                    "Выберите zip add-on",
-                    "",
-                    "Zip (*.zip)",
-                )
-                if not path:
-                    return False
-                try:
-                    install_from_zip(Path(path), plugin_id=plugin_id)
-                except PluginInstallError as exc2:
-                    alert(self, BRAND_NAME, str(exc2))
-                    return False
-            self._refresh_plugins_menu()
-            alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
-            return self._is_plugin_installed(plugin_id)
-
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Выберите zip add-on",
-            "",
-            "Zip (*.zip)",
-        )
-        if not path:
-            return False
-        try:
-            install_from_zip(Path(path), plugin_id=plugin_id)
-        except PluginInstallError as exc:
-            alert(self, BRAND_NAME, str(exc))
-            return False
-        self._refresh_plugins_menu()
-        alert(self, BRAND_NAME, f"Add-on «{plugin_id}» установлен.")
-        return self._is_plugin_installed(plugin_id)
 
     def _start_url(self) -> str:
         return self._controller.scenario.start_url.strip()
@@ -954,131 +711,6 @@ class MainWindow(QMainWindow):
         elif session.player_browser:
             rec.close_player_browser()
 
-    def _prepare_batch_run(self) -> bool:
-        self.workspace.persist_current_tab()
-        if self.workspace.gherkin_panel.has_parse_error:
-            if not confirm(
-                self,
-                BRAND_NAME,
-                "В тексте сценария есть ошибки.\n"
-                "Пакетный запуск читает файлы с диска — продолжить?",
-            ):
-                return False
-        self.workspace.flush_all_tabs_to_disk()
-        return True
-
-    def _run_selected_features(self) -> None:
-        paths = self._controller.catalog.run_selection_paths
-        if not paths:
-            return
-        if not self._prepare_batch_run():
-            return
-        self._controller.recording.run_selected_features(paths)
-
-    def _run_folder_features(self, folder: object) -> None:
-        from pathlib import Path
-
-        from app.mvc.models.catalog_model import collect_feature_paths_under
-
-        if not isinstance(folder, Path):
-            return
-        paths = collect_feature_paths_under(folder)
-        if not paths:
-            alert(self, BRAND_NAME, "В этой папке нет .feature сценариев")
-            return
-        if not self._prepare_batch_run():
-            return
-        self._controller.recording.run_selected_features(paths)
-
-    def _run_single_feature(self, path: object) -> None:
-        from pathlib import Path
-
-        if not isinstance(path, Path):
-            return
-        if not self._prepare_batch_run():
-            return
-        self._controller.recording.run_selected_features([path])
-
-    def _run_vanessa_file(self, path: object) -> None:
-        from pathlib import Path
-
-        if not isinstance(path, Path):
-            return
-        if not self._is_plugin_installed("vanessa"):
-            if not self._install_runner_addon("vanessa"):
-                return
-        self._run_vanessa_paths([path])
-
-    def _run_vanessa_folder(self, folder: object) -> None:
-        from pathlib import Path
-
-        from app.mvc.models.catalog_model import collect_feature_paths_under
-
-        if not isinstance(folder, Path):
-            return
-        if not self._is_plugin_installed("vanessa"):
-            if not self._install_runner_addon("vanessa"):
-                return
-        paths = collect_feature_paths_under(folder)
-        if not paths:
-            alert(self, BRAND_NAME, "В этой папке нет .feature сценариев")
-            return
-        self._run_vanessa_paths(paths)
-
-    def _run_vanessa_paths(self, paths: list[Path]) -> None:
-        if not paths:
-            return
-        if not self._prepare_batch_run():
-            return
-        if len(paths) == 1:
-            label = f"Прогон Vanessa — {paths[0].name}"
-        else:
-            label = f"Прогон Vanessa ({len(paths)} файлов)"
-        self._controller.recording.run_features_with_runner(
-            paths,
-            runner_id="vanessa",
-            label=label,
-        )
-
-    def _show_folder_run_history(self, folder: object) -> None:
-        from pathlib import Path
-
-        from PySide6.QtWidgets import QInputDialog
-
-        from app.mvc.models.catalog_model import collect_feature_paths_under
-        from app.run_status_store import get_run_history
-
-        if not isinstance(folder, Path):
-            return
-        paths = [item for item in collect_feature_paths_under(folder) if get_run_history(item)]
-        if not paths:
-            alert(self, BRAND_NAME, "В папке нет сохранённой истории прогонов.")
-            return
-        if len(paths) == 1:
-            self._show_run_history(paths[0])
-            return
-        root = get_root()
-        labels = []
-        for item in paths:
-            if root is not None:
-                try:
-                    labels.append(str(item.resolve().relative_to(root.resolve())))
-                except ValueError:
-                    labels.append(item.name)
-            else:
-                labels.append(item.name)
-        choice, ok = QInputDialog.getItem(
-            self,
-            "История прогонов папки",
-            "Выберите сценарий:",
-            labels,
-            editable=False,
-        )
-        if not ok or not choice:
-            return
-        index = labels.index(str(choice))
-        self._show_run_history(paths[index])
-
     def _reset_layout(self) -> None:
         self.activity_bar.explorer_btn.setChecked(True)
         self._toggle_explorer(True)
@@ -1106,86 +738,6 @@ class MainWindow(QMainWindow):
         settings["toolbar_compact"] = checked
         save_settings(settings)
         self._apply_toolbar_compact(checked)
-
-    def _collect_palette_commands(self):
-        from app.qt.widgets.command_palette import PaletteCommand, normalize_menu_label, shortcut_text
-
-        commands: list[PaletteCommand] = []
-        seen: set[str] = set()
-
-        def walk_menu(menu, prefix: str = "") -> None:
-            for action in menu.actions():
-                if action.isSeparator():
-                    continue
-                sub = action.menu()
-                if sub is not None:
-                    part = normalize_menu_label(action.text())
-                    next_prefix = f"{prefix}{part} → " if part else prefix
-                    walk_menu(sub, next_prefix)
-                    continue
-                label = normalize_menu_label(action.text())
-                if not label:
-                    continue
-                full_label = f"{prefix}{label}" if prefix else label
-                if full_label in seen:
-                    continue
-                seen.add(full_label)
-                commands.append(
-                    PaletteCommand(
-                        id=full_label.lower(),
-                        label=full_label,
-                        shortcut=shortcut_text(action),
-                        run=action.trigger,
-                    )
-                )
-
-        for top in self.menuBar().actions():
-            menu = top.menu()
-            if menu is not None:
-                walk_menu(menu)
-        return sorted(commands, key=lambda item: item.label.lower())
-
-    def _open_command_palette(self) -> None:
-        from app.qt.widgets.command_palette import open_command_palette
-
-        commands = self._collect_palette_commands()
-        settings = load_settings()
-        recent = list(settings.get("palette_recent_commands") or [])
-        selected = open_command_palette(self, commands, recent_ids=recent)
-        if selected is None:
-            return
-        recent = [selected.id] + [item for item in recent if item != selected.id]
-        settings["palette_recent_commands"] = recent[:5]
-        save_settings(settings)
-        selected.run()
-
-    def _run_project_tag(self) -> None:
-        from app.mvc.models.catalog_model import parse_catalog_filter
-
-        _, tag_from_filter = parse_catalog_filter(self._controller.catalog.filter_text)
-        initial = tag_from_filter or ""
-        value = prompt_text(
-            self,
-            "Запуск по тегу",
-            "Тег (без @), например smoke:",
-            initial=initial,
-        )
-        if value is None:
-            return
-        tag = value.strip().lstrip("@")
-        if not tag:
-            alert(self, BRAND_NAME, "Укажите тег")
-            return
-        if not self._prepare_batch_run():
-            return
-        self._controller.recording.run_project_tag(tag)
-
-    def _update_run_selection_menu(self) -> None:
-        count = self._controller.catalog.run_selection_count
-        self._act_run_selected.setText(
-            f"Запустить выбранные ({count})" if count else "Запустить выбранные"
-        )
-        self._act_run_selected.setEnabled(count > 0)
 
     def _export_with_apply(self, action):
         def _run() -> None:
@@ -1294,44 +846,6 @@ class MainWindow(QMainWindow):
         self._sync_browser_overlay()
         self._sync_welcome_checklist()
 
-    def _sync_welcome_checklist(self) -> None:
-        from app.feature_store import get_root
-        from app.settings import load_settings
-
-        settings = load_settings()
-        dismissed = bool(settings.get("first_run_checklist_done"))
-        project_open = get_root() is not None
-        scenario = self._controller.scenario
-        s = self._controller.session
-        recorded = bool(scenario.steps) or s.recording
-        played_success = dismissed
-        self.workspace.welcome_panel.update_checklist(
-            project_open=project_open,
-            recorded=recorded,
-            played_success=played_success,
-            dismissed=dismissed,
-        )
-
-    def _on_welcome_checklist_step(self, step_id: int) -> None:
-        if step_id == 1:
-            self._open_project()
-            return
-        if step_id == 2:
-            url = self.workspace.welcome_panel.quick_url()
-            self._quick_start(url)
-            return
-        if step_id == 3:
-            if not self.workspace.has_editor_tabs():
-                self._new_scenario()
-            else:
-                self.workspace.show_editor()
-            self._sync_menu_states()
-            play_btn = self.workspace.quick_toolbar._buttons.get("play")
-            if play_btn is not None and play_btn.isEnabled():
-                play_btn.setFocus(Qt.FocusReason.OtherFocusReason)
-            else:
-                self.status_bar.set_message("Добавьте шаги и примените текст перед запуском")
-
     def _resolve_active_runner_id(self) -> str:
         from app.project_config import default_runner
 
@@ -1409,8 +923,6 @@ class MainWindow(QMainWindow):
         self._open_report_target(target)
 
     def _open_report_target(self, target) -> None:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
 
         if target.kind == "html":
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.path.resolve())))
@@ -1874,255 +1386,6 @@ class MainWindow(QMainWindow):
         box.setText(f"{about_text()}\n\nВерсия {current_version_label()}")
         box.addButton("ОК", QMessageBox.ButtonRole.AcceptRole)
         box.exec()
-
-    def _maybe_check_updates_on_startup(self) -> None:
-        settings = load_settings()
-        if not settings.get("check_updates_on_startup", True):
-            return
-        dismissed = str(settings.get("dismissed_update_version", "")).strip()
-        self._check_updates(silent=True, skip_version=dismissed)
-
-    def _check_updates_manual(self) -> None:
-        self._check_updates(silent=False)
-
-    def _cancel_update_check(self) -> None:
-        self._update_check_token = getattr(self, "_update_check_token", 0) + 1
-        self._update_check_running = False
-        self._stop_update_check_watchdog()
-
-    def _dismiss_download_progress(self) -> None:
-        progress = getattr(self, "_download_progress", None)
-        self._download_progress = None
-        if progress is None:
-            return
-        progress.hide()
-        progress.setVisible(False)
-        progress.close()
-        progress.deleteLater()
-
-    def _check_updates(self, *, silent: bool, skip_version: str = "") -> None:
-        if getattr(self, "_download_runner", None) is not None:
-            if not silent:
-                alert(self, BRAND_NAME, "Загрузка обновления уже выполняется…")
-            return
-        if getattr(self, "_update_check_running", False):
-            if not silent:
-                alert(self, BRAND_NAME, "Проверка обновлений уже выполняется…")
-            return
-
-        self._update_check_token = getattr(self, "_update_check_token", 0) + 1
-        token = self._update_check_token
-        self._update_check_running = True
-        if not silent:
-            self.status_bar.set_message("Проверка обновлений…", "info")
-
-        self._update_runner = UpdateCheckRunner(self)
-        self._update_runner.finished.connect(
-            lambda info, error: self._on_update_check_finished(
-                info, error, token=token, silent=silent, skip_version=skip_version
-            )
-        )
-        if not silent:
-            self._update_check_watchdog = QTimer(self)
-            self._update_check_watchdog.setSingleShot(True)
-            self._update_check_watchdog.timeout.connect(
-                lambda: self._on_update_check_timeout(silent=silent)
-            )
-            self._update_check_watchdog.start(45_000)
-        self._update_runner.start()
-
-    def _stop_update_check_watchdog(self) -> None:
-        watchdog = getattr(self, "_update_check_watchdog", None)
-        if watchdog is not None:
-            watchdog.stop()
-            watchdog.deleteLater()
-            self._update_check_watchdog = None
-
-    def _on_update_check_timeout(self, *, silent: bool) -> None:
-        if silent or not getattr(self, "_update_check_running", False):
-            return
-        self._cancel_update_check()
-        alert(
-            self,
-            BRAND_NAME,
-            "Проверка обновлений заняла слишком много времени. "
-            "Проверьте доступ к github.com и повторите попытку.",
-        )
-
-    def _on_update_check_finished(
-        self,
-        info,
-        error: str | None,
-        *,
-        token: int,
-        silent: bool,
-        skip_version: str,
-    ) -> None:
-        if token != getattr(self, "_update_check_token", 0):
-            return
-        self._update_check_running = False
-        self._update_runner = None
-        self._stop_update_check_watchdog()
-        if error:
-            if not silent:
-                alert(self, BRAND_NAME, error)
-            return
-        if info is None:
-            if not silent:
-                alert(self, BRAND_NAME, f"Установлена актуальная версия ({current_version_label()}).")
-            return
-        if skip_version and info.version == skip_version:
-            return
-        self._offer_update(info)
-
-    def _offer_update(self, info) -> None:
-        asset = info.update or info.portable
-        size_mb = round(asset.size / (1024 * 1024), 1) if asset and asset.size else None
-        size_line = f"\nРазмер загрузки: ~{size_mb} МБ." if size_mb else ""
-        notes = f"\n\n{info.notes}" if info.notes else ""
-        text = (
-            f"Доступна версия {info.version} (сейчас {current_version_label()})."
-            f"{size_line}{notes}"
-        )
-        box = QMessageBox(self)
-        box.setWindowTitle("Обновление")
-        box.setText(text)
-        box.setIcon(QMessageBox.Icon.Information)
-        install = box.addButton("Установить", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("Позже", QMessageBox.ButtonRole.RejectRole)
-        later = box.addButton("Не напоминать", QMessageBox.ButtonRole.DestructiveRole)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked == install:
-            self._start_update_download(info)
-            return
-        if clicked == later:
-            settings = load_settings()
-            settings["dismissed_update_version"] = info.version
-            save_settings(settings)
-
-    def _start_update_download(self, info) -> None:
-        if getattr(self, "_download_runner", None) is not None:
-            alert(self, BRAND_NAME, "Загрузка обновления уже выполняется…")
-            return
-
-        progress = UpdateProgressDialog(
-            self,
-            from_version=current_version_label(),
-            to_version=f"v{info.version}",
-        )
-        progress.cancel_requested.connect(self._cancel_update_download)
-        progress.show()
-
-        self._download_progress = progress
-        self._download_runner = UpdateDownloadRunner(info)
-        self._download_runner.progress.connect(self._on_update_download_progress)
-        self._download_runner.phase.connect(self._on_update_download_phase)
-        self._download_runner.finished.connect(self._on_update_download_finished)
-        self._download_runner.exit_requested.connect(self._exit_for_update)
-        self._start_update_download_watchdog()
-        self._download_runner.start()
-
-    def _start_update_download_watchdog(self) -> None:
-        self._stop_update_download_watchdog()
-        self._download_watchdog = QTimer(self)
-        self._download_watchdog.setInterval(120_000)
-        self._download_watchdog.timeout.connect(self._on_update_download_watchdog)
-        self._download_watchdog.start()
-
-    def _stop_update_download_watchdog(self) -> None:
-        watchdog = getattr(self, "_download_watchdog", None)
-        if watchdog is not None:
-            watchdog.stop()
-            watchdog.deleteLater()
-            self._download_watchdog = None
-
-    def _on_update_download_watchdog(self) -> None:
-        progress = getattr(self, "_download_progress", None)
-        if progress is not None:
-            progress.set_slow_hint(True)
-
-    def _cancel_update_download(self) -> None:
-        runner = getattr(self, "_download_runner", None)
-        if runner is not None:
-            runner.cancel()
-
-    def _on_update_download_progress(self, current: int, total: int) -> None:
-        progress = getattr(self, "_download_progress", None)
-        if progress is None:
-            return
-        progress.set_slow_hint(False)
-        self._stop_update_download_watchdog()
-        self._start_update_download_watchdog()
-        progress.set_phase("download", current, total, "")
-
-    def _on_update_download_phase(self, phase: str, current: int, total: int, detail: str) -> None:
-        progress = getattr(self, "_download_progress", None)
-        if progress is None:
-            return
-        if phase != "download":
-            self._stop_update_download_watchdog()
-        progress.set_phase(phase, current, total, detail)
-
-    def _on_update_download_finished(self, error: str | None) -> None:
-        self._stop_update_download_watchdog()
-        runner = self._download_runner
-        self._download_runner = None
-        if runner is not None:
-            try:
-                runner.progress.disconnect(self._on_update_download_progress)
-            except (RuntimeError, TypeError):
-                pass
-            try:
-                runner.phase.disconnect(self._on_update_download_phase)
-            except (RuntimeError, TypeError):
-                pass
-            try:
-                runner.finished.disconnect(self._on_update_download_finished)
-            except (RuntimeError, TypeError):
-                pass
-        self._dismiss_download_progress()
-        if error:
-            if error == "Обновление отменено":
-                alert(self, BRAND_NAME, error)
-                return
-            self._show_update_download_error(error)
-
-    def _show_update_download_error(self, message: str) -> None:
-        from app.paths import app_root
-        from app.update.installer import UPDATE_LOG_NAME
-
-        box = QMessageBox(self)
-        box.setWindowTitle(BRAND_NAME)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setText(message)
-        log_path = app_root() / UPDATE_LOG_NAME
-        open_log = None
-        if log_path.is_file():
-            open_log = box.addButton("Открыть журнал обновления", QMessageBox.ButtonRole.ActionRole)
-        open_page = box.addButton("Открыть страницу загрузки", QMessageBox.ButtonRole.ActionRole)
-        box.addButton(BTN_OK, QMessageBox.ButtonRole.AcceptRole)
-        box.exec()
-        clicked = box.clickedButton()
-        if open_log is not None and clicked == open_log:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_path.resolve())))
-            return
-        if clicked == open_page:
-            QDesktopServices.openUrl(QUrl(f"https://github.com/{github_repo()}/releases/latest"))
-
-    def _exit_for_update(self) -> None:
-        """Shut down on the GUI thread so the updater can replace files."""
-        self._dismiss_download_progress()
-        self._cancel_update_check()
-        self._browser_watch_timer.stop()
-        self._browser_overlay.hide()
-        editor_text = self.workspace.prepare_shutdown()
-        self._bridge.stop()
-        self._controller.shutdown(editor_text=editor_text)
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
-        QTimer.singleShot(2000, lambda: os._exit(0))
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._dismiss_download_progress()

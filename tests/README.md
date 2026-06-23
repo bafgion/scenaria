@@ -40,13 +40,23 @@ python -m pytest tests/test_gherkin_ru.py -q
 
 ## Порядок выполнения (`conftest.py`)
 
-На Windows Playwright и Qt в **одном** процессе pytest иногда дают access violation. Поэтому:
+На Windows Playwright и Qt в **одном** процессе pytest иногда дают access violation.
 
-1. **Integration** — первыми (реальный браузер)
-2. **Unit** — без Qt и без браузера
-3. **Qt** — последними
+**Полный прогон** (`pytest tests/`):
 
-Integration-тесты дополнительно сериализуются глобальным lock — одновременно только одна сессия Chromium.
+1. Integration-тесты — в **отдельном subprocess** (`tests/integration_subprocess.py`, флаг `SCENARIA_INTEGRATION_SUBPROCESS=1`)
+2. Unit — без Qt и без браузера
+3. Qt — в основном процессе (после integration)
+
+Только integration или только unit/Qt — в текущем процессе, без subprocess.
+
+Integration-тесты в одном процессе дополнительно сериализуются глобальным lock — одновременно только одна сессия Chromium.
+
+Флаги:
+
+- `--integration-in-process` — отключить subprocess (используется дочерним процессом)
+- `SCENARIA_INTEGRATION_SUBPROCESS=1` — признак дочернего integration-прогона
+- `SCENARIA_SKIP_RECORDER_PREWARM=1` — autouse в conftest для unit/Qt (без Playwright при `AppController()`)
 
 ## CI (GitHub Actions)
 
@@ -54,19 +64,18 @@ Workflow `.github/workflows/ci.yml` на `push` / `pull_request` в `master`:
 
 1. `pip install -e ".[dev]"`
 2. `ruff check app tests`
-3. `pytest tests/ -q`
+3. `pytest tests/ -q` (subprocess isolation включён автоматически)
 
-Release workflow (тег `v*`) дополнительно собирает portable EXE.
+Release workflow (тег `v*`) — один прогон pytest без retry, затем сборка portable EXE.
 
 ### Известные ограничения на CI
 
 | Файл | Поведение | Причина |
 |------|-----------|---------|
-| `test_gherkin_completions.py` | skip на `GITHUB_ACTIONS` | Нестабильный completion popup в headless |
-| `test_toolbar_sidebar_layout.py` | skip при неудачной проверке ширины | Headless layout отличается от desktop |
-| `test_update_ui.py` | часть тестов skip на CI | Таймеры / модальные окна обновления |
+| `test_toolbar_sidebar_layout.py` | skip resize/splitter тестов на CI | Headless: ширина toolbar не растёт как на desktop |
+| `test_update_ui.py` | skip runner-тестов с QEventLoop на CI | QThread + QEventLoop нестабильны на headless Windows |
 
-Стабилизация — спринт 13 (T4).
+`test_gherkin_completions.py` и chip-тесты toolbar снова запускаются на CI после изоляции Playwright (спринт 13).
 
 ## Линтер
 

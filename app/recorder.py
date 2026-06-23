@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -100,7 +101,8 @@ class ScenarioRecorder:
         self._context_test_client: str | None = None
         self._browser_engine: str | None = None
 
-        self._enqueue(_Command.PREWARM, {})
+        if os.environ.get("SCENARIA_SKIP_RECORDER_PREWARM") != "1":
+            self._enqueue(_Command.PREWARM, {})
 
     def set_browser_lost_handler(self, handler: Callable[[], None] | None) -> None:
         self._on_browser_lost = handler

@@ -15,9 +15,10 @@ from app.qt.widgets.update_progress_dialog import UpdateProgressDialog
 from app.update.checker import UpdateAsset, UpdateInfo
 
 _CI = os.environ.get("GITHUB_ACTIONS") == "true"
+# QEventLoop + QThread workers are unstable on headless Windows runners.
 _skip_qt_thread_on_ci = pytest.mark.skipif(
     _CI,
-    reason="Qt QEventLoop with background threads crashes headless Windows CI",
+    reason="QEventLoop waiting on UpdateCheckRunner/DownloadRunner threads fails headless Windows CI",
 )
 
 

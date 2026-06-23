@@ -17,9 +17,10 @@ from PySide6.QtCore import Qt
 from app.mvc.controllers.app_controller import AppController
 
 _CI = os.environ.get("GITHUB_ACTIONS") == "true"
-_skip_layout_on_ci = pytest.mark.skipif(
+# Resize/splitter loops are flaky on headless Windows; chip visibility tests are safe.
+_skip_resize_loops_on_ci = pytest.mark.skipif(
     _CI,
-    reason="Qt toolbar resize loops crash on headless Windows CI",
+    reason="toolbar width expansion loops are unreliable on headless Windows CI",
 )
 
 
@@ -42,7 +43,7 @@ def _expand_until_full_toolbar(bar: EditorActionBar, qapp, *, start: int = 1200,
     pytest.skip(f"toolbar stayed compact up to {limit}px wide (headless/CI)")
 
 
-@_skip_layout_on_ci
+@_skip_resize_loops_on_ci
 def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -56,7 +57,7 @@ def test_toolbar_switches_to_compact_when_action_bar_is_narrow(qapp) -> None:
     assert bar.toolbar._buttons["validate"].text() == ""
 
 
-@_skip_layout_on_ci
+@_skip_resize_loops_on_ci
 def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -66,7 +67,6 @@ def test_toolbar_reserves_space_for_scenario_labels(qapp) -> None:
     assert bar.minimumSizeHint().width() > bar.toolbar.compact_layout_min_width()
 
 
-@_skip_layout_on_ci
 def test_toolbar_hides_scenario_chip_on_welcome(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -84,7 +84,6 @@ def test_toolbar_hides_scenario_chip_on_welcome(qapp) -> None:
     assert not bar._url_sep.isVisible()
 
 
-@_skip_layout_on_ci
 def test_toolbar_shows_scenario_chip_for_open_file(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -102,7 +101,6 @@ def test_toolbar_shows_scenario_chip_for_open_file(qapp) -> None:
     assert "test2.feature" in bar._file_name.text()
 
 
-@_skip_layout_on_ci
 def test_toolbar_elides_long_scenario_name_in_middle(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -135,7 +133,7 @@ def _expand_workspace_until_full_toolbar(
     pytest.skip(f"workspace toolbar stayed compact up to {limit}px wide (headless/CI)")
 
 
-@_skip_layout_on_ci
+@_skip_resize_loops_on_ci
 def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     bar = EditorActionBar()
     bar.show()
@@ -143,7 +141,7 @@ def test_toolbar_shows_secondary_labels_only_with_room(qapp) -> None:
     assert bar.toolbar._buttons["validate"].text() == "Селекторы на странице"
 
 
-@_skip_layout_on_ci
+@_skip_resize_loops_on_ci
 def test_workspace_minimum_width_stays_small_with_labeled_toolbar(qapp) -> None:
     controller = AppController()
     workspace = EditorWorkspace(controller)
@@ -153,7 +151,7 @@ def test_workspace_minimum_width_stays_small_with_labeled_toolbar(qapp) -> None:
     assert workspace.minimumSizeHint().width() > chrome
 
 
-@_skip_layout_on_ci
+@_skip_resize_loops_on_ci
 def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     host = QWidget()
     host.setMinimumSize(0, 0)
