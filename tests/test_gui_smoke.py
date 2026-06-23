@@ -52,7 +52,7 @@ def _show_and_close(dialog, qapp) -> None:
 
 @pytest.fixture
 def main_window(qapp, monkeypatch):
-    """MainWindow without background timers; always shuts down Playwright workers."""
+    """MainWindow without background timers or live Playwright workers."""
     from app.qt.main_window import MainWindow
 
     monkeypatch.setattr(
@@ -69,6 +69,20 @@ def main_window(qapp, monkeypatch):
     )
 
     controller = AppController()
+    controller.recorder.shutdown()
+    controller.player.shutdown()
+
+    mock_recorder = MagicMock(spec=ScenarioRecorder)
+    mock_recorder.browser_open = False
+    mock_recorder.is_busy = False
+    mock_player = MagicMock(spec=ScenarioPlayer)
+    mock_player.browser_open = False
+    mock_player.worker_alive = False
+    controller.recorder = mock_recorder
+    controller.player = mock_player
+    controller.recording._recorder = mock_recorder
+    controller.recording._player = mock_player
+
     window = MainWindow(controller)
     try:
         yield window
