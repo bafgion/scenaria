@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
-from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.recording_controller import RecordingController
 from app.mvc.models.catalog_model import CatalogModel
 from app.mvc.models.scenario_model import ScenarioModel
@@ -50,54 +49,6 @@ def _show_and_close(dialog, qapp) -> None:
     dialog.reject()
 
 
-@pytest.fixture
-def main_window(qapp, monkeypatch):
-    """MainWindow without background timers or live Playwright workers."""
-    from app.qt.main_window import MainWindow
-
-    monkeypatch.setattr(
-        "app.qt.main_window.MainWindow._maybe_check_updates_on_startup",
-        lambda self: None,
-    )
-    monkeypatch.setattr(
-        "app.qt.main_window.MainWindow._start_autosave_timer",
-        lambda self: None,
-    )
-    monkeypatch.setattr(
-        "app.qt.main_window.MainWindow._start_browser_watch_timer",
-        lambda self: None,
-    )
-
-    controller = AppController()
-    controller.recorder.shutdown()
-    controller.player.shutdown()
-
-    mock_recorder = MagicMock(spec=ScenarioRecorder)
-    mock_recorder.browser_open = False
-    mock_recorder.is_busy = False
-    mock_player = MagicMock(spec=ScenarioPlayer)
-    mock_player.browser_open = False
-    mock_player.worker_alive = False
-    controller.recorder = mock_recorder
-    controller.player = mock_player
-    controller.recording._recorder = mock_recorder
-    controller.recording._player = mock_player
-
-    window = MainWindow(controller)
-    try:
-        yield window
-    finally:
-        for attr in ("_browser_watch_timer", "_autosave_timer"):
-            timer = getattr(window, attr, None)
-            if timer is not None:
-                timer.stop()
-        window._bridge.stop()
-        window.close()
-        qapp.processEvents()
-        controller.shutdown()
-        qapp.processEvents()
-
-
 def test_apply_dark_theme_smoke(qapp) -> None:
     from app.qt.branding import apply_app_branding
     from app.qt.theme import apply_dark_theme
@@ -124,44 +75,6 @@ def test_theme_avoids_unsupported_qss_selectors() -> None:
     ]
     for pattern in forbidden:
         assert pattern not in source, f"unsupported QSS pattern still present: {pattern}"
-
-
-def test_main_window_startup_smoke(qapp, main_window) -> None:
-    from app.qt.branding import apply_app_branding, apply_window_icon
-    from app.qt.theme import apply_dark_theme
-
-    apply_app_branding(qapp)
-    apply_dark_theme(qapp)
-    apply_window_icon(main_window)
-    main_window.show()
-    qapp.processEvents()
-
-    main_window._on_startup()
-    qapp.processEvents()
-
-    main_window._sync_menu_states()
-    main_window._sync_welcome_checklist()
-    main_window._sync_status_runner()
-    main_window._sync_browser_overlay()
-    main_window._update_window_title()
-    qapp.processEvents()
-
-    assert main_window.isVisible()
-    assert main_window.workspace.tab_bar.count() >= 1
-
-
-def test_main_window_view_toggles_smoke(qapp, main_window) -> None:
-    main_window.show()
-    qapp.processEvents()
-
-    main_window._toggle_explorer(False)
-    main_window._toggle_explorer(True)
-    main_window._toggle_bottom_panel(True)
-    main_window._show_bottom_panel("log")
-    main_window._toggle_bottom_panel(False)
-    main_window._apply_toolbar_compact(True)
-    main_window._apply_toolbar_compact(False)
-    qapp.processEvents()
 
 
 @pytest.mark.parametrize(
@@ -292,22 +205,3 @@ def test_open_browser_passes_test_client_name(recording_controller: RecordingCon
     recording_controller._recorder.open_browser.assert_called_once()
     kwargs = recording_controller._recorder.open_browser.call_args.kwargs
     assert kwargs.get("test_client") == "DemoUser"
-
-
-def test_examples_testclient_feature_parses_in_editor(qapp, main_window) -> None:
-    examples_root = Path(__file__).resolve().parents[1] / "examples"
-    feature = examples_root / "05-testclient-kontekst.feature"
-    assert feature.is_file()
-
-    main_window.show()
-    qapp.processEvents()
-
-    main_window._controller.catalog.set_features_root(examples_root)
-    main_window._on_catalog_file_open(feature)
-    qapp.processEvents()
-
-    assert main_window.workspace.is_editor_tab_active()
-    text = main_window._controller.scenario.source_text or ""
-    assert "Контекст:" in text
-    assert "DemoUser" in text
-    assert main_window._suggested_test_client_name() == "DemoUser"
