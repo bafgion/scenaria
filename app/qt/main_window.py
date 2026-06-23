@@ -2127,7 +2127,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         self._dismiss_download_progress()
         self._cancel_update_check()
-        self._browser_watch_timer.stop()
+        browser_timer = getattr(self, "_browser_watch_timer", None)
+        if browser_timer is not None:
+            browser_timer.stop()
         self._browser_overlay.hide()
         editor_text = self.workspace.prepare_shutdown()
         self._bridge.stop()
