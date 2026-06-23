@@ -108,7 +108,7 @@
 Затем очистите `[Unreleased]` или перенесите пункты в новую секцию. Процесс: [docs/RELEASE.md](docs/RELEASE.md).
 
 [Unreleased]: https://github.com/bafgion/scenaria/compare/v0.10.1...HEAD
-[0.10.1]: https://github.com/bafgion/scenaria/compare/v0.10.0...v0.10.1
+[0.10.1]: https://github.com/bafgion/scenaria/compare/v0.8.1...v0.10.1
 [0.10.0]: https://github.com/bafgion/scenaria/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/bafgion/scenaria/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/bafgion/scenaria/compare/v0.8.0...v0.8.1
