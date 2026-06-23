@@ -81,16 +81,19 @@ def test_catalog_selection_mode_click(tmp_path: Path) -> None:
     index = root.index()
     assert "☐" in root.text()
 
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import QPointF, Qt
     from PySide6.QtGui import QMouseEvent
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
     assert app is not None
     pos = tree.visualRect(index).center()
+    local = QPointF(pos)
+    global_pos = QPointF(tree.mapToGlobal(pos))
     event = QMouseEvent(
         QMouseEvent.Type.MouseButtonPress,
-        QPoint(pos),
+        local,
+        global_pos,
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,

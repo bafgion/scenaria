@@ -14,6 +14,8 @@ TEST_CLIENT_VERSION = 1
 
 
 class ClientProfileNotFoundError(RuntimeError):
+    __test__ = False  # pytest: alias TestClientNotFoundError must not be collected as a test class
+
     def __init__(self, name: str) -> None:
         self.name = name.strip()
         super().__init__(
