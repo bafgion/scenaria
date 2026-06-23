@@ -97,6 +97,7 @@ class ScenarioRecorder:
         self._shutdown_requested = False
         self._session_releasing = False
         self._context_auth_key: tuple[str, str] | None = None
+        self._context_test_client: str | None = None
         self._browser_engine: str | None = None
 
         self._enqueue(_Command.PREWARM, {})
@@ -135,9 +136,16 @@ class ScenarioRecorder:
         on_status: Callable[[str], None],
         on_complete: BrowserCallback | None = None,
         on_error: ErrorCallback | None = None,
+        *,
+        test_client: str | None = None,
     ) -> None:
         self._on_status = on_status
-        self._enqueue(_Command.OPEN, {"start_url": start_url}, on_complete, on_error)
+        self._enqueue(
+            _Command.OPEN,
+            {"start_url": start_url, "test_client": test_client},
+            on_complete,
+            on_error,
+        )
 
     def quick_record(
         self,
@@ -162,6 +170,7 @@ class ScenarioRecorder:
         on_error: ErrorCallback | None = None,
         *,
         append: bool = False,
+        test_client: str | None = None,
     ) -> None:
         self._append_mode = append
         self._steps = []
@@ -170,7 +179,7 @@ class ScenarioRecorder:
         self._last_goto = ""
         self._enqueue(
             _Command.START_RECORDING,
-            {"start_url": start_url, "append": append},
+            {"start_url": start_url, "append": append, "test_client": test_client},
             on_complete,
             on_error,
         )
@@ -502,16 +511,20 @@ class ScenarioRecorder:
             self._handle_prewarm()
             return None
         if command == _Command.OPEN:
-            self._handle_open(payload["start_url"])
+            self._handle_open(payload["start_url"], test_client=payload.get("test_client"))
             return None
         if command == _Command.QUICK_RECORD:
             if self._recording:
                 raise RuntimeError("Запись уже идёт")
-            self._handle_open(payload["start_url"])
+            self._handle_open(payload["start_url"], test_client=payload.get("test_client"))
             return self._handle_start_recording(payload["start_url"])
         if command == _Command.START_RECORDING:
             if self._recording:
                 raise RuntimeError("Запись уже идёт")
+            self._ensure_playwright(
+                payload["start_url"],
+                test_client=payload.get("test_client"),
+            )
             return self._handle_start_recording(
                 payload["start_url"],
                 append=bool(payload.get("append")),
@@ -588,8 +601,14 @@ class ScenarioRecorder:
     def _auth_key_for_url(self, start_url: str) -> tuple[str, str] | None:
         return auth_key(resolve_http_credentials(start_url, load_settings()))
 
-    def _ensure_playwright(self, start_url: str = "") -> None:
+    def _ensure_playwright(self, start_url: str = "", *, test_client: str | None = None) -> None:
+        from app.feature_store import get_root
+        from app.scenario_test_client import ensure_scenario_test_client
+
         configure_playwright_browsers()
+        if test_client:
+            ensure_scenario_test_client({"testClient": test_client}, get_root())
+
         wanted_key = self._auth_key_for_url(start_url)
         if (
             self._browser is not None
@@ -622,18 +641,43 @@ class ScenarioRecorder:
                 on_status=self._emit_status,
             )
             self._browser_engine = wanted_engine
-            context_options = browser_context_options(start_url)
-            self._context = self._browser.new_context(**context_options)
-            self._context_auth_key = wanted_key
-            self._context.on("page", setup_highlight_cleanup)
-            self._page = self._context.new_page()
-            setup_highlight_cleanup(self._page)
-            self._context_binding_attached = False
-            self._picker_binding_attached = False
-            self._hooked_page_ids = set()
-            self._browser_open = True
-            self._watchers_attached = False
-            self._attach_session_watchers()
+
+        if self._context is None or self._context_test_client != test_client:
+            self._open_browser_context(start_url, test_client=test_client, wanted_key=wanted_key)
+
+    def _open_browser_context(
+        self,
+        start_url: str,
+        *,
+        test_client: str | None,
+        wanted_key: tuple[str, str] | None,
+    ) -> None:
+        from app.feature_store import get_root
+
+        if self._browser is None:
+            raise RuntimeError("Браузер не запущен")
+        if self._context is not None:
+            try:
+                self._context.close()
+            except Exception:  # noqa: BLE001
+                pass
+        context_options = browser_context_options(
+            start_url,
+            test_client=test_client,
+            project_root=get_root(),
+        )
+        self._context = self._browser.new_context(**context_options)
+        self._context_auth_key = wanted_key
+        self._context_test_client = test_client
+        self._context.on("page", setup_highlight_cleanup)
+        self._page = self._context.new_page()
+        setup_highlight_cleanup(self._page)
+        self._context_binding_attached = False
+        self._picker_binding_attached = False
+        self._hooked_page_ids = set()
+        self._browser_open = True
+        self._watchers_attached = False
+        self._attach_session_watchers()
 
     def _recorder_flags_script(self) -> str:
         settings = load_settings()
@@ -732,16 +776,19 @@ class ScenarioRecorder:
             self._emit_status(f"Открываю {start_url}...")
             self._page.goto(start_url, wait_until=NAV_WAIT_UNTIL, timeout=NAV_TIMEOUT_MS)
 
-    def _handle_open(self, start_url: str) -> None:
+    def _handle_open(self, start_url: str, *, test_client: str | None = None) -> None:
         self._emit_status("Запуск браузера...")
-        self._ensure_playwright(start_url)
+        self._ensure_playwright(start_url, test_client=test_client)
         self._navigate_if_needed(start_url)
-        self._emit_status("Браузер открыт. Перейдите на нужную страницу и нажмите «Начать запись».")
+        if test_client:
+            self._emit_status(f"Браузер открыт с TestClient «{test_client}».")
+        else:
+            self._emit_status("Браузер открыт (чистый сеанс). Перейдите на нужную страницу и нажмите «Начать запись».")
 
     def _handle_start_recording(self, start_url: str, *, append: bool = False) -> str:
         self._append_mode = append
         self._emit_status("Подготовка дозаписи..." if append else "Подготовка записи...")
-        self._ensure_playwright(start_url)
+        self._ensure_playwright(start_url, test_client=self._context_test_client)
         from app.http_auth import strip_url_credentials
 
         start_url = strip_url_credentials(start_url)
@@ -802,20 +849,19 @@ class ScenarioRecorder:
         page = self._get_active_page()
         return page.url
 
-    def _handle_save_browser_session(self, label: str) -> str:
-        from app.browser_session import save_session_from_context, session_origin
+    def _handle_save_browser_session(self, name: str) -> str:
         from app.feature_store import get_root
+        from app.test_clients import save_test_client_from_context
 
         if self._context is None or not self._browser or not self._browser.is_connected():
             raise RuntimeError("Браузер не открыт")
-        page = self._get_active_page()
-        origin = session_origin(page.url)
-        if not origin:
-            raise RuntimeError("Не удалось определить origin текущей вкладки")
-        path = save_session_from_context(
+        client_name = str(name or "").strip()
+        if not client_name:
+            raise RuntimeError("Укажите имя TestClient")
+        path = save_test_client_from_context(
             self._context,
-            origin,
-            label=label,
+            client_name,
+            label=client_name,
             project_root=get_root(),
         )
         return str(path)
@@ -1018,11 +1064,30 @@ class ScenarioRecorder:
     ) -> PlayResult:
         if self._recording:
             raise RuntimeError("Остановите запись перед запуском теста")
+
+        from app.feature_store import get_root
+        from app.scenario_test_client import ensure_scenario_test_client, scenario_test_client_name
+
+        wanted_client = scenario_test_client_name(scenario)
+        if wanted_client:
+            ensure_scenario_test_client(scenario, get_root())
+
+        start_url = str(scenario.get("startUrl") or "")
+        if not start_url:
+            steps = scenario.get("steps") or []
+            if steps and steps[0].get("action") == "goto":
+                start_url = str(steps[0].get("url") or "")
+
+        self._ensure_playwright(start_url, test_client=wanted_client)
+        self._navigate_if_needed(start_url)
+
         if not self._browser or not self._browser.is_connected():
-            raise RuntimeError("Сначала откройте браузер")
+            raise RuntimeError("Не удалось открыть браузер")
 
         page = self._get_active_page()
         self._emit_status("Воспроизведение в открытом браузере...")
+        if wanted_client:
+            on_log(f"TestClient: {wanted_client}")
         on_log(f"Активная вкладка: {page.url}")
 
         self._playing = True
@@ -1100,6 +1165,7 @@ class ScenarioRecorder:
         self._browser_open = False
         self._watchers_attached = False
         self._context_auth_key = None
+        self._context_test_client = None
         try:
             release_playwright_session(
                 playwright=playwright,

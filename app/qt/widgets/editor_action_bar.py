@@ -9,7 +9,7 @@ from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QToolButton, QWidget
 
 from app.qt import icons
-from app.qt.theme import COLOR_MUTED, COLOR_TEXT
+from app.qt.labels import caption_label, body_label, body_secondary_label, set_label_tone
 from app.qt.widgets.quick_toolbar import QuickToolBar
 
 _SCENARIO_CHIP_ICON = 14
@@ -62,13 +62,10 @@ class EditorActionBar(QWidget):
         self._file_icon.setToolTip("Текущий сценарий")
         run_layout.addWidget(self._file_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._file_name = QLabel("—")
-        self._file_name.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 9pt;")
-        self._file_name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._file_name = body_label("—", selectable=True)
         run_layout.addWidget(self._file_name, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._file_hint = QLabel("")
-        self._file_hint.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8.5pt;")
+        self._file_hint = body_secondary_label("")
         run_layout.addWidget(self._file_hint, 0, Qt.AlignmentFlag.AlignVCenter)
 
         root.addWidget(run_box, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -84,8 +81,7 @@ class EditorActionBar(QWidget):
         url_layout.setSpacing(4)
         url_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        url_caption = QLabel("URL")
-        url_caption.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        url_caption = caption_label("URL")
         url_layout.addWidget(url_caption)
 
         self._url_edit = QLineEdit()

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.gherkin_context import parse_feature_test_client
 from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text, parse_feature_structure, steps_to_gherkin
 from app.paths import data_dir
 from app.settings import load_settings, save_settings
@@ -106,14 +107,18 @@ def _compute_start_url(steps: list[dict[str, Any]]) -> str:
 
 def load_feature(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
+    test_client = parse_feature_test_client(text)
     steps = gherkin_to_steps(text)
     structure = parse_feature_structure(text)
-    return {
+    payload: dict[str, Any] = {
         "name": path.stem,
         "startUrl": _compute_start_url(steps),
         "tags": list(structure.tags),
         "steps": steps,
     }
+    if test_client is not None:
+        payload["testClient"] = test_client
+    return payload
 
 
 def save_feature(

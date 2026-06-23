@@ -1719,8 +1719,16 @@ class ScenarioPlayer:
             steps = scenario.get("steps") or []
             if not start_url and steps and steps[0].get("action") == "goto":
                 start_url = str(steps[0].get("url") or "")
+            from app.scenario_test_client import ensure_scenario_test_client, scenario_test_client_name
+
+            test_client = ensure_scenario_test_client(scenario, project_root)
             context = browser.new_context(
-                **browser_context_options(start_url, headless=headless, project_root=project_root)
+                **browser_context_options(
+                    start_url,
+                    headless=headless,
+                    project_root=project_root,
+                    test_client=test_client,
+                )
             )
             page = context.new_page()
             self._playwright = playwright

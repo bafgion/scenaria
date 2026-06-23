@@ -8,7 +8,8 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QW
 
 from app.progress_state import ProgressState
 from app.qt import icons
-from app.qt.theme import COLOR_BORDER, COLOR_MUTED, COLOR_PRIMARY, COLOR_RECORDING, COLOR_SUCCESS, COLOR_TEXT, COLOR_WARNING
+from app.qt.labels import repolish, set_label_tone
+from app.qt.theme import COLOR_MUTED, COLOR_TEXT
 
 
 class _StatusSegment(QWidget):
@@ -65,16 +66,15 @@ class _StatusSegment(QWidget):
         self._label.setText(text)
 
     def set_led(self, on: bool) -> None:
-        color = COLOR_SUCCESS if on else COLOR_MUTED
-        self._led.setStyleSheet(
-            f"background: {color}; border-radius: 3px; min-width: 6px; max-width: 6px;"
-        )
+        self._led.setProperty("role", "status-led")
+        self._led.setProperty("tone", "on" if on else "off")
+        repolish(self._led)
 
     def set_muted(self, muted: bool = True) -> None:
         if self._accent_mode:
             return
-        color = COLOR_MUTED if muted else COLOR_TEXT
-        self._label.setStyleSheet(f"color: {color}; font-size: 8pt;")
+        self._label.setProperty("tone", "muted" if muted else "")
+        repolish(self._label)
 
     def set_accent(self, *, recording: bool = False, playing: bool = False) -> None:
         if recording:
@@ -87,22 +87,20 @@ class _StatusSegment(QWidget):
             self._accent_mode = None
             self.setProperty("accent", "")
         self._apply_base_style()
-        if self._accent_mode:
-            self._label.setStyleSheet("color: #ffffff; font-size: 8pt; font-weight: 600;")
-        else:
+        if not self._accent_mode:
             self.set_muted(True)
 
     def set_warning(self) -> None:
         self._accent_mode = None
         self.setProperty("accent", "")
         self._apply_base_style()
-        self._label.setStyleSheet(f"color: {COLOR_WARNING}; font-size: 8pt;")
+        set_label_tone(self._label, "warning")
 
     def set_success(self) -> None:
         self._accent_mode = None
         self.setProperty("accent", "")
         self._apply_base_style()
-        self._label.setStyleSheet(f"color: {COLOR_SUCCESS}; font-size: 8pt;")
+        set_label_tone(self._label, "success")
 
     def set_icon(self, name: str, *, color: str | None = None) -> None:
         qcolor = color or COLOR_MUTED
@@ -212,16 +210,8 @@ class IdeStatusBar(QWidget):
 
     def set_message(self, text: str, tone: str = "normal") -> None:
         self._message.setText(text)
-        color = COLOR_TEXT
-        if tone == "error":
-            color = "#f48771"
-        elif tone == "success":
-            color = COLOR_SUCCESS
-        elif tone == "warning":
-            color = COLOR_WARNING
-        elif tone in ("busy", "muted", "info"):
-            color = COLOR_MUTED
-        self._message.setStyleSheet(f"color: {color}; padding: 0 12px; font-size: 8pt;")
+        self._message.setProperty("tone", tone)
+        repolish(self._message)
 
     def set_progress(self, state: ProgressState | None) -> None:
         if state is None or not state.active:

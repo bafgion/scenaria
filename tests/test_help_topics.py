@@ -19,6 +19,14 @@ def test_list_guide_topics_data_category() -> None:
     assert "Переменные {{имя}}" in labels
 
 
+def test_list_guide_topics_session_category() -> None:
+    from app.help_topics import GUIDE_CATEGORY_SESSION
+
+    topics = list_guide_topics(category=GUIDE_CATEGORY_SESSION)
+    assert len(topics) == 1
+    assert topics[0].id == "testclient-context"
+
+
 def test_list_guide_topics_search_outline() -> None:
     topics = list_guide_topics(query="структура сценария")
     assert topics
@@ -39,3 +47,14 @@ def test_params_json_topic_documents_filename() -> None:
     assert topic is not None
     assert ".params.json" in topic.description
     assert "cases" in topic.example
+
+
+def test_testclient_context_topic() -> None:
+    topic = guide_by_id("testclient-context")
+    assert topic is not None
+    assert "Контекст" in topic.example
+    assert "TestClient" in topic.example
+    html_text = format_guide_help(topic)
+    assert "Сессия и TestClient" in html_text
+    assert topic.insert_text is not None
+    assert "Контекст:" in topic.insert_text

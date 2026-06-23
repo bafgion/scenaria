@@ -4,20 +4,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 from app.gherkin_picker import PickerStepChoice, picker_step_choices
-from app.qt.dialogs import ok_cancel_button_box
-from app.qt.fonts import editor_font_css
-from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_TEXT
+from app.qt.labels import caption_label, code_preview_label, dialog_title_label
+from app.qt.widgets.base_dialog import BaseAppDialog
 
 
 def _center_on_screen(widget: QWidget) -> None:
@@ -30,7 +21,7 @@ def _center_on_screen(widget: QWidget) -> None:
     widget.move(frame.topLeft())
 
 
-class PickerStepDialog(QDialog):
+class PickerStepDialog(BaseAppDialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -41,32 +32,26 @@ class PickerStepDialog(QDialog):
     ) -> None:
         super().__init__(
             None,
+            title="Элемент выбран — укажите шаг",
+            min_size=(520, 420),
+        )
+        self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.WindowCloseButtonHint,
+            | Qt.WindowType.WindowCloseButtonHint
         )
         self._choices = list(choices or picker_step_choices(selector, keyword=keyword))
         self._selected: PickerStepChoice | None = None
 
-        self.setWindowTitle("Элемент выбран — укажите шаг")
-        self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        self.setMinimumSize(520, 420)
-
-        layout = QVBoxLayout(self)
-
         preview = selector if len(selector) <= 160 else selector[:157] + "..."
-        header = QLabel(f"Селектор:\n{preview}")
-        header.setWordWrap(True)
-        header.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(header)
-
-        hint = QLabel("Выберите шаг — справа пример строки в сценарии:")
-        hint.setStyleSheet(f"color: {COLOR_MUTED};")
-        layout.addWidget(hint)
+        self.content_layout.addWidget(dialog_title_label(f"Селектор:\n{preview}", selectable=True))
+        self.content_layout.addWidget(
+            caption_label("Выберите шаг — справа пример строки в сценарии:")
+        )
 
         row = QHBoxLayout()
         self._list = QListWidget()
-        self._list.setSpacing(2)
+        self._list.setProperty("role", "settings-list")
         for choice in self._choices:
             item = QListWidgetItem(choice.label)
             item.setData(Qt.ItemDataRole.UserRole, choice)
@@ -76,30 +61,21 @@ class PickerStepDialog(QDialog):
         self._list.itemDoubleClicked.connect(lambda _item: self.accept())
         row.addWidget(self._list, stretch=2)
 
-        preview_box = QVBoxLayout()
-        preview_caption = QLabel("Пример в сценарии")
-        preview_caption.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 9pt;")
-        preview_box.addWidget(preview_caption)
-        self._preview = QLabel("—")
-        self._preview.setWordWrap(True)
-        self._preview.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._preview.setStyleSheet(
-            f"color: {COLOR_TEXT}; background: #2d2d2d; border: 1px solid #454545;"
-            f"padding: 8px; font-family: {editor_font_css()};"
-        )
-        self._preview.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        preview_box.addWidget(self._preview, stretch=1)
-        self._description = QLabel("")
+        preview_column = QWidget()
+        preview_layout = QVBoxLayout(preview_column)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.addWidget(caption_label("Пример в сценарии"))
+        self._preview = code_preview_label("—")
+        preview_layout.addWidget(self._preview, stretch=1)
+        self._description = caption_label("")
         self._description.setWordWrap(True)
-        self._description.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 9pt;")
-        preview_box.addWidget(self._description)
-        row.addLayout(preview_box, stretch=3)
-        layout.addLayout(row, stretch=1)
+        preview_layout.addWidget(self._description)
+        row.addWidget(preview_column, stretch=3)
+        self.content_layout.addLayout(row, stretch=1)
 
-        buttons = ok_cancel_button_box()
+        buttons = self.add_ok_cancel()
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
 
         if self._list.count():
             self._list.setCurrentRow(0)

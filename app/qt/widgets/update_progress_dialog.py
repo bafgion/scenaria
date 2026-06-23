@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QLabel, QProgressBar
 
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 from app.update.progress import (
     PHASE_LABELS_RU,
     UpdatePhase,
@@ -13,7 +15,7 @@ from app.update.progress import (
 )
 
 
-class UpdateProgressDialog(QDialog):
+class UpdateProgressDialog(BaseAppDialog):
     cancel_requested = Signal()
 
     def __init__(
@@ -23,45 +25,32 @@ class UpdateProgressDialog(QDialog):
         from_version: str,
         to_version: str,
     ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Загрузка обновления")
-        self.setMinimumWidth(420)
-        self.setModal(True)
-        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        super().__init__(parent, title="Загрузка обновления", min_width=420)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self._indeterminate = False
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 18)
-        root.setSpacing(10)
-
         self._phase = QLabel(PHASE_LABELS_RU[UpdatePhase.DOWNLOAD])
-        self._phase.setStyleSheet("font-size: 14px; font-weight: 600;")
-        root.addWidget(self._phase)
+        self._phase.setProperty("role", "dialog-phase")
+        self.content_layout.addWidget(self._phase)
 
-        self._detail = QLabel(f"{from_version} → {to_version}")
-        self._detail.setWordWrap(True)
-        self._detail.setStyleSheet("color: #858585;")
-        root.addWidget(self._detail)
+        self._version_line = f"{from_version} → {to_version}"
+        self._detail = muted_label(self._version_line, word_wrap=True)
+        self.content_layout.addWidget(self._detail)
 
-        self._slow_hint = QLabel("")
-        self._slow_hint.setWordWrap(True)
-        self._slow_hint.setStyleSheet("color: #858585; font-size: 9pt;")
+        self._slow_hint = muted_label("", word_wrap=True)
         self._slow_hint.hide()
-        root.addWidget(self._slow_hint)
+        self.content_layout.addWidget(self._slow_hint)
 
         self._bar = QProgressBar()
         self._bar.setRange(0, 100)
         self._bar.setValue(0)
         self._bar.setTextVisible(True)
         self._bar.setFixedHeight(22)
-        root.addWidget(self._bar)
+        self.content_layout.addWidget(self._bar)
 
-        self._cancel_btn = QPushButton("Отмена")
+        self._cancel_btn = dialog_action_button("Отмена")
         self._cancel_btn.clicked.connect(self.cancel_requested.emit)
-        root.addWidget(self._cancel_btn, 0, Qt.AlignmentFlag.AlignRight)
-
-        self._version_line = f"{from_version} → {to_version}"
+        self.add_button_row(self._cancel_btn)
 
     def set_cancel_enabled(self, enabled: bool) -> None:
         self._cancel_btn.setEnabled(enabled)

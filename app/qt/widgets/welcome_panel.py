@@ -17,7 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.qt.theme import COLOR_MUTED, COLOR_PRIMARY, COLOR_SUCCESS, COLOR_TEXT
+from app.qt.labels import link_label, welcome_heading_label, welcome_section_label, welcome_title_label
+from app.qt.theme import COLOR_MUTED, COLOR_SUCCESS, COLOR_TEXT
 from app.brand import BRAND_NAME
 
 _CHECKLIST_STEPS = (
@@ -103,8 +104,7 @@ class WelcomePanel(QWidget):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(6)
 
-        title = QLabel(BRAND_NAME)
-        title.setStyleSheet("font-size: 18pt; font-weight: 300;")
+        title = welcome_title_label(BRAND_NAME)
         layout.addWidget(title)
 
         self._checklist_box = QWidget(card)
@@ -125,8 +125,7 @@ class WelcomePanel(QWidget):
         layout.addWidget(self._checklist_box)
 
         self._subtitle = QLabel("1. Откройте сайт → 2. Запишите → 3. Запустите тест")
-        self._subtitle.setProperty("muted", True)
-        self._subtitle.setStyleSheet(f"color: {COLOR_MUTED}; margin-bottom: 8px;")
+        self._subtitle.setProperty("role", "welcome-subtitle")
         self._subtitle.hide()
         layout.addWidget(self._subtitle)
 
@@ -142,8 +141,7 @@ class WelcomePanel(QWidget):
         layout.addLayout(quick_row)
 
         layout.addSpacing(12)
-        section = QLabel("Начало работы")
-        section.setStyleSheet("font-weight: 600; margin-top: 8px;")
+        section = welcome_section_label("Начало работы")
         layout.addWidget(section)
 
         for text, handler in (
@@ -153,10 +151,7 @@ class WelcomePanel(QWidget):
             ("Открыть файл…", self.open_feature.emit),
             ("Вставить шаблон сценария", self.insert_template.emit),
         ):
-            link = QLabel(f'<a href="#">{text}</a>')
-            link.setTextFormat(Qt.TextFormat.RichText)
-            link.setOpenExternalLinks(False)
-            link.setStyleSheet(f"QLabel a {{ color: {COLOR_PRIMARY}; text-decoration: none; }}")
+            link = link_label(text)
             link.linkActivated.connect(lambda _href, fn=handler: fn())
             layout.addWidget(link)
 
@@ -242,14 +237,9 @@ class WelcomePanel(QWidget):
                 item.widget().deleteLater()
         if not paths:
             return
-        label = QLabel(title)
-        label.setStyleSheet(f"color: {COLOR_MUTED}; font-weight: 600; margin-top: 12px;")
+        label = welcome_heading_label(title)
         box.addWidget(label)
         for path in paths[:6]:
-            link = QLabel(f'<a href="#">{path.name}</a>')
-            link.setToolTip(str(path))
-            link.setTextFormat(Qt.TextFormat.RichText)
-            link.setOpenExternalLinks(False)
-            link.setStyleSheet(f"QLabel a {{ color: {COLOR_PRIMARY}; text-decoration: none; }}")
+            link = link_label(path.name, tooltip=str(path))
             link.linkActivated.connect(lambda _href, p=path: signal.emit(p))
             box.addWidget(link)

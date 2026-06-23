@@ -337,11 +337,23 @@ class ScenarioController:
                     start_url = str(loaded.get("startUrl", "") or "")
         if not steps:
             raise ScenarioNotFoundError("Нет сценария")
-        return {
+        payload: dict[str, Any] = {
             "name": name,
             "startUrl": start_url,
             "steps": steps,
         }
+        text = self._model.source_text or ""
+        if text.strip():
+            from app.gherkin_context import parse_feature_test_client
+
+            test_client = parse_feature_test_client(text)
+            if test_client is not None:
+                payload["testClient"] = test_client
+        elif self._model.feature_path and self._model.feature_path.exists():
+            loaded = load_feature(self._model.feature_path)
+            if loaded.get("testClient"):
+                payload["testClient"] = loaded["testClient"]
+        return payload
 
     def _initial_export_dir(self) -> Path | None:
         if self._model.feature_path:

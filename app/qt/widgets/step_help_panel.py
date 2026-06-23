@@ -5,16 +5,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QSplitter,
     QTextBrowser,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -25,8 +22,9 @@ from app.help_topics import (
     format_guide_help,
     list_guide_topics,
 )
+from app.qt.dialog_buttons import BTN_CLOSE
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 from app.step_catalog import CATEGORY_LABELS, StepEntry, format_entry_help, list_step_entries
-from app.qt.theme import COLOR_BORDER, COLOR_SIDEBAR
 
 _HELP_CATEGORY_LABELS: dict[str, str] = {
     **CATEGORY_LABELS,
@@ -34,7 +32,7 @@ _HELP_CATEGORY_LABELS: dict[str, str] = {
 }
 
 
-class StepHelpPanel(QDialog):
+class StepHelpPanel(BaseAppDialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -44,14 +42,10 @@ class StepHelpPanel(QDialog):
         focus_topic: GuideTopic | None = None,
         initial_search: str = "",
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, title="Справка", min_size=(720, 520))
         self._editor = editor
         self._focus_entry = focus_entry
         self._focus_topic = focus_topic
-        self.setWindowTitle("Справка")
-        self.setMinimumSize(720, 520)
-
-        root = QVBoxLayout(self)
 
         filters = QHBoxLayout()
         self._category = QComboBox()
@@ -66,43 +60,30 @@ class StepHelpPanel(QDialog):
         self._search.setText(initial_search)
         self._search.textChanged.connect(self._refresh_list)
         filters.addWidget(self._search, stretch=1)
-        root.addLayout(filters)
+        self.content_layout.addLayout(filters)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self._list = QListWidget()
+        self._list.setProperty("role", "settings-list")
         self._list.itemActivated.connect(self._insert_selected)
         self._list.currentItemChanged.connect(self._on_selection_changed)
         splitter.addWidget(self._list)
 
         self._detail = QTextBrowser()
+        self._detail.setProperty("role", "help-detail")
         self._detail.setOpenExternalLinks(True)
         self._detail.setFrameShape(QTextBrowser.Shape.NoFrame)
-        self._detail.setStyleSheet(
-            f"""
-            QTextBrowser {{
-                background: {COLOR_SIDEBAR};
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 6px;
-                padding: 12px 14px;
-            }}
-            """
-        )
         self._detail.setPlaceholderText("Выберите тему в списке слева")
         splitter.addWidget(self._detail)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
-        root.addWidget(splitter)
+        self.content_layout.addWidget(splitter, stretch=1)
 
-        buttons = QHBoxLayout()
-        self._insert_btn = QPushButton("Вставить")
-        self._insert_btn.setDefault(True)
+        self._insert_btn = dialog_action_button("Вставить", primary=True, default=True)
         self._insert_btn.clicked.connect(self._insert_selected)
-        buttons.addWidget(self._insert_btn)
-        buttons.addStretch()
-        close_btn = QPushButton("Закрыть")
+        close_btn = dialog_action_button(BTN_CLOSE)
         close_btn.clicked.connect(self.reject)
-        buttons.addWidget(close_btn)
-        root.addLayout(buttons)
+        self.add_button_row(self._insert_btn, close_btn)
 
         self._refresh_list()
         if focus_topic is not None:

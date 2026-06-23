@@ -6,21 +6,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QWidget
 
-from app.qt.dialogs import BTN_CLOSE
+from app.qt.dialog_buttons import BTN_CLOSE
 from app.qt.icons import toolbar_icon
-from app.qt.theme import COLOR_ERROR, COLOR_MUTED, COLOR_SUCCESS
+from app.qt.labels import caption_label, dialog_title_label, muted_label
+from app.qt.theme import COLOR_ERROR, COLOR_SUCCESS
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 from app.run_display import format_duration, format_run_at
 from app.run_result_display import (
     brief_error_message,
@@ -36,36 +28,26 @@ def _status_color(success: bool) -> QColor:
     return QColor(COLOR_SUCCESS if success else COLOR_ERROR)
 
 
-class RunHistoryDialog(QDialog):
+class RunHistoryDialog(BaseAppDialog):
     def __init__(self, parent: QWidget | None, path: Path) -> None:
-        super().__init__(parent)
+        super().__init__(parent, title=f"История прогонов — {path.name}", min_size=(760, 400))
         self._path = path.resolve()
-        self.setWindowTitle(f"История прогонов — {self._path.name}")
-        self.setMinimumSize(760, 400)
-        self.setProperty("role", "run-history-dialog")
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        title = dialog_title_label(self._path.name)
+        self.content_layout.addWidget(title)
 
-        title = QLabel(self._path.name)
-        title.setProperty("role", "run-history-title")
-        root.addWidget(title)
-
-        subtitle = QLabel(str(self._path.parent))
-        subtitle.setProperty("muted", True)
-        subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
+        subtitle = muted_label(str(self._path.parent), word_wrap=True)
+        self.content_layout.addWidget(subtitle)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
-        root.addWidget(self._summary)
+        self.content_layout.addWidget(self._summary)
 
         self._empty = QLabel("Прогонов пока не было.\nЗапустите сценарий — результаты появятся здесь.")
         self._empty.setProperty("role", "run-history-empty")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty.setWordWrap(True)
-        root.addWidget(self._empty)
+        self.content_layout.addWidget(self._empty)
 
         self._table = QTableWidget(0, 5, self)
         self._table.setProperty("role", "run-results-table")
@@ -84,32 +66,27 @@ class RunHistoryDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self._table.cellDoubleClicked.connect(self._open_report_for_row)
-        root.addWidget(self._table)
+        self.content_layout.addWidget(self._table)
 
         self._detail = QLabel("")
         self._detail.setWordWrap(True)
         self._detail.setProperty("role", "run-history-detail")
         self._detail.hide()
-        root.addWidget(self._detail)
+        self.content_layout.addWidget(self._detail)
 
-        hint = QLabel("Дважды щёлкните строку, чтобы открыть HTML-отчёт или каталог прогона.")
-        hint.setProperty("muted", True)
-        root.addWidget(hint)
+        self.content_layout.addWidget(
+            caption_label("Дважды щёлкните строку, чтобы открыть HTML-отчёт или каталог прогона.")
+        )
 
-        buttons = QHBoxLayout()
-        self._open_report_btn = QPushButton("Открыть отчёт")
+        self._open_report_btn = dialog_action_button("Открыть отчёт")
         self._open_report_btn.setIcon(toolbar_icon("feature"))
         self._open_report_btn.clicked.connect(self._open_selected_report)
-        buttons.addWidget(self._open_report_btn)
-        self._open_run_dir_btn = QPushButton("Каталог прогона")
+        self._open_run_dir_btn = dialog_action_button("Каталог прогона")
         self._open_run_dir_btn.setIcon(toolbar_icon("explorer"))
         self._open_run_dir_btn.clicked.connect(self._open_selected_run_dir)
-        buttons.addWidget(self._open_run_dir_btn)
-        buttons.addStretch()
-        close_btn = QPushButton(BTN_CLOSE)
+        close_btn = dialog_action_button(BTN_CLOSE)
         close_btn.clicked.connect(self.accept)
-        buttons.addWidget(close_btn)
-        root.addLayout(buttons)
+        self.add_button_row(self._open_report_btn, self._open_run_dir_btn, close_btn)
 
         self._entries: list[RunHistoryEntry] = []
         self._populate(get_run_history(self._path))

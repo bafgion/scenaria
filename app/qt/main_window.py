@@ -215,7 +215,6 @@ class MainWindow(QMainWindow):
         ws.recording_modes.filter_toggled.connect(self._on_filter_toggled)
         ws.recording_modes.nav_only_toggled.connect(self._on_nav_only_toggled)
         ws.recording_modes.headless_toggled.connect(self._on_headless_toggled)
-        ws.recording_modes.saved_session_toggled.connect(self._on_saved_session_toggled)
         ws.recording_modes.hover_record_toggled.connect(self._on_hover_record_toggled)
         ws.post_record_banner.apply_and_test_clicked.connect(self._post_record_apply_and_test)
         ws.post_record_banner.save_clicked.connect(self._post_record_save)
@@ -558,7 +557,7 @@ class MainWindow(QMainWindow):
         record_test_menu.addSeparator()
         record_test_menu.addAction("Стартовый URL…", self._edit_start_url)
         record_test_menu.addAction("HTTP-авторизация для сайтов…", self._edit_http_auth)
-        record_test_menu.addAction("Сессии браузера…", self._edit_browser_sessions)
+        record_test_menu.addAction("TestClient…", self._edit_browser_sessions)
         record_test_menu.addAction("URL из вкладки", rec.fetch_url_from_tab)
         record_test_menu.addSeparator()
         self._act_record = QAction("Запись", self)
@@ -599,11 +598,6 @@ class MainWindow(QMainWindow):
         self._act_headless.setChecked(self._controller.session.headless)
         self._act_headless.toggled.connect(self._on_headless_toggled)
         record_test_menu.addAction(self._act_headless)
-        self._act_saved_session = QAction("Использовать сохранённую сессию", self)
-        self._act_saved_session.setCheckable(True)
-        self._act_saved_session.setChecked(bool(load_settings().get("use_saved_browser_session", True)))
-        self._act_saved_session.toggled.connect(self._on_saved_session_toggled)
-        record_test_menu.addAction(self._act_saved_session)
         record_test_menu.addSeparator()
         record_test_menu.addAction("Настройки…", lambda: self._open_settings(tab="recording"))
         record_test_menu.addAction("Открыть последний отчёт", self._open_latest_report)
@@ -773,20 +767,28 @@ class MainWindow(QMainWindow):
         dialog = HttpAuthDialog(self, suggested_host=host_from_url(self._start_url()))
         dialog.exec()
 
+    def _suggested_test_client_name(self) -> str:
+        try:
+            from app.gherkin_context import parse_feature_test_client
+
+            text = self._controller.scenario.source_text or ""
+            path = self._controller.scenario.feature_path
+            if not text.strip() and path and path.exists():
+                text = path.read_text(encoding="utf-8")
+            if not text.strip():
+                return ""
+            return parse_feature_test_client(text) or ""
+        except Exception:
+            return ""
+
     def _edit_browser_sessions(self) -> None:
         rec = self._controller.recording
-        dialog = BrowserSessionDialog(self, suggested_url=self._start_url())
-
-        if self._controller.session.browser_open:
-            def save_current(label: str) -> None:
-                rec.save_browser_session(
-                    label,
-                    on_saved=dialog.on_session_saved,
-                    on_error=lambda exc: alert(self, BRAND_NAME, f"Не удалось сохранить сессию:\n{exc}"),
-                )
-
-            dialog._save_callback = save_current
-            dialog._update_save_enabled()
+        save_callback = rec.save_test_client_sync if self._controller.session.browser_open else None
+        dialog = BrowserSessionDialog(
+            self,
+            suggested_name=self._suggested_test_client_name(),
+            save_callback=save_callback,
+        )
         dialog.exec()
 
     def _edit_scenario_tags(self) -> None:
@@ -1271,7 +1273,6 @@ class MainWindow(QMainWindow):
         self._act_filter.setChecked(s.filter_recording)
         self._act_nav_only.setChecked(s.nav_only_recording)
         self._act_headless.setChecked(s.headless)
-        self._act_saved_session.setChecked(bool(load_settings().get("use_saved_browser_session", True)))
         self._update_window_title()
         root = get_root()
         scenario = self._controller.scenario
@@ -1469,19 +1470,7 @@ class MainWindow(QMainWindow):
         self._sync_menu_states()
 
     def _on_saved_session_toggled(self, checked: bool) -> None:
-        self._act_saved_session.setChecked(checked)
-        settings = load_settings()
-        settings["use_saved_browser_session"] = checked
-        save_settings(settings)
-        self.workspace.recording_modes.sync(
-            visible=self.workspace.recording_modes.isVisible(),
-            filter_recording=self._controller.session.filter_recording,
-            nav_only_recording=self._controller.session.nav_only_recording,
-            headless=self._controller.session.headless,
-            use_saved_session=checked,
-            hover_recording=self._controller.session.hover_recording,
-        )
-        self._sync_menu_states()
+        del checked
 
     def _on_hover_record_toggled(self, checked: bool) -> None:
         session = self._controller.session

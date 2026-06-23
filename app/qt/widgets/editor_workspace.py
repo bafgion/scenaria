@@ -27,6 +27,7 @@ from app.qt.widgets.steps_strip import StepsStrip
 from app.qt.widgets.welcome_panel import WelcomePanel
 from app.scenario_hints import ScenarioHint, collect_all_hints
 from app.settings import load_settings, save_settings
+from app.qt.labels import caption_label, strip_title_label
 from app.brand import BRAND_NAME
 
 _PAGE_WELCOME = 0
@@ -127,11 +128,9 @@ class EditorWorkspace(QWidget):
         collapsed_layout = QHBoxLayout(self._steps_collapsed_bar)
         collapsed_layout.setContentsMargins(8, 0, 8, 0)
         collapsed_layout.setSpacing(6)
-        collapsed_title = QLabel("Шаги")
-        collapsed_title.setStyleSheet("font-size: 8pt; font-weight: 600;")
+        collapsed_title = strip_title_label("Шаги")
         collapsed_layout.addWidget(collapsed_title)
-        self._steps_collapsed_count = QLabel("")
-        self._steps_collapsed_count.setStyleSheet("font-size: 8pt; color: #858585;")
+        self._steps_collapsed_count = caption_label("")
         collapsed_layout.addWidget(self._steps_collapsed_count)
         collapsed_layout.addStretch()
         expand_btn = QPushButton("▲")
@@ -299,7 +298,7 @@ class EditorWorkspace(QWidget):
             filter_recording=self._session.filter_recording,
             nav_only_recording=self._session.nav_only_recording,
             headless=self._session.headless,
-            use_saved_session=bool(load_settings().get("use_saved_browser_session", True)),
+            use_saved_session=False,
             hover_recording=self._session.hover_recording,
         )
         if editor_active and not recording:

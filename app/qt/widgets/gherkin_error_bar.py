@@ -6,7 +6,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from app.gherkin_quick_fixes import QuickFix
-from app.qt.theme import COLOR_ERROR, COLOR_MUTED
+from app.qt.labels import caption_label, error_label
 
 
 class GherkinErrorBar(QWidget):
@@ -21,9 +21,7 @@ class GherkinErrorBar(QWidget):
         root.setContentsMargins(6, 4, 6, 4)
         root.setSpacing(8)
 
-        self._message = QLabel()
-        self._message.setWordWrap(True)
-        self._message.setStyleSheet(f"color: {COLOR_ERROR}; font-size: 9pt;")
+        self._message = error_label(word_wrap=True)
         root.addWidget(self._message, stretch=1)
 
         self._buttons_host = QWidget()
@@ -32,8 +30,7 @@ class GherkinErrorBar(QWidget):
         self._buttons.setSpacing(6)
         root.addWidget(self._buttons_host)
 
-        hint = QLabel("Правый клик по строке → «Исправить»")
-        hint.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        hint = caption_label("Правый клик по строке → «Исправить»")
         root.addWidget(hint)
 
     def show_error(self, message: str, fixes: list[tuple[QuickFix, str]], *, source_text: str) -> None:

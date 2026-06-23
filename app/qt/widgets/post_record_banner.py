@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.qt.theme import COLOR_MUTED, COLOR_WARNING
+from app.qt.labels import caption_label, set_label_tone
 from app.scenario_hints import ScenarioHint
 
 
@@ -51,8 +51,7 @@ class PostRecordBanner(QWidget):
         self._summary = QLabel("")
         top.addWidget(self._summary, stretch=1)
 
-        self._legacy_hover_hint = QLabel("")
-        self._legacy_hover_hint.setStyleSheet(f"color: {COLOR_WARNING}; font-size: 8pt;")
+        self._legacy_hover_hint = caption_label("")
         self._legacy_hover_hint.hide()
         top.addWidget(self._legacy_hover_hint)
 
@@ -71,7 +70,7 @@ class PostRecordBanner(QWidget):
         top.addWidget(save_btn)
 
         close_btn = QPushButton("Закрыть")
-        close_btn.setStyleSheet(f"color: {COLOR_MUTED};")
+        close_btn.setProperty("banner-dismiss", True)
         close_btn.clicked.connect(self.dismiss_clicked.emit)
         top.addWidget(close_btn)
 
@@ -121,6 +120,7 @@ class PostRecordBanner(QWidget):
             self._legacy_hover_hint.setText(
                 f"Похоже на hover-меню: {menu_hover_count} клик(ов) без «навожу»"
             )
+            set_label_tone(self._legacy_hover_hint, "warning")
             self._legacy_hover_hint.show()
             self._fix_btn.show()
         else:

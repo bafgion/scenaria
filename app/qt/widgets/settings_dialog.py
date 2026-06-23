@@ -30,7 +30,7 @@ from app.feature_store import get_root
 from app.playwright_browsers import browser_install_status, install_browser_engine
 from app.plugins.registry import get_registry
 from app.qt.dialogs import ok_cancel_button_box
-from app.qt.theme import COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING
+from app.qt.labels import caption_label, set_label_tone
 from app.qt.update_ui import updates_supported
 from app.qt.widgets.command_palette import match_score
 from app.selector_build import SELECTOR_STRATEGY_LABELS, normalize_selector_priority
@@ -503,9 +503,7 @@ class SettingsDialog(QDialog):
             "playwright браузер chromium firefox webkit",
         )
 
-        self._browser_install_progress = QLabel("")
-        self._browser_install_progress.setWordWrap(True)
-        self._browser_install_progress.setStyleSheet(f"color: {COLOR_MUTED};")
+        self._browser_install_progress = caption_label("", word_wrap=True)
         self._browser_install_progress.hide()
         browser_layout.addWidget(self._browser_install_progress)
 
@@ -576,18 +574,21 @@ class SettingsDialog(QDialog):
             card_layout.addWidget(name, stretch=1)
             if info.id == "playwright":
                 status = "встроен"
-                color = COLOR_MUTED
             elif info.installed and info.available:
                 status = "установлен"
-                color = COLOR_SUCCESS
             elif info.installed:
                 status = "недоступен"
-                color = COLOR_WARNING
             else:
                 status = "не установлен"
-                color = COLOR_MUTED
-            badge = QLabel(status)
-            badge.setStyleSheet(f"color: {color}; font-size: 8pt;")
+            badge = caption_label(status)
+            if info.id == "playwright":
+                set_label_tone(badge, "muted")
+            elif info.installed and info.available:
+                set_label_tone(badge, "success")
+            elif info.installed:
+                set_label_tone(badge, "warning")
+            else:
+                set_label_tone(badge, "muted")
             card_layout.addWidget(badge)
             section_layout.addWidget(card)
             self._track("plugins", card, section, info.label, info.id, status, _TAB_LABELS["plugins"])
@@ -715,12 +716,12 @@ class SettingsDialog(QDialog):
         installed, detail = browser_install_status(engine)
         if installed:
             self._browser_engine_status.setText(f"{label}: установлен\n{detail}")
-            self._browser_engine_status.setStyleSheet(f"color: {COLOR_SUCCESS};")
+            set_label_tone(self._browser_engine_status, "success")
             self._browser_install_btn.setEnabled(True)
             self._browser_install_btn.setText("Переустановить")
         else:
             self._browser_engine_status.setText(f"{label}: не установлен — нужна загрузка перед записью и прогоном.")
-            self._browser_engine_status.setStyleSheet(f"color: {COLOR_WARNING};")
+            set_label_tone(self._browser_engine_status, "warning")
             self._browser_install_btn.setEnabled(True)
             self._browser_install_btn.setText("Установить движок")
         self._browser_install_progress.hide()
@@ -749,7 +750,7 @@ class SettingsDialog(QDialog):
 
     def _on_browser_install_failed(self, message: str) -> None:
         self._browser_install_progress.setText(message)
-        self._browser_install_progress.setStyleSheet(f"color: {COLOR_WARNING};")
+        set_label_tone(self._browser_install_progress, "warning")
         self._refresh_browser_engine_status()
 
     def _open_vanessa_settings(self) -> None:

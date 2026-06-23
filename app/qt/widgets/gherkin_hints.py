@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from app.gherkin_snippets import STEP_SNIPPETS
+from app.qt.labels import caption_label
 from app.qt.theme import COLOR_MUTED
 from app.scenario_hints import hover_menu_gherkin_example
 
@@ -25,10 +26,9 @@ class GherkinHintsBar(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
 
-        self._summary = QLabel(
+        self._summary = caption_label(
             "Шаги сценария · для выпадающего меню: «навожу» перед «нажимаю» · Ctrl+Space"
         )
-        self._summary.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
         row.addWidget(self._summary, stretch=1)
 
         template_btn = QToolButton()
@@ -50,18 +50,18 @@ class GherkinHintsBar(QWidget):
         root.addLayout(row)
 
         details_lines = [
-            f"<b>{s.label}</b> — {s.description} &nbsp; <span style='color:#858585'>{s.insert}</span>"
+            f"<b>{s.label}</b> — {s.description} &nbsp; <span style='color:{COLOR_MUTED}'>{s.insert}</span>"
             for s in STEP_SNIPPETS
         ]
         details_lines.append(
             "<b>hover-меню</b> — пример:<br>"
-            f"<span style='color:#858585'>{hover_menu_gherkin_example().replace(chr(10), '<br>')}</span>"
+            f"<span style='color:{COLOR_MUTED}'>{hover_menu_gherkin_example().replace(chr(10), '<br>')}</span>"
         )
-        self._details = QLabel("<br>".join(details_lines))
+        self._details = caption_label("<br>".join(details_lines))
         self._details.setTextFormat(Qt.TextFormat.RichText)
         self._details.setWordWrap(True)
+        self._details.setProperty("padding", "top")
         self._details.setVisible(False)
-        self._details.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt; padding-top: 4px;")
         root.addWidget(self._details)
 
     def _toggle_details(self) -> None:

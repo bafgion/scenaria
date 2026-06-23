@@ -24,6 +24,11 @@ KEYWORDS: tuple[str, ...] = ("Допустим", "Когда", "Тогда", "И
 
 HEADER_SNIPPETS: tuple[GherkinSnippet, ...] = (
     GherkinSnippet("Функционал:", "Функционал: UI сценарий", "Заголовок feature-файла"),
+    GherkinSnippet(
+        "Контекст:",
+        'Контекст:\n\tДано я подключаю TestClient "ИмяКлиента"',
+        "Блок контекста: именованный TestClient перед сценарием",
+    ),
     GherkinSnippet("Сценарий:", "Сценарий: Имя сценария", "Название сценария"),
 )
 

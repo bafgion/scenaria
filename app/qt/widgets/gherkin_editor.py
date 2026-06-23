@@ -18,7 +18,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QMenu, QPlainTextEdit, QTextEdit
 
 from app.qt.fonts import editor_font
-from app.qt.theme import COLOR_EDITOR
 from app.qt.widgets.gherkin_completions import GherkinCompleter
 from app.qt.widgets.gherkin_highlighter import GherkinHighlighter
 
@@ -34,7 +33,6 @@ class GherkinEditor(QPlainTextEdit):
         font = editor_font()
         self.setFont(font)
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
-        self.setStyleSheet(f"QPlainTextEdit {{ background: {COLOR_EDITOR}; }}")
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_F1:

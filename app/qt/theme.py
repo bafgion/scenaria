@@ -605,7 +605,7 @@ def apply_dark_theme(app: QApplication) -> None:
             background: {COLOR_DIR_SELECTED};
             color: {COLOR_TEXT};
         }}
-        QListWidget[role="settings-nav"]::item:hover:!selected {{
+        QListWidget[role="settings-nav"]::item:hover {{
             background: {COLOR_INPUT};
             color: {COLOR_TEXT};
         }}
@@ -663,11 +663,267 @@ def apply_dark_theme(app: QApplication) -> None:
             border: 1px solid {COLOR_BORDER};
             border-radius: 6px;
         }}
+        QDialog[role="settings-dialog"] QDialogButtonBox QPushButton {{
+            background: {COLOR_INPUT};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 3px;
+            padding: 2px 10px;
+            min-height: 20px;
+            max-height: 24px;
+        }}
+        QDialog[role="settings-dialog"] QDialogButtonBox QPushButton:hover {{
+            background: #4a4a4a;
+        }}
         QListWidget[role="settings-list"] {{
             background: {COLOR_INPUT};
             border: 1px solid {COLOR_BORDER};
             border-radius: 4px;
             padding: 4px;
+        }}
+        QListWidget[role="settings-list"]::item {{
+            padding: 4px 6px;
+            border-radius: 2px;
+        }}
+        QListWidget[role="settings-list"]::item:selected {{
+            background: {COLOR_DIR_SELECTED};
+        }}
+        QListWidget[role="settings-list"]::item:hover {{
+            background: #4a4a4a;
+        }}
+        QDialog[role="app-dialog"] {{
+            background: {COLOR_BG};
+        }}
+        QLabel[role="dialog-hint"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+            line-height: 130%;
+        }}
+        QLabel[role="dialog-title"] {{
+            font-size: 11pt;
+            font-weight: 600;
+        }}
+        QLabel[role="muted"] {{
+            color: {COLOR_MUTED};
+        }}
+        QLabel[role="ui-caption"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+        }}
+        QLabel[role="ui-caption"][padding="top"] {{
+            padding-top: 4px;
+        }}
+        QLabel[role="ui-body"] {{
+            color: {COLOR_TEXT};
+            font-size: 9pt;
+        }}
+        QLabel[role="ui-body-secondary"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+        }}
+        QLabel[role="ui-section"] {{
+            font-weight: 600;
+            margin-top: 8px;
+        }}
+        QLabel[role="ui-section-sm"] {{
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        QLabel[role="ui-strip-title"] {{
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        QLabel[role="ui-error"] {{
+            color: {COLOR_ERROR};
+            font-size: 9pt;
+        }}
+        QLabel[tone="muted"] {{
+            color: {COLOR_MUTED};
+            font-size: 8pt;
+        }}
+        QLabel[tone="success"] {{
+            color: {COLOR_SUCCESS};
+            font-size: 8pt;
+        }}
+        QLabel[tone="warning"] {{
+            color: {COLOR_WARNING};
+            font-size: 8pt;
+        }}
+        QLabel[tone="error"] {{
+            color: {COLOR_ERROR};
+            font-size: 8pt;
+        }}
+        QLabel[tone="recording"] {{
+            color: {COLOR_RECORDING};
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        QLabel[tone="active"] {{
+            color: {COLOR_TEXT};
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        QLabel[tone="inverse"] {{
+            color: #ffffff;
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        QLabel[role="code-preview"] {{
+            color: {COLOR_TEXT};
+            background: #2d2d2d;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 4px;
+            padding: 8px;
+            font-family: {code_font};
+        }}
+        QLabel[role="link-label"] {{
+            color: {COLOR_PRIMARY};
+        }}
+        QLabel[role="welcome-title"] {{
+            font-size: 18pt;
+            font-weight: 300;
+        }}
+        QLabel[role="welcome-section"] {{
+            font-weight: 600;
+            margin-top: 8px;
+        }}
+        QLabel[role="welcome-muted-heading"] {{
+            color: {COLOR_MUTED};
+            font-weight: 600;
+            margin-top: 12px;
+        }}
+        QLabel[role="welcome-subtitle"] {{
+            color: {COLOR_MUTED};
+            margin-bottom: 8px;
+        }}
+        QLabel[role="banner-warning-icon"] {{
+            color: {COLOR_WARNING};
+        }}
+        QLabel[role="error-title"] {{
+            color: {COLOR_ERROR};
+            font-weight: 600;
+        }}
+        QWidget[role="gherkin-error-bar"] {{
+            background: #2a1f1f;
+            border-bottom: 1px solid {COLOR_ERROR};
+        }}
+        QWidget[role="url-bar"] {{
+            background: {COLOR_TOOLBAR};
+            border-bottom: 1px solid {COLOR_DIVIDER};
+        }}
+        QTextBrowser[role="help-detail"] {{
+            background: {COLOR_SIDEBAR};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 6px;
+            padding: 12px 14px;
+        }}
+        QPushButton[banner-dismiss="true"] {{
+            color: {COLOR_MUTED};
+        }}
+        QLabel[role="status-led"][tone="on"] {{
+            background: {COLOR_SUCCESS};
+            border-radius: 3px;
+            min-width: 6px;
+            max-width: 6px;
+            min-height: 6px;
+            max-height: 6px;
+        }}
+        QLabel[role="status-led"][tone="off"] {{
+            background: {COLOR_MUTED};
+            border-radius: 3px;
+            min-width: 6px;
+            max-width: 6px;
+            min-height: 6px;
+            max-height: 6px;
+        }}
+        QWidget[status-segment="true"] QLabel {{
+            font-size: 8pt;
+        }}
+        QWidget[status-segment="true"][clickable="false"] QLabel {{
+            color: {COLOR_MUTED};
+        }}
+        QWidget[status-segment="true"][clickable="true"] QLabel {{
+            color: {COLOR_TEXT};
+        }}
+        QWidget[status-segment="true"][accent="recording"] QLabel,
+        QWidget[status-segment="true"][accent="playing"] QLabel {{
+            color: #ffffff;
+            font-weight: 600;
+        }}
+        QLabel[status="message"] {{
+            padding: 0 12px;
+            font-size: 8pt;
+        }}
+        QLabel[status="message"][tone="normal"] {{
+            color: {COLOR_TEXT};
+        }}
+        QLabel[status="message"][tone="error"] {{
+            color: {COLOR_ERROR};
+        }}
+        QLabel[status="message"][tone="success"] {{
+            color: {COLOR_SUCCESS};
+        }}
+        QLabel[status="message"][tone="warning"] {{
+            color: {COLOR_WARNING};
+        }}
+        QLabel[status="message"][tone="busy"],
+        QLabel[status="message"][tone="muted"],
+        QLabel[status="message"][tone="info"] {{
+            color: {COLOR_MUTED};
+        }}
+        QWidget#browserOverlay {{
+            background: {COLOR_TOOLBAR};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 8px;
+        }}
+        QWidget#browserOverlay QPushButton {{
+            min-height: 24px;
+            max-height: 28px;
+            padding: 2px 8px;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 4px;
+        }}
+        QWidget#browserOverlay QPushButton:hover:enabled {{
+            border-color: #5a5a5a;
+        }}
+        QWidget#browserOverlay QPushButton:disabled {{
+            color: {COLOR_MUTED};
+        }}
+        QFrame[role="dialog-footer-line"] {{
+            background: {COLOR_DIVIDER};
+            max-height: 1px;
+            min-height: 1px;
+            border: none;
+        }}
+        QDialog[role="app-dialog"] QPushButton[dialog-action="true"],
+        QDialog[role="app-dialog"] QDialogButtonBox QPushButton {{
+            background: {COLOR_INPUT};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 3px;
+            padding: 2px 10px;
+            min-height: 20px;
+            max-height: 24px;
+        }}
+        QDialog[role="app-dialog"] QPushButton[dialog-action="true"]:hover,
+        QDialog[role="app-dialog"] QDialogButtonBox QPushButton:hover {{
+            background: #4a4a4a;
+        }}
+        QDialog[role="app-dialog"] QPushButton[dialog-action="true"]:pressed,
+        QDialog[role="app-dialog"] QDialogButtonBox QPushButton:pressed {{
+            background: #383838;
+        }}
+        QDialog[role="app-dialog"] QPushButton[dialog-action="true"][primary="true"],
+        QDialog[role="app-dialog"] QDialogButtonBox QPushButton:default {{
+            background: {COLOR_PRIMARY};
+            border-color: {COLOR_PRIMARY};
+        }}
+        QDialog[role="app-dialog"] QPushButton[dialog-action="true"][primary="true"]:hover,
+        QDialog[role="app-dialog"] QDialogButtonBox QPushButton:default:hover {{
+            background: {COLOR_PRIMARY_HOVER};
+            border-color: {COLOR_PRIMARY_HOVER};
+        }}
+        QLabel[role="dialog-phase"] {{
+            font-size: 11pt;
+            font-weight: 600;
         }}
         """
     )

@@ -13,10 +13,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QVBoxLayout,
 )
 
-from app.qt.dialogs import close_button_box
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ def filter_commands(
     return [item[3] for item in scored]
 
 
-class CommandPaletteDialog(QDialog):
+class CommandPaletteDialog(BaseAppDialog):
     def __init__(
         self,
         commands: list[PaletteCommand],
@@ -81,33 +81,27 @@ class CommandPaletteDialog(QDialog):
         recent_ids: list[str] | None = None,
         parent=None,
     ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Команды")
-        self.setModal(True)
-        self.resize(560, 360)
+        super().__init__(parent, title="Команды", min_size=(560, 360))
         self._commands = commands
         self._recent_ids = list(recent_ids or [])
         self._selected: PaletteCommand | None = None
 
-        root = QVBoxLayout(self)
-        hint = QLabel("Введите название команды")
-        hint.setProperty("role", "muted")
-        root.addWidget(hint)
+        self.content_layout.addWidget(muted_label("Введите название команды"))
 
         self._filter = QLineEdit()
         self._filter.setPlaceholderText("Поиск команд…")
         self._filter.textChanged.connect(self._refresh_list)
-        root.addWidget(self._filter)
+        self.content_layout.addWidget(self._filter)
 
         self._list = QListWidget()
+        self._list.setProperty("role", "settings-list")
         self._list.itemActivated.connect(self._accept_item)
         self._list.itemDoubleClicked.connect(self._accept_item)
-        root.addWidget(self._list, stretch=1)
+        self.content_layout.addWidget(self._list, stretch=1)
 
-        buttons = close_button_box()
+        buttons = self.add_close_box()
         buttons.accepted.connect(self._accept_current)
         buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
 
         self._refresh_list()
         self._filter.setFocus()

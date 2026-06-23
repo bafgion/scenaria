@@ -8,17 +8,18 @@ from typing import Any, Literal
 
 from app.run_variables import GENERATOR_GHERKIN_PHRASES, generator_gherkin_phrase, normalize_generator_name
 
-_KEYWORD_RE = re.compile(r"^(?:(?:Допустим|Когда|Тогда|И|Но)\s+)?(.+)$", re.IGNORECASE)
-_STEP_HEADER_RE = re.compile(r"^(?:функционал|сценарий|функция)\s*:", re.IGNORECASE)
+_KEYWORD_RE = re.compile(r"^(?:(?:Допустим|Дано|Когда|Тогда|И|Но)\s+)?(.+)$", re.IGNORECASE)
+_STEP_HEADER_RE = re.compile(r"^(?:функционал|сценарий|функция|контекст)\s*:", re.IGNORECASE)
 _SCENARIO_LINE_RE = re.compile(r"^сценарий\s*:\s*(.*)$", re.IGNORECASE)
 _FEATURE_LINE_RE = re.compile(r"^функционал\s*:\s*(.*)$", re.IGNORECASE)
+_CONTEXT_LINE_RE = re.compile(r"^контекст\s*:\s*$", re.IGNORECASE)
 _TAG_LINE_RE = re.compile(r"^@(\S+)$")
 _LEGACY_HAS_TEXT_UNESCAPED = re.compile(r':has-text\("([^"\\]+)"\)')
 _OUTLINE_HEADER_RE = re.compile(r"^структура\s+сценария\s*:", re.IGNORECASE)
 _EXAMPLES_HEADER_RE = re.compile(r"^примеры\s*:", re.IGNORECASE)
-_GHERKIN_KW_PREFIX_RE = re.compile(r"^(?:Допустим|Когда|Тогда|И|Но)\s+", re.IGNORECASE)
+_GHERKIN_KW_PREFIX_RE = re.compile(r"^(?:Допустим|Дано|Когда|Тогда|И|Но)\s+", re.IGNORECASE)
 
-GHERKIN_KEYWORDS: tuple[str, ...] = ("Допустим", "Когда", "Тогда", "И", "Но")
+GHERKIN_KEYWORDS: tuple[str, ...] = ("Допустим", "Дано", "Когда", "Тогда", "И", "Но")
 
 # One tab per step line (Gherkin body indent).
 STEP_INDENT = "\t"
@@ -82,7 +83,7 @@ def is_gherkin_step_line(line: str) -> bool:
         return False
     if is_step_indented(line):
         return True
-    return bool(re.match(r"^(?:Допустим|Когда|Тогда|И|Но)\s+", stripped, flags=re.IGNORECASE))
+    return bool(re.match(r"^(?:Допустим|Дано|Когда|Тогда|И|Но)\s+", stripped, flags=re.IGNORECASE))
 
 
 @dataclass
@@ -104,6 +105,8 @@ class FeatureStructure:
     step_lines: list[str]
     interstitial: list[list[str]]
     after_steps: list[str] = field(default_factory=list)
+    has_context_block: bool = False
+    context_lines: list[str] = field(default_factory=list)
 
 
 def normalize_tag_name(raw: str) -> str:
@@ -140,8 +143,10 @@ def parse_feature_structure(text: str) -> FeatureStructure:
     step_lines: list[str] = []
     interstitial: list[list[str]] = []
     after_steps: list[str] = []
+    has_context_block = False
+    context_lines: list[str] = []
     pending: list[str] = []
-    phase: Literal["header", "before_steps", "steps", "after"] = "header"
+    phase: Literal["header", "context", "before_steps", "steps", "after"] = "header"
     saw_scenario = False
     skip_outline = False
 
@@ -164,6 +169,10 @@ def parse_feature_structure(text: str) -> FeatureStructure:
             if feature_match:
                 feature_line = raw.rstrip()
                 continue
+            if _CONTEXT_LINE_RE.match(stripped):
+                has_context_block = True
+                phase = "context"
+                continue
             tag_match = _TAG_LINE_RE.match(stripped)
             if tag_match:
                 name = normalize_tag_name(tag_match.group(1))
@@ -173,6 +182,35 @@ def parse_feature_structure(text: str) -> FeatureStructure:
             scenario_match = _SCENARIO_LINE_RE.match(stripped)
             if scenario_match:
                 scenario_name = scenario_match.group(1).strip() or "Сценарий"
+                saw_scenario = True
+                phase = "before_steps"
+                continue
+            if _STEP_HEADER_RE.match(stripped):
+                continue
+            if is_gherkin_step_line(raw):
+                saw_scenario = True
+                phase = "steps"
+            else:
+                continue
+
+        if phase == "context":
+            if not stripped:
+                context_lines.append(raw)
+                continue
+            if stripped.startswith("#"):
+                context_lines.append(raw)
+                continue
+            if is_gherkin_step_line(raw):
+                context_lines.append(raw)
+                continue
+            phase = "header"
+            if _TAG_LINE_RE.match(stripped):
+                name = normalize_tag_name(_TAG_LINE_RE.match(stripped).group(1))
+                if name:
+                    tags.append(name)
+                continue
+            if _SCENARIO_LINE_RE.match(stripped):
+                scenario_name = _SCENARIO_LINE_RE.match(stripped).group(1).strip() or "Сценарий"
                 saw_scenario = True
                 phase = "before_steps"
                 continue
@@ -237,6 +275,8 @@ def parse_feature_structure(text: str) -> FeatureStructure:
         step_lines=step_lines,
         interstitial=interstitial,
         after_steps=after_steps,
+        has_context_block=has_context_block,
+        context_lines=context_lines,
     )
 
 
@@ -267,6 +307,9 @@ def build_feature_text(
     new_step_lines = steps_to_gherkin_body_lines(steps)
 
     lines: list[str] = [structure.feature_line]
+    if structure.has_context_block:
+        lines.append("Контекст:")
+        lines.extend(structure.context_lines)
     for tag in resolved_tags:
         lines.append(f"@{tag}")
     lines.append(f"Сценарий: {resolved_name}")
@@ -730,13 +773,21 @@ def _collect_step_lines(text: str) -> list[tuple[int, str]]:
     """Collect step lines with source line numbers, skipping headers and outline tables."""
     collected: list[tuple[int, str]] = []
     skip_outline = False
+    in_context = False
     for line_no, raw in enumerate(text.splitlines(), start=1):
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
             continue
         if _TAG_LINE_RE.match(stripped):
+            in_context = False
             continue
         if _FEATURE_LINE_RE.match(stripped) or _SCENARIO_LINE_RE.match(stripped):
+            in_context = False
+            continue
+        if _CONTEXT_LINE_RE.match(stripped):
+            in_context = True
+            continue
+        if in_context:
             continue
         if _OUTLINE_HEADER_RE.match(stripped):
             skip_outline = True

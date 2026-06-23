@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.progress_state import ProgressState
 from app.feature_store import get_root
+from app.gherkin_ru import GherkinParseError
 from app.project_config import default_runner
 from app.run_display import compare_run_with_recording
 from app.run_status_store import record_run
@@ -278,6 +279,24 @@ class RecordingController(QObject):
         if self._session.player_browser and not self._player.browser_open:
             self._on_player_browser_closed()
 
+    def _editor_test_client(self) -> str | None:
+        from app.gherkin_context import parse_feature_test_client
+
+        text = self._scenario.source_text or ""
+        path = self._scenario.feature_path
+        if not text.strip() and path and path.exists():
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                return None
+        if not text.strip():
+            return None
+        try:
+            return parse_feature_test_client(text)
+        except GherkinParseError as exc:
+            self.log.emit(str(exc), "error")
+            raise
+
     def open_browser(self, url: str) -> None:
         bridge = self._bridge_ref()
         self._sync_browser_state()
@@ -285,13 +304,21 @@ class RecordingController(QObject):
             return
         if not self._validate_url(url):
             return
+        try:
+            test_client = self._editor_test_client()
+        except GherkinParseError:
+            return
         self._set_pending(True, "Запуск браузера...")
-        self.log.emit(f"Открываю браузер: {url}" if url else "Открываю браузер без стартового URL", "info")
+        if test_client:
+            self.log.emit(f"Открываю браузер с TestClient «{test_client}»", "info")
+        else:
+            self.log.emit(f"Открываю браузер: {url}" if url else "Открываю браузер (чистый сеанс)", "info")
         self._recorder.open_browser(
             url,
             self._recorder_status,
             on_complete=lambda: bridge.emit_event("browser_opened"),
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
+            test_client=test_client,
         )
 
     def _confirm_replace_steps(self) -> bool:
@@ -382,12 +409,17 @@ class RecordingController(QObject):
         self._scenario.set_steps([])
         self._set_pending(True, "Подготовка записи...")
         self.log.emit("Старт записи", "info")
+        try:
+            test_client = self._editor_test_client()
+        except GherkinParseError:
+            return
         self._recorder.start_recording(
             url,
             lambda step: bridge.emit_event("step", step),
             self._recorder_status,
             on_complete=lambda start_url: bridge.emit_event("recording_started", start_url),
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
+            test_client=test_client,
         )
 
     def continue_recording(self, url: str, *, prepare_browser: bool = False) -> None:
@@ -447,6 +479,11 @@ class RecordingController(QObject):
         self._set_pending(True, "Подготовка дозаписи...")
         base_count = len(self._append_base_steps or [])
         self.log.emit(f"Дозапись: новые шаги добавятся к {base_count} существующим", "info")
+        try:
+            test_client = self._editor_test_client()
+        except GherkinParseError:
+            self._append_base_steps = None
+            return
         self._recorder.start_recording(
             url,
             lambda step: bridge.emit_event("step", step),
@@ -454,6 +491,7 @@ class RecordingController(QObject):
             on_complete=lambda start_url: bridge.emit_event("recording_started", start_url),
             on_error=self._on_append_start_error,
             append=True,
+            test_client=test_client,
         )
 
     def _on_continue_prepare_done(self, result: dict[str, Any]) -> None:
@@ -525,7 +563,7 @@ class RecordingController(QObject):
             return
 
         def _complete(path: str) -> None:
-            self.log.emit(f"Сессия сохранена: {path}", "success")
+            self.log.emit(f"TestClient сохранён: {path}", "success")
             if on_saved:
                 on_saved(path)
 
@@ -536,6 +574,27 @@ class RecordingController(QObject):
                 self.log.emit(f"Не удалось сохранить сессию: {exc}", "error")
 
         self._recorder.save_browser_session(label=label, on_complete=_complete, on_error=_fail)
+
+    def save_test_client_sync(self, name: str) -> str:
+        import threading
+
+        done = threading.Event()
+        holder: dict[str, object] = {}
+
+        def _complete(path: str) -> None:
+            holder["path"] = path
+            done.set()
+
+        def _fail(exc: Exception) -> None:
+            holder["error"] = exc
+            done.set()
+
+        self.save_browser_session(name, on_saved=_complete, on_error=_fail)
+        if not done.wait(timeout=60):
+            raise TimeoutError("Сохранение TestClient не завершилось вовремя")
+        if holder.get("error"):
+            raise holder["error"]  # type: ignore[misc]
+        return str(holder.get("path", ""))
 
     def validate_current(self) -> None:
         bridge = self._bridge_ref()

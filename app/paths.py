@@ -74,6 +74,16 @@ def project_sessions_dir(project_root: Path) -> Path:
     return project_root / ".scenaria" / "sessions"
 
 
+def project_test_clients_dir(project_root: Path) -> Path:
+    return project_root / ".scenaria" / "test_clients"
+
+
+def global_test_clients_dir() -> Path:
+    path = data_dir() / "test_clients"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def project_snippets_path(project_root: Path) -> Path:
     return project_root / ".scenaria" / "snippets.json"
 

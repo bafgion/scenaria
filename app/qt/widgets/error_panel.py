@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
-from app.qt.theme import COLOR_ERROR, COLOR_MUTED
+from app.qt.labels import caption_label
 
 
 class ErrorPanel(QWidget):
@@ -20,15 +20,14 @@ class ErrorPanel(QWidget):
         layout.setSpacing(6)
 
         self._title = QLabel("Ошибка теста")
-        self._title.setStyleSheet(f"color: {COLOR_ERROR}; font-weight: 600;")
+        self._title.setProperty("role", "error-title")
         layout.addWidget(self._title)
 
         self._step_label = QLabel("")
         layout.addWidget(self._step_label)
 
-        self._selector_label = QLabel("")
+        self._selector_label = caption_label("")
         self._selector_label.setWordWrap(True)
-        self._selector_label.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
         layout.addWidget(self._selector_label)
 
         self._message = QPlainTextEdit()

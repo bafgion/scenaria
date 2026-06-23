@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QLabel,
-    QLineEdit,
-    QPlainTextEdit,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QPlainTextEdit, QWidget
 
 from app.feature_store import get_root
+from app.qt.widgets.base_dialog import BaseAppDialog, style_dialog_button_box
 from app.snippet_store import UserSnippet, append_user_snippet, extract_placeholders, slugify_snippet_id
 
 
-class SaveSnippetDialog(QDialog):
+class SaveSnippetDialog(BaseAppDialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -25,13 +17,12 @@ class SaveSnippetDialog(QDialog):
         text: str,
         default_label: str = "",
     ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Сохранить как сниппет")
-        self.resize(520, 360)
+        super().__init__(parent, title="Сохранить как сниппет", min_size=(520, 360))
         self._saved_path: str | None = None
 
-        intro = QLabel("Выделенный текст будет добавлен в библиотеку сниппетов проекта (или глобально).")
-        intro.setWordWrap(True)
+        self.add_hint(
+            "Выделенный текст будет добавлен в библиотеку сниппетов проекта (или глобально)."
+        )
 
         self._label = QLineEdit(default_label)
         self._description = QLineEdit()
@@ -43,17 +34,16 @@ class SaveSnippetDialog(QDialog):
         form.addRow("Название:", self._label)
         form.addRow("Описание:", self._description)
         form.addRow("Текст:", self._preview)
+        self.content_layout.addLayout(form)
 
+        self.add_footer_line()
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        style_dialog_button_box(buttons)
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(intro)
-        layout.addLayout(form)
-        layout.addWidget(buttons)
+        self.content_layout.addWidget(buttons)
 
     @property
     def saved_path(self) -> str | None:

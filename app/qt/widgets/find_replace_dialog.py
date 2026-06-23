@@ -6,29 +6,25 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
 from app.qt.dialogs import BTN_CLOSE
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 from app.text_replace import find_matches, replace_all
 
 
-class FindReplaceDialog(QDialog):
+class FindReplaceDialog(BaseAppDialog):
     def __init__(self, parent: QWidget | None, editor) -> None:
-        super().__init__(parent)
+        super().__init__(parent, title="Найти и заменить", min_width=420)
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self._editor = editor
         self._last_index = 0
-        self.setWindowTitle("Найти и заменить")
-        self.setMinimumWidth(420)
 
-        root = QVBoxLayout(self)
         form = QFormLayout()
         self._find = QLineEdit()
         self._find.setClearButtonEnabled(True)
@@ -38,7 +34,7 @@ class FindReplaceDialog(QDialog):
         self._replace = QLineEdit()
         self._replace.setClearButtonEnabled(True)
         form.addRow("Заменить на:", self._replace)
-        root.addLayout(form)
+        self.content_layout.addLayout(form)
 
         self._case = QCheckBox("Учитывать регистр")
         self._case.toggled.connect(self._update_count)
@@ -46,32 +42,21 @@ class FindReplaceDialog(QDialog):
         self._steps_only.setToolTip("Не менять заголовки, теги и комментарии")
         self._steps_only.setChecked(True)
         self._steps_only.toggled.connect(self._update_count)
-        root.addWidget(self._case)
-        root.addWidget(self._steps_only)
+        self.content_layout.addWidget(self._case)
+        self.content_layout.addWidget(self._steps_only)
 
-        self._count_label = QLabel("")
-        self._count_label.setStyleSheet("color: #858585;")
-        root.addWidget(self._count_label)
+        self._count_label = muted_label("")
+        self.content_layout.addWidget(self._count_label)
 
-        row = QHBoxLayout()
-        find_btn = QPushButton("Найти далее")
-        find_btn.setDefault(True)
+        find_btn = dialog_action_button("Найти далее", default=True)
         find_btn.clicked.connect(self._find_next)
-        row.addWidget(find_btn)
-
-        replace_btn = QPushButton("Заменить")
+        replace_btn = dialog_action_button("Заменить")
         replace_btn.clicked.connect(self._replace_current)
-        row.addWidget(replace_btn)
-
-        replace_all_btn = QPushButton("Заменить все")
+        replace_all_btn = dialog_action_button("Заменить все")
         replace_all_btn.clicked.connect(self._replace_all)
-        row.addWidget(replace_all_btn)
-
-        close_btn = QPushButton(BTN_CLOSE)
+        close_btn = dialog_action_button(BTN_CLOSE)
         close_btn.clicked.connect(self.reject)
-        row.addWidget(close_btn)
-        row.addStretch()
-        root.addLayout(row)
+        self.add_button_row(find_btn, replace_btn, replace_all_btn, close_btn)
 
         self._find.returnPressed.connect(self._find_next)
         self._replace.returnPressed.connect(self._replace_current)

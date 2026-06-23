@@ -14,25 +14,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.qt.dialogs import BTN_OK, ok_cancel_button_box
+from app.qt.dialog_buttons import BTN_OK
+from app.qt.widgets.base_dialog import BaseAppDialog
 from app.selector_build import strategy_label
 
 from app.step_display import ACTION_ICONS
 
 
-class StepEditorDialog(QDialog):
+class StepEditorDialog(BaseAppDialog):
     def __init__(self, parent: QWidget | None, step: dict[str, Any], *, index: int) -> None:
-        super().__init__(parent)
         action = str(step.get("action", ""))
         icon = ACTION_ICONS.get(action, "•")
-        self.setWindowTitle(f"Шаг {index + 1}")
+        super().__init__(parent, title=f"Шаг {index + 1}", min_width=400)
         self._action = action
         self._fields: dict[str, QLineEdit] = {}
         self._selector_combo: QComboBox | None = None
         self._original_step = step
 
-        layout = QFormLayout(self)
-        layout.addRow(QLabel(f"{icon} {action}"))
+        form = QFormLayout()
+        form.addRow(QLabel(f"{icon} {action}"))
 
         field_specs = _fields_for_action(action)
         candidates = self._selector_candidates(step)
@@ -49,7 +49,7 @@ class StepEditorDialog(QDialog):
             else:
                 self._selector_combo.setEditText(current)
             self._selector_combo.currentIndexChanged.connect(self._on_candidate_changed)
-            layout.addRow("Селектор", self._selector_combo)
+            form.addRow("Селектор", self._selector_combo)
 
         for key, label in field_specs:
             if key == "selector" and self._selector_combo is not None:
@@ -57,19 +57,19 @@ class StepEditorDialog(QDialog):
             edit = QLineEdit(str(step.get(key, "") or ""))
             if key == "selector":
                 edit.setPlaceholderText("Элемент на странице, например кнопка «Выбрать»")
-            layout.addRow(label, edit)
+            form.addRow(label, edit)
             self._fields[key] = edit
 
         if not field_specs:
-            layout.addRow(QLabel("Этот шаг не редактируется из диалога."))
+            form.addRow(QLabel("Этот шаг не редактируется из диалога."))
 
-        buttons = ok_cancel_button_box()
+        self.content_layout.addLayout(form)
+        buttons = self.add_ok_cancel()
         ok_btn = next(btn for btn in buttons.buttons() if btn.text() == BTN_OK)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         if not field_specs:
             ok_btn.setEnabled(False)
-        layout.addRow(buttons)
 
     @staticmethod
     def _selector_candidates(step: dict[str, Any]) -> list[tuple[str, str]]:

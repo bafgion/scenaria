@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.qt.labels import strip_title_label
 from app.step_display import format_step_table_cells
 
 
@@ -83,8 +84,7 @@ class StepsStrip(QWidget):
 
         header = QHBoxLayout()
         header.setContentsMargins(8, 2, 8, 2)
-        title = QLabel("Шаги")
-        title.setStyleSheet("font-size: 8pt; font-weight: 600;")
+        title = strip_title_label("Шаги")
         header.addWidget(title)
 
         self._collapse_btn = QPushButton("▼")

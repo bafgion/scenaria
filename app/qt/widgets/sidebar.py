@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QTool
 from app.mvc.controllers.catalog_controller import CatalogController
 from app.mvc.models.catalog_model import CatalogModel, CatalogViewState
 from app.qt import icons
+from app.qt.labels import caption_label
 from app.qt.widgets.catalog_panel import CatalogPanel
 from app.settings import load_settings, save_settings
 
@@ -77,7 +78,7 @@ class Sidebar(QWidget):
         run_row_layout.setContentsMargins(0, 0, 0, 0)
         run_row_layout.setSpacing(4)
         self.run_selection_label = QLabel("Выбрано для запуска: 0")
-        self.run_selection_label.setProperty("role", "muted")
+        self.run_selection_label.setProperty("muted", True)
         run_row_layout.addWidget(self.run_selection_label, stretch=1)
         self.clear_run_selection_btn = QToolButton()
         self.clear_run_selection_btn.setText("×")
@@ -97,12 +98,11 @@ class Sidebar(QWidget):
         run_row_layout.addWidget(self.run_selected_btn)
         header_layout.addWidget(self._run_row)
 
-        self._batch_hint = QLabel(
-            "Кликните «Выбор» или Ctrl+клик по файлу — пакетный запуск"
+        self._batch_hint = caption_label(
+            "Кликните «Выбор» или Ctrl+клик по файлу — пакетный запуск",
+            word_wrap=True,
+            padding_top=True,
         )
-        self._batch_hint.setProperty("role", "muted")
-        self._batch_hint.setWordWrap(True)
-        self._batch_hint.setStyleSheet("font-size: 8pt; padding-top: 2px;")
         header_layout.addWidget(self._batch_hint)
 
         layout.addWidget(header)

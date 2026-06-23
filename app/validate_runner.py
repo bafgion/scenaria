@@ -33,10 +33,18 @@ def validate_feature_file(
         "startUrl": feature.get("startUrl", ""),
         "steps": feature.get("steps", []),
     }
+    if feature.get("testClient"):
+        scenario["testClient"] = feature["testClient"]
     start_url = str(scenario.get("startUrl", "") or "")
     steps = scenario.get("steps") or []
     if not start_url and steps and steps[0].get("action") == "goto":
         start_url = str(steps[0].get("url", "") or "")
+
+    from app.feature_store import resolve_project_root
+    from app.scenario_test_client import ensure_scenario_test_client
+
+    project_root = resolve_project_root()
+    test_client = ensure_scenario_test_client(scenario, project_root)
 
     configure_playwright_browsers()
     results = []
@@ -48,7 +56,14 @@ def validate_feature_file(
             on_status=on_log,
         )
         try:
-            context = browser.new_context(**browser_context_options(start_url, headless=headless))
+            context = browser.new_context(
+                **browser_context_options(
+                    start_url,
+                    headless=headless,
+                    project_root=project_root,
+                    test_client=test_client,
+                )
+            )
             page = context.new_page()
             results = validate_scenario_selectors(page, scenario, on_log=on_log)
         finally:

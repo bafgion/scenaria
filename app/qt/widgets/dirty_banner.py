@@ -5,8 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
-from app.qt.theme import COLOR_WARNING
-
 _MESSAGES = {
     "parse_error": "В тексте сценария есть ошибки — тест пойдёт по последней рабочей версии",
     "unapplied": "Текст сценария изменён — примените к шагам (Ctrl+Shift+S) перед запуском",
@@ -27,7 +25,7 @@ class DirtyBanner(QWidget):
         layout.setSpacing(8)
 
         icon = QLabel("⚠")
-        icon.setStyleSheet(f"color: {COLOR_WARNING};")
+        icon.setProperty("role", "banner-warning-icon")
         layout.addWidget(icon)
 
         self._text = QLabel(_MESSAGES["parse_error"])

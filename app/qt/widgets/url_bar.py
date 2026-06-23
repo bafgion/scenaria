@@ -6,7 +6,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QToolButton, QWidget
 
 from app.qt import icons
-from app.qt.theme import COLOR_MUTED, COLOR_SUCCESS
+from app.qt.labels import caption_label, set_label_tone
 
 
 class UrlBar(QWidget):
@@ -46,8 +46,7 @@ class UrlBar(QWidget):
         tab_btn.clicked.connect(self.fetch_from_tab_requested.emit)
         layout.addWidget(tab_btn)
 
-        self._status = QLabel("")
-        self._status.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        self._status = caption_label("")
         layout.addWidget(self._status)
 
     def set_url(self, url: str) -> None:
@@ -61,7 +60,7 @@ class UrlBar(QWidget):
     def set_browser_open(self, open_: bool) -> None:
         if open_:
             self._status.setText("браузер открыт")
-            self._status.setStyleSheet(f"color: {COLOR_SUCCESS}; font-size: 8pt;")
+            set_label_tone(self._status, "success")
         else:
             self._status.setText("браузер закрыт")
-            self._status.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+            set_label_tone(self._status, "muted")

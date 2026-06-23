@@ -11,28 +11,20 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QVBoxLayout,
     QWidget,
 )
 
-BTN_OK = "ОК"
-BTN_CANCEL = "Отмена"
-BTN_YES = "Да"
-BTN_NO = "Нет"
-BTN_CLOSE = "Закрыть"
-
-
-def ok_cancel_button_box() -> QDialogButtonBox:
-    box = QDialogButtonBox()
-    box.addButton(BTN_OK, QDialogButtonBox.ButtonRole.AcceptRole)
-    box.addButton(BTN_CANCEL, QDialogButtonBox.ButtonRole.RejectRole)
-    return box
-
-
-def close_button_box() -> QDialogButtonBox:
-    box = QDialogButtonBox()
-    box.addButton(BTN_CLOSE, QDialogButtonBox.ButtonRole.RejectRole)
-    return box
+from app.qt.dialog_buttons import (
+    BTN_CANCEL,
+    BTN_CLOSE,
+    BTN_NO,
+    BTN_OK,
+    BTN_YES,
+    close_button_box,
+    ok_cancel_button_box,
+)
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog
 
 
 class PickerInsertMode(str, Enum):
@@ -70,20 +62,15 @@ def prompt_text(
     *,
     initial: str = "",
 ) -> str | None:
-    dialog = QDialog(parent)
-    dialog.setWindowTitle(title)
-    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-
-    layout = QVBoxLayout(dialog)
-    layout.addWidget(QLabel(label))
+    dialog = BaseAppDialog(parent, title=title, min_width=400)
+    dialog.content_layout.addWidget(QLabel(label))
     edit = QLineEdit(initial)
     edit.setClearButtonEnabled(True)
-    layout.addWidget(edit)
+    dialog.content_layout.addWidget(edit)
 
-    buttons = ok_cancel_button_box()
+    buttons = dialog.add_ok_cancel()
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
-    layout.addWidget(buttons)
     edit.returnPressed.connect(dialog.accept)
     edit.setFocus()
 
@@ -98,39 +85,28 @@ def prompt_email_code(
     email: str,
     selector: str = "",
 ) -> str | None:
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("Код из почты")
-    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-    dialog.setMinimumWidth(400)
-
-    layout = QVBoxLayout(dialog)
-    layout.addWidget(QLabel("Код подтверждения отправлен на:"))
+    dialog = BaseAppDialog(parent, title="Код из почты", min_width=400)
+    dialog.content_layout.addWidget(QLabel("Код подтверждения отправлен на:"))
 
     email_label = QLabel(email.strip())
-    email_font = email_label.font()
-    email_font.setBold(True)
-    email_font.setPointSize(email_font.pointSize() + 2)
-    email_label.setFont(email_font)
+    email_label.setProperty("role", "dialog-title")
     email_label.setWordWrap(True)
     email_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    layout.addWidget(email_label)
+    dialog.content_layout.addWidget(email_label)
 
-    layout.addWidget(QLabel("Введите код из письма на этот адрес:"))
+    dialog.content_layout.addWidget(QLabel("Введите код из письма на этот адрес:"))
     if selector.strip():
         preview = selector if len(selector) <= 100 else selector[:97] + "..."
-        hint = QLabel(f"Поле на странице: {preview}")
-        hint.setStyleSheet("color: palette(mid);")
-        layout.addWidget(hint)
+        dialog.content_layout.addWidget(muted_label(f"Поле на странице: {preview}", word_wrap=True))
 
     code_edit = QLineEdit()
     code_edit.setPlaceholderText("Код из письма")
     code_edit.setClearButtonEnabled(True)
-    layout.addWidget(code_edit)
+    dialog.content_layout.addWidget(code_edit)
 
-    buttons = ok_cancel_button_box()
+    buttons = dialog.add_ok_cancel()
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
-    layout.addWidget(buttons)
     code_edit.returnPressed.connect(dialog.accept)
 
     dialog.show()
@@ -150,39 +126,31 @@ def prompt_http_auth(
     username: str = "",
     password: str = "",
 ) -> tuple[str, str, str] | None:
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("HTTP-авторизация")
-    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-    dialog.setMinimumWidth(420)
-
-    layout = QVBoxLayout(dialog)
-    layout.addWidget(
-        QLabel(
-            "Логин и пароль для HTTP Basic Auth (окно «Войти» в браузере).\n"
-            "Данные сохраняются локально для указанного домена."
-        )
+    dialog = BaseAppDialog(parent, title="HTTP-авторизация", min_width=420)
+    dialog.add_hint(
+        "Логин и пароль для HTTP Basic Auth (окно «Войти» в браузере).\n"
+        "Данные сохраняются локально для указанного домена."
     )
 
     host_edit = QLineEdit(host)
     host_edit.setPlaceholderText("stage.example.com")
-    layout.addWidget(QLabel("Сайт"))
-    layout.addWidget(host_edit)
+    dialog.content_layout.addWidget(QLabel("Сайт"))
+    dialog.content_layout.addWidget(host_edit)
 
     user_edit = QLineEdit(username)
     user_edit.setPlaceholderText("Имя пользователя")
-    layout.addWidget(QLabel("Имя пользователя"))
-    layout.addWidget(user_edit)
+    dialog.content_layout.addWidget(QLabel("Имя пользователя"))
+    dialog.content_layout.addWidget(user_edit)
 
     password_edit = QLineEdit(password)
     password_edit.setEchoMode(QLineEdit.EchoMode.Password)
     password_edit.setPlaceholderText("Пароль")
-    layout.addWidget(QLabel("Пароль"))
-    layout.addWidget(password_edit)
+    dialog.content_layout.addWidget(QLabel("Пароль"))
+    dialog.content_layout.addWidget(password_edit)
 
-    buttons = ok_cancel_button_box()
+    buttons = dialog.add_ok_cancel()
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
-    layout.addWidget(buttons)
     host_edit.returnPressed.connect(dialog.accept)
     user_edit.returnPressed.connect(dialog.accept)
     password_edit.returnPressed.connect(dialog.accept)

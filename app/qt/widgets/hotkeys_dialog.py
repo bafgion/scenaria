@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QDialog, QPlainTextEdit, QVBoxLayout
+from PySide6.QtWidgets import QPlainTextEdit
 
-from app.qt.dialogs import close_button_box
+from app.qt.widgets.base_dialog import BaseAppDialog
 
 HOTKEYS_TEXT = """Горячие клавиши
 
@@ -35,19 +35,16 @@ HOTKEYS_TEXT = """Горячие клавиши
 """
 
 
-class HotkeysDialog(QDialog):
+class HotkeysDialog(BaseAppDialog):
     def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Горячие клавиши")
-        self.resize(420, 360)
+        super().__init__(parent, title="Горячие клавиши", min_size=(420, 360))
 
-        layout = QVBoxLayout(self)
         editor = QPlainTextEdit()
+        editor.setProperty("role", "mono-panel")
         editor.setReadOnly(True)
         editor.setPlainText(HOTKEYS_TEXT)
-        layout.addWidget(editor)
+        self.content_layout.addWidget(editor)
 
-        buttons = close_button_box()
+        buttons = self.add_close_box()
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
-        layout.addWidget(buttons)

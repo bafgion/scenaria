@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from app.qt import icons
-from app.qt.theme import COLOR_BORDER
 
 
 class QuickToolBar(QWidget):
@@ -309,8 +308,8 @@ class QuickToolBar(QWidget):
 
     def _add_separator(self, layout: QHBoxLayout) -> None:
         line = QFrame(self)
+        line.setProperty("role", "v-divider")
         line.setFrameShape(QFrame.Shape.VLine)
-        line.setStyleSheet(f"color: {COLOR_BORDER};")
         line.setFixedSize(1, 16)
         layout.addWidget(line, 0, Qt.AlignmentFlag.AlignVCenter)
 

@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 from app.feature_store import load_feature
 
+from app.gherkin_context import parse_feature_test_client
 from app.gherkin_ru import gherkin_to_steps
 from app.gherkin_outline import expand_outline_steps, parse_outline
 
@@ -52,6 +53,8 @@ class FeatureRunCase:
     steps: list[dict[str, Any]]
 
     start_url: str
+
+    test_client: str | None = None
 
     example_index: int | None = None
 
@@ -222,6 +225,8 @@ def _expand_cases_with_params(cases: list[FeatureRunCase], path: Path) -> list[F
 
                     start_url=base.start_url,
 
+                    test_client=base.test_client,
+
                     example_index=base.example_index,
 
                     variables=dict(param.variables),
@@ -248,6 +253,7 @@ def _start_url_from_steps(steps: list[dict[str, Any]]) -> str:
 
 
 def expand_feature_cases_from_text(text: str, path: Path) -> list[FeatureRunCase]:
+    test_client = parse_feature_test_client(text)
     outline = parse_outline(text)
     if outline is None:
         steps = gherkin_to_steps(text)
@@ -258,6 +264,7 @@ def expand_feature_cases_from_text(text: str, path: Path) -> list[FeatureRunCase
                     label=path.stem,
                     steps=list(steps),
                     start_url=_start_url_from_steps(steps),
+                    test_client=test_client,
                 )
             ],
             path,
@@ -277,6 +284,7 @@ def expand_feature_cases_from_text(text: str, path: Path) -> list[FeatureRunCase
                 label=label,
                 steps=steps,
                 start_url=start_url,
+                test_client=test_client,
                 example_index=index,
             )
         )
@@ -289,6 +297,8 @@ def feature_case_to_scenario(case: FeatureRunCase) -> dict[str, Any]:
         "startUrl": case.start_url,
         "steps": list(case.steps),
     }
+    if case.test_client:
+        scenario["testClient"] = case.test_client
     if case.variables:
         scenario["variables"] = dict(case.variables)
     return scenario

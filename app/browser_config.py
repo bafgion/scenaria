@@ -72,8 +72,9 @@ def browser_context_options(
     headless: bool = False,
     settings: dict[str, Any] | None = None,
     project_root: Path | None = None,
+    test_client: str | None = None,
 ) -> dict[str, Any]:
-    """Playwright context options, including HTTP Basic Auth when configured."""
+    """Playwright context options, including HTTP Basic Auth and optional TestClient."""
     if settings is None:
         from app.settings import load_settings
 
@@ -84,12 +85,10 @@ def browser_context_options(
     if credentials:
         options["http_credentials"] = credentials
 
-    if settings.get("use_saved_browser_session", True) and url.strip():
-        from app.browser_session import storage_state_for_url
+    if test_client:
+        from app.test_clients import require_test_client
         from app.feature_store import get_root
 
         root = project_root or get_root()
-        state = storage_state_for_url(url, root)
-        if state:
-            options["storage_state"] = state
+        options["storage_state"] = require_test_client(test_client, root)
     return options

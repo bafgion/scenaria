@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QWidget
 
-from app.qt.theme import COLOR_MUTED
+from app.qt.labels import caption_label
 
 
 class RecordingModesBar(QWidget):
@@ -23,8 +23,7 @@ class RecordingModesBar(QWidget):
         layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(12)
 
-        label = QLabel("Запись:")
-        label.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        label = caption_label("Запись:")
         layout.addWidget(label)
 
         self._filter = QCheckBox("Только важные")
@@ -41,12 +40,6 @@ class RecordingModesBar(QWidget):
         self._headless.setToolTip("Запускать тест без видимого окна браузера")
         self._headless.toggled.connect(self.headless_toggled.emit)
         layout.addWidget(self._headless)
-
-        self._saved_session = QCheckBox("Сохранённая сессия")
-        self._saved_session.setToolTip("Подставлять cookies/localStorage для текущего сайта")
-        self._saved_session.setChecked(True)
-        self._saved_session.toggled.connect(self.saved_session_toggled.emit)
-        layout.addWidget(self._saved_session)
 
         self._hover_record = QCheckBox("Записывать наведение")
         self._hover_record.setToolTip("Фиксировать шаги «навожу» при наведении на меню и кнопки")
@@ -85,7 +78,6 @@ class RecordingModesBar(QWidget):
             (self._filter, filter_recording),
             (self._nav_only, nav_only_recording),
             (self._headless, headless),
-            (self._saved_session, use_saved_session),
             (self._hover_record, hover_recording),
         ):
             box.blockSignals(True)

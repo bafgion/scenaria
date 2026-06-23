@@ -8,13 +8,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QRadioButton,
     QTableWidget,
     QTableWidgetItem,
@@ -29,9 +26,11 @@ from app.project_replace import (
     preview_files_replace,
 )
 from app.qt.dialogs import BTN_CLOSE
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 
 
-class ProjectReplaceDialog(QDialog):
+class ProjectReplaceDialog(BaseAppDialog):
     _SCOPE_CURRENT = 0
     _SCOPE_OPEN = 1
     _SCOPE_PROJECT = 2
@@ -46,7 +45,7 @@ class ProjectReplaceDialog(QDialog):
         dirty_paths: set[Path] | None = None,
         on_applied=None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, title="Замена по проекту", min_size=(560, 420))
         self._current_path = current_path.resolve() if current_path else None
         self._open_paths = [path.resolve() for path in open_paths if path is not None]
         self._project_root = project_root.resolve() if project_root else None
@@ -54,10 +53,6 @@ class ProjectReplaceDialog(QDialog):
         self._on_applied = on_applied
         self._previews: list[FileReplacePreview] = []
 
-        self.setWindowTitle("Замена по проекту")
-        self.setMinimumSize(560, 420)
-
-        root = QVBoxLayout(self)
         form = QFormLayout()
         self._find = QLineEdit()
         self._find.setClearButtonEnabled(True)
@@ -67,15 +62,15 @@ class ProjectReplaceDialog(QDialog):
         self._replace = QLineEdit()
         self._replace.setClearButtonEnabled(True)
         form.addRow("Заменить на:", self._replace)
-        root.addLayout(form)
+        self.content_layout.addLayout(form)
 
         self._case = QCheckBox("Учитывать регистр")
         self._case.toggled.connect(self._refresh_preview)
         self._steps_only = QCheckBox("Только в шагах")
         self._steps_only.setChecked(True)
         self._steps_only.toggled.connect(self._refresh_preview)
-        root.addWidget(self._case)
-        root.addWidget(self._steps_only)
+        self.content_layout.addWidget(self._case)
+        self.content_layout.addWidget(self._steps_only)
 
         scope_box = QVBoxLayout()
         scope_label = QLabel("Область:")
@@ -90,7 +85,7 @@ class ProjectReplaceDialog(QDialog):
         scope_box.addWidget(self._scope_current)
         scope_box.addWidget(self._scope_open)
         scope_box.addWidget(self._scope_project)
-        root.addLayout(scope_box)
+        self.content_layout.addLayout(scope_box)
 
         if self._project_root is None:
             self._scope_project.setEnabled(False)
@@ -100,28 +95,22 @@ class ProjectReplaceDialog(QDialog):
         self._scope_open.toggled.connect(self._refresh_preview)
         self._scope_project.toggled.connect(self._refresh_preview)
 
-        self._summary = QLabel("")
-        self._summary.setStyleSheet("color: #858585;")
-        root.addWidget(self._summary)
+        self._summary = muted_label("")
+        self.content_layout.addWidget(self._summary)
 
         self._table = QTableWidget(0, 3, self)
         self._table.setHorizontalHeaderLabels(["Файл", "Вхождений", "Статус"])
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        root.addWidget(self._table)
+        self.content_layout.addWidget(self._table)
 
-        buttons = QHBoxLayout()
-        preview_btn = QPushButton("Обновить preview")
+        preview_btn = dialog_action_button("Обновить preview")
         preview_btn.clicked.connect(self._refresh_preview)
-        buttons.addWidget(preview_btn)
-        self._apply_btn = QPushButton("Заменить")
+        self._apply_btn = dialog_action_button("Заменить", primary=True)
         self._apply_btn.clicked.connect(self._apply)
-        buttons.addWidget(self._apply_btn)
-        buttons.addStretch()
-        close_btn = QPushButton(BTN_CLOSE)
+        close_btn = dialog_action_button(BTN_CLOSE)
         close_btn.clicked.connect(self.reject)
-        buttons.addWidget(close_btn)
-        root.addLayout(buttons)
+        self.add_button_row(preview_btn, self._apply_btn, close_btn)
         self._refresh_preview()
 
     def _scope_paths(self) -> list[Path]:

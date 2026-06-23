@@ -6,18 +6,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
 from app.feature_store import get_root
-from app.qt.dialogs import BTN_CANCEL, BTN_OK, ok_cancel_button_box, prompt_text
+from app.qt.dialogs import BTN_CANCEL, prompt_text
+from app.qt.labels import muted_label
+from app.qt.widgets.base_dialog import BaseAppDialog, dialog_action_button
 from app.snippet_store import (
     PaletteSnippet,
     list_palette_snippets,
@@ -25,40 +24,31 @@ from app.snippet_store import (
 )
 
 
-class SnippetPaletteDialog(QDialog):
+class SnippetPaletteDialog(BaseAppDialog):
     def __init__(self, parent: QWidget | None, *, editor) -> None:
-        super().__init__(parent)
+        super().__init__(parent, title="Палитра сниппетов", min_size=(520, 420))
         self._editor = editor
         self._selected: PaletteSnippet | None = None
-        self.setWindowTitle("Палитра сниппетов")
-        self.setMinimumSize(520, 420)
 
-        root = QVBoxLayout(self)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Поиск по названию или описанию…")
         self._search.textChanged.connect(self._refresh_list)
-        root.addWidget(self._search)
+        self.content_layout.addWidget(self._search)
 
         self._list = QListWidget()
+        self._list.setProperty("role", "settings-list")
         self._list.itemActivated.connect(self._accept_selection)
         self._list.currentItemChanged.connect(self._on_selection_changed)
-        root.addWidget(self._list)
+        self.content_layout.addWidget(self._list, stretch=1)
 
-        self._hint = QLabel("")
-        self._hint.setWordWrap(True)
-        self._hint.setStyleSheet("color: #858585;")
-        root.addWidget(self._hint)
+        self._hint = muted_label("", word_wrap=True)
+        self.content_layout.addWidget(self._hint)
 
-        buttons = QHBoxLayout()
-        insert_btn = QPushButton("Вставить")
-        insert_btn.setDefault(True)
+        insert_btn = dialog_action_button("Вставить", primary=True, default=True)
         insert_btn.clicked.connect(self._accept_selection)
-        buttons.addWidget(insert_btn)
-        buttons.addStretch()
-        cancel = QPushButton(BTN_CANCEL)
+        cancel = dialog_action_button(BTN_CANCEL)
         cancel.clicked.connect(self.reject)
-        buttons.addWidget(cancel)
-        root.addLayout(buttons)
+        self.add_button_row(insert_btn, cancel)
 
         self._refresh_list()
 
@@ -127,9 +117,7 @@ def _prompt_placeholders(parent: QWidget, snippet: PaletteSnippet) -> dict[str, 
             return None
         return {name: value}
 
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("Подстановка значений")
-    layout = QVBoxLayout(dialog)
+    dialog = BaseAppDialog(parent, title="Подстановка значений", min_width=400)
     form = QFormLayout()
     edits: dict[str, QLineEdit] = {}
     for name in snippet.placeholders:
@@ -137,11 +125,10 @@ def _prompt_placeholders(parent: QWidget, snippet: PaletteSnippet) -> dict[str, 
         edit.setClearButtonEnabled(True)
         form.addRow(f"{{{{{name}}}}}:", edit)
         edits[name] = edit
-    layout.addLayout(form)
-    box = ok_cancel_button_box()
+    dialog.content_layout.addLayout(form)
+    box = dialog.add_ok_cancel()
     box.accepted.connect(dialog.accept)
     box.rejected.connect(dialog.reject)
-    layout.addWidget(box)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return None
     return {name: edit.text() for name, edit in edits.items()}

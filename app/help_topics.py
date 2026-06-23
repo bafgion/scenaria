@@ -6,10 +6,12 @@ import html
 from dataclasses import dataclass
 
 GUIDE_CATEGORY = "data"
+GUIDE_CATEGORY_SESSION = "session"
 
 GUIDE_CATEGORY_LABELS: dict[str, str] = {
     "all": "Все",
     "data": "Данные и таблицы",
+    "session": "Сессия и TestClient",
 }
 
 
@@ -58,6 +60,15 @@ _PARAMS_JSON_EXAMPLE = (
     "    }\n"
     "  ]\n"
     "}"
+)
+
+_CONTEXT_EXAMPLE = (
+    "Контекст:\n"
+    '\tДано я подключаю TestClient "DemoUser"\n'
+    "\n"
+    "Сценарий: Работа под сохранённой сессией\n"
+    '\tДопустим открыт "https://app.example.com/orders"\n'
+    '\tТогда вижу "#dashboard"'
 )
 
 GUIDE_TOPICS: tuple[GuideTopic, ...] = (
@@ -115,6 +126,27 @@ GUIDE_TOPICS: tuple[GuideTopic, ...] = (
             "В цикле «для каждого …» переменная из variable доступна во вложенных шагах как {{имя}}.",
         ),
         keywords="переменные remember запоминаю env подстановка",
+    ),
+    GuideTopic(
+        id="testclient-context",
+        label="Контекст и TestClient",
+        category=GUIDE_CATEGORY_SESSION,
+        description=(
+            "Именованный профиль браузера (cookies и localStorage) перед сценарием. "
+            "Блок «Контекст:» с шагом «Дано я подключаю TestClient \"имя\"» — при прогоне подставляется "
+            "сохранённая сессия. Без блока браузер стартует с чистым профилем."
+        ),
+        example=_CONTEXT_EXAMPLE,
+        details=(
+            "«Контекст:» размещают после «Функционал:» и перед «Сценарий:» или «Структура сценария:».",
+            "В одном файле — один TestClient. Имя должно совпадать с сохранённым профилем.",
+            "Профили хранятся в .scenaria/test_clients/<имя>.json (в папке проекта или глобально).",
+            "Сохранение: меню Запуск → TestClient… — войдите на сайт вручную, затем сохраните клиент.",
+            "Если файл клиента не найден, прогон не начнётся (ошибка до открытия браузера).",
+            "Пример: examples/05-testclient-kontekst.feature (профиль DemoUser уже в examples/.scenaria/).",
+        ),
+        insert_text="Контекст:\n\tДано я подключаю TestClient \"ИмяКлиента\"",
+        keywords="контекст testclient cookies localStorage сессия авторизация профиль storage",
     ),
 )
 

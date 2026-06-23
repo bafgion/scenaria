@@ -7,7 +7,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from app.qt import icons
-from app.qt.theme import COLOR_BORDER, COLOR_MUTED, COLOR_RECORDING, COLOR_TEXT, COLOR_TOOLBAR
+from app.qt.labels import caption_label, set_label_tone
 from app.brand import BRAND_NAME
 
 
@@ -29,34 +29,11 @@ class BrowserOverlayPanel(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
         self._drag_offset: QPoint | None = None
 
-        self.setStyleSheet(
-            f"""
-            QWidget#browserOverlay {{
-                background: {COLOR_TOOLBAR};
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 8px;
-            }}
-            QPushButton {{
-                min-height: 32px;
-                padding: 4px 10px;
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 6px;
-            }}
-            QPushButton:hover:enabled {{
-                border-color: #5a5a5a;
-            }}
-            QPushButton:disabled {{
-                color: {COLOR_MUTED};
-            }}
-            """
-        )
-
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 6, 8, 8)
         root.setSpacing(6)
 
-        self._title = QLabel(BRAND_NAME)
-        self._title.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+        self._title = caption_label(BRAND_NAME)
         self._title.setCursor(Qt.CursorShape.SizeAllCursor)
         root.addWidget(self._title)
 
@@ -141,19 +118,21 @@ class BrowserOverlayPanel(QWidget):
             self._btn_picker.setToolTip("Выбрать элемент на странице для шага сценария")
 
         if recording:
-            color = "#cca700" if paused else COLOR_RECORDING
             self._title.setText(
                 "⏸ Пауза — можно выбрать элемент или вставить шаг"
                 if paused
                 else "● Идёт запись"
             )
-            self._title.setStyleSheet(f"color: {color}; font-size: 8pt; font-weight: 600;")
+            set_label_tone(self._title, "warning" if paused else "recording")
+            self._title.setProperty("role", "ui-strip-title")
         elif playing:
             self._title.setText("▶ Идёт тест")
-            self._title.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 8pt; font-weight: 600;")
+            self._title.setProperty("role", "ui-strip-title")
+            set_label_tone(self._title, "active")
         else:
             self._title.setText(f"{BRAND_NAME} — перетащите панель")
-            self._title.setStyleSheet(f"color: {COLOR_MUTED}; font-size: 8pt;")
+            self._title.setProperty("role", "ui-caption")
+            set_label_tone(self._title, "muted")
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:

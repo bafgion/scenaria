@@ -3,58 +3,32 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
-    QMessageBox,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QListWidgetItem, QMessageBox, QWidget
 
 from app.http_auth import credentials_for_host, list_http_auth_hosts, remove_host_credentials, store_host_credentials
 from app.qt.dialogs import BTN_NO, BTN_YES, alert, prompt_http_auth
+from app.qt.widgets.list_manager_dialog import ListManagerDialog
 from app.settings import load_settings, save_settings
 
 
-class HttpAuthDialog(QDialog):
+class HttpAuthDialog(ListManagerDialog):
     def __init__(self, parent: QWidget | None = None, *, suggested_host: str = "") -> None:
-        super().__init__(parent)
-        self.setWindowTitle("HTTP-авторизация для сайтов")
-        self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        self.setMinimumSize(520, 360)
-        self._suggested_host = suggested_host.strip().lower()
-
-        root = QVBoxLayout(self)
-        root.addWidget(
-            QLabel(
+        super().__init__(
+            parent,
+            title="HTTP-авторизация для сайтов",
+            hint=(
                 "Логины для HTTP Basic Auth (окно «Войти» в браузере).\n"
                 "Можно сохранить несколько сайтов — при запуске подставляются данные для текущего URL."
-            )
+            ),
+            min_size=(520, 360),
         )
+        self._suggested_host = suggested_host.strip().lower()
 
-        self._list = QListWidget(self)
         self._list.itemDoubleClicked.connect(self._edit_selected)
-        root.addWidget(self._list, stretch=1)
-
-        row = QHBoxLayout()
-        add_btn = QPushButton("Добавить сайт…")
-        add_btn.clicked.connect(self._add_site)
-        row.addWidget(add_btn)
-        edit_btn = QPushButton("Изменить…")
-        edit_btn.clicked.connect(self._edit_selected)
-        row.addWidget(edit_btn)
-        delete_btn = QPushButton("Удалить")
-        delete_btn.clicked.connect(self._delete_selected)
-        row.addWidget(delete_btn)
-        row.addStretch()
-        close_btn = QPushButton("Закрыть")
-        close_btn.clicked.connect(self.accept)
-        row.addWidget(close_btn)
-        root.addLayout(row)
+        self.add_action("Добавить сайт…", self._add_site, primary=True)
+        self.add_action("Изменить…", self._edit_selected)
+        self.add_action("Удалить", self._delete_selected)
+        self.add_close()
 
         self._reload_list()
         self._select_suggested_host()
