@@ -87,7 +87,7 @@ class BrowserSessionDialog(ListManagerDialog):
             self,
             "Сохранить TestClient",
             "Имя TestClient (как в блоке «Контекст» сценария):",
-            default_name,
+            initial=default_name,
         )
         if not name:
             return
