@@ -865,11 +865,21 @@ class MainWindow(QMainWindow):
         self._set_active_editor_text(editor, collapse_blank_lines_between_steps(text))
 
     def _open_snippet_palette(self) -> None:
+        if self._recording_blocks_manual_tools():
+            alert(self, BRAND_NAME, "Поставьте запись на паузу, чтобы вставить шаг из палитры")
+            return
         from app.qt.widgets.snippet_palette_dialog import open_snippet_palette
 
         open_snippet_palette(self, self.workspace.gherkin_panel.editor)
 
+    def _recording_blocks_manual_tools(self) -> bool:
+        s = self._controller.session
+        return bool(s.recording and not s.paused)
+
     def _open_step_help(self) -> None:
+        if self._recording_blocks_manual_tools():
+            alert(self, BRAND_NAME, "Поставьте запись на паузу, чтобы открыть справку по шагам")
+            return
         from app.qt.widgets.step_help_panel import open_step_help_panel
 
         editor = self.workspace.gherkin_panel.editor
@@ -928,6 +938,9 @@ class MainWindow(QMainWindow):
     def _stop_active_run(self) -> None:
         rec = self._controller.recording
         session = self._controller.session
+        if rec.is_picking:
+            rec.cancel_pick_selector()
+            return
         if rec.is_batch_running:
             rec.stop_batch()
         elif session.vanessa_running:
@@ -1182,7 +1195,8 @@ class MainWindow(QMainWindow):
 
     def _on_scenario_changed(self) -> None:
         if self._controller.session.recording:
-            self.workspace.gherkin_panel.sync_from_model(force=True)
+            if not self.workspace.gherkin_panel.is_unapplied:
+                self.workspace.gherkin_panel.sync_from_model(force=True)
         self._sync_menu_states()
 
     def _sync_menu_states(self) -> None:
@@ -1238,6 +1252,7 @@ class MainWindow(QMainWindow):
             player_browser_open=s.player_browser,
             recording=s.recording,
             playing=s.playing,
+            paused=s.paused,
             has_steps=has_steps,
             unapplied=text_unapplied,
             parse_error=parse_error,
@@ -2007,25 +2022,68 @@ class MainWindow(QMainWindow):
             from_version=current_version_label(),
             to_version=f"v{info.version}",
         )
+        progress.cancel_requested.connect(self._cancel_update_download)
         progress.show()
 
         self._download_progress = progress
         self._download_runner = UpdateDownloadRunner(info)
+        self._download_runner.progress.connect(self._on_update_download_progress)
         self._download_runner.phase.connect(self._on_update_download_phase)
         self._download_runner.finished.connect(self._on_update_download_finished)
         self._download_runner.exit_requested.connect(self._exit_for_update)
+        self._start_update_download_watchdog()
         self._download_runner.start()
+
+    def _start_update_download_watchdog(self) -> None:
+        self._stop_update_download_watchdog()
+        self._download_watchdog = QTimer(self)
+        self._download_watchdog.setInterval(120_000)
+        self._download_watchdog.timeout.connect(self._on_update_download_watchdog)
+        self._download_watchdog.start()
+
+    def _stop_update_download_watchdog(self) -> None:
+        watchdog = getattr(self, "_download_watchdog", None)
+        if watchdog is not None:
+            watchdog.stop()
+            watchdog.deleteLater()
+            self._download_watchdog = None
+
+    def _on_update_download_watchdog(self) -> None:
+        progress = getattr(self, "_download_progress", None)
+        if progress is not None:
+            progress.set_slow_hint(True)
+
+    def _cancel_update_download(self) -> None:
+        runner = getattr(self, "_download_runner", None)
+        if runner is not None:
+            runner.cancel()
+
+    def _on_update_download_progress(self, current: int, total: int) -> None:
+        progress = getattr(self, "_download_progress", None)
+        if progress is None:
+            return
+        progress.set_slow_hint(False)
+        self._stop_update_download_watchdog()
+        self._start_update_download_watchdog()
+        progress.set_phase("download", current, total, "")
 
     def _on_update_download_phase(self, phase: str, current: int, total: int, detail: str) -> None:
         progress = getattr(self, "_download_progress", None)
         if progress is None:
             return
+        if phase != "download":
+            self._stop_update_download_watchdog()
         progress.set_phase(phase, current, total, detail)
 
     def _on_update_download_finished(self, error: str | None) -> None:
+        self._stop_update_download_watchdog()
         runner = self._download_runner
         self._download_runner = None
         if runner is not None:
+            try:
+                runner.progress.disconnect(self._on_update_download_progress)
+            except (RuntimeError, TypeError):
+                pass
             try:
                 runner.phase.disconnect(self._on_update_download_phase)
             except (RuntimeError, TypeError):
@@ -2036,17 +2094,31 @@ class MainWindow(QMainWindow):
                 pass
         self._dismiss_download_progress()
         if error:
+            if error == "Обновление отменено":
+                alert(self, BRAND_NAME, error)
+                return
             self._show_update_download_error(error)
 
     def _show_update_download_error(self, message: str) -> None:
+        from app.paths import app_root
+        from app.update.installer import UPDATE_LOG_NAME
+
         box = QMessageBox(self)
         box.setWindowTitle(BRAND_NAME)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setText(message)
+        log_path = app_root() / UPDATE_LOG_NAME
+        open_log = None
+        if log_path.is_file():
+            open_log = box.addButton("Открыть журнал обновления", QMessageBox.ButtonRole.ActionRole)
         open_page = box.addButton("Открыть страницу загрузки", QMessageBox.ButtonRole.ActionRole)
         box.addButton(BTN_OK, QMessageBox.ButtonRole.AcceptRole)
         box.exec()
-        if box.clickedButton() == open_page:
+        clicked = box.clickedButton()
+        if open_log is not None and clicked == open_log:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_path.resolve())))
+            return
+        if clicked == open_page:
             QDesktopServices.openUrl(QUrl(f"https://github.com/{github_repo()}/releases/latest"))
 
     def _exit_for_update(self) -> None:

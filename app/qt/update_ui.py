@@ -41,6 +41,10 @@ class UpdateDownloadRunner(QObject):
     def __init__(self, info: UpdateInfo) -> None:
         super().__init__()
         self._info = info
+        self._cancel = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel.set()
 
     def start(self) -> None:
         threading.Thread(target=self._work, name="scenaria-update-download", daemon=True).start()
@@ -56,12 +60,16 @@ class UpdateDownloadRunner(QObject):
                 on_progress=self.progress.emit,
                 on_phase=self.phase.emit,
                 on_exit_requested=self.exit_requested.emit,
+                should_cancel=self._cancel.is_set,
             )
         except UpdateCheckError as exc:
             self.finished.emit(str(exc))
             return
         except Exception as exc:  # noqa: BLE001
             self.finished.emit(f"Ошибка установки обновления: {exc}")
+            return
+        if self._cancel.is_set():
+            self.finished.emit("Обновление отменено")
             return
         self.finished.emit(None)
 

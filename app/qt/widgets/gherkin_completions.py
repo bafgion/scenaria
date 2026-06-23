@@ -130,7 +130,7 @@ class _CompletionDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-_ACTION_RE = re.compile(r"\(action:\s*(\w+)\)", re.IGNORECASE)
+_ACTION_RE = re.compile(r"action:\s*(\w+)", re.IGNORECASE)
 
 
 def _action_from_snippet(snippet: GherkinSnippet) -> str:

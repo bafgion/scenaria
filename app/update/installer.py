@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 from app.brand import BRAND_NAME, EXE_NAME
@@ -22,6 +23,7 @@ _STAGING_DIR_NAME = "_update_staging"
 _LOG_NAME = "_apply_update.log"
 _BAT_NAME = "_apply_update.bat"
 _VBS_NAME = "_apply_update.vbs"
+UPDATE_LOG_NAME = _LOG_NAME
 
 
 def _write_script_file(path: Path, content: str) -> None:
@@ -37,7 +39,13 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download_asset(asset: UpdateAsset, destination: Path, on_progress=None) -> Path:
+def download_asset(
+    asset: UpdateAsset,
+    destination: Path,
+    on_progress=None,
+    *,
+    should_cancel: Callable[[], bool] | None = None,
+) -> Path:
     urls = asset.all_urls
     if not urls:
         raise UpdateCheckError(f"Нет ссылки на файл {asset.name}")
@@ -53,6 +61,7 @@ def download_asset(asset: UpdateAsset, destination: Path, on_progress=None) -> P
                 destination,
                 total_hint=asset.size,
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
             break
         except UpdateCheckError as exc:
@@ -223,6 +232,7 @@ def apply_update(
     on_phase=None,
     *,
     on_exit_requested=None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> None:
     if not getattr(sys, "frozen", False):
         raise UpdateCheckError("Обновление доступно только в portable EXE")
@@ -241,7 +251,7 @@ def apply_update(
     zip_path = download_temp / asset.name
     remote_staging_parent: Path | None = None
     try:
-        download_asset(asset, zip_path, on_progress=download_progress)
+        download_asset(asset, zip_path, on_progress=download_progress, should_cancel=should_cancel)
         emit_phase("verify", 1, 1, "")
         remote_staging = stage_update_package(zip_path, on_phase=emit_phase)
         remote_staging_parent = remote_staging.parent.parent

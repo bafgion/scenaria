@@ -35,6 +35,8 @@ ValidateStatus = Literal[
     "no_selector",
 ]
 
+_TAB_ACTIONS = frozenset({"switch_tab", "close_tab", "assert_tab_count"})
+
 
 @dataclass
 class StepValidateResult:
@@ -43,6 +45,105 @@ class StepValidateResult:
     selector: str
     status: ValidateStatus
     message: str
+
+
+def _validate_tab_step(
+    page: Page,
+    step: dict[str, Any],
+    *,
+    step_index: int,
+) -> StepValidateResult:
+    from app.tab_helpers import open_pages, resolve_tab_page
+
+    action = str(step.get("action", "") or "")
+    if action == "switch_tab":
+        mode = str(step.get("mode", "") or "")
+        value = str(step.get("value", "") or "")
+        label = f"{mode}:{value}" if value else mode
+        target = resolve_tab_page(page.context, mode=mode, value=value)
+        if target is None:
+            return StepValidateResult(step_index, action, label, "error", "вкладка не найдена")
+        return StepValidateResult(step_index, action, label, "ok", "")
+    if action == "close_tab":
+        if len(open_pages(page.context)) <= 1:
+            return StepValidateResult(
+                step_index,
+                action,
+                "",
+                "error",
+                "единственная вкладка — закрыть нельзя",
+            )
+        return StepValidateResult(step_index, action, "", "ok", "")
+    expected = int(step.get("count", 0))
+    actual = len(open_pages(page.context))
+    if actual != expected:
+        return StepValidateResult(
+            step_index,
+            action,
+            str(expected),
+            "error",
+            f"открыто {actual}, ожидалось {expected}",
+        )
+    return StepValidateResult(step_index, action, str(expected), "ok", "")
+
+
+def _for_each_selector_issues(page: Page, selector: str) -> list[str]:
+    try:
+        count = page.locator(selector).count()
+    except Exception as exc:  # noqa: BLE001
+        return [f"некорректный селектор: {exc}"]
+    if count == 0:
+        return ["элемент не найден"]
+    return []
+
+
+def _validate_block_condition(
+    page: Page,
+    condition: dict[str, Any],
+    *,
+    step_index: int,
+    block_action: str,
+) -> StepValidateResult | None:
+    kind = str(condition.get("type", "") or "")
+    result_action = f"{block_action}_condition"
+    if kind in {"visible", "hidden"}:
+        selector = str(condition.get("selector", "") or "")
+        if not selector:
+            return StepValidateResult(step_index, result_action, selector, "no_selector", "нет селектора в условии")
+        if kind == "hidden":
+            issues = _locator_hidden_issues(page, selector)
+        else:
+            issues = _locator_issues(page, selector)
+        status, message = _issues_to_status(issues, selector=selector)
+        return StepValidateResult(step_index, result_action, selector, status, message)
+    if kind == "url_contains":
+        needle = str(condition.get("value", "") or "")
+        if needle and needle not in page.url:
+            return StepValidateResult(
+                step_index,
+                result_action,
+                needle,
+                "error",
+                f"URL не содержит «{needle}» — сейчас {page.url}",
+            )
+        return StepValidateResult(step_index, result_action, needle, "ok", "")
+    if kind == "page_text":
+        needle = str(condition.get("value", "") or "")
+        if not needle:
+            return StepValidateResult(step_index, result_action, needle, "ok", "")
+        try:
+            if needle not in page.content():
+                return StepValidateResult(
+                    step_index,
+                    result_action,
+                    needle,
+                    "error",
+                    f"текст «{needle}» не найден на странице",
+                )
+        except Exception as exc:  # noqa: BLE001
+            return StepValidateResult(step_index, result_action, needle, "error", str(exc))
+        return StepValidateResult(step_index, result_action, needle, "ok", "")
+    return None
 
 
 def _issues_to_status(issues: list[str], *, selector: str) -> tuple[ValidateStatus, str]:
@@ -71,10 +172,12 @@ def validate_step_selector(
 ) -> StepValidateResult | None:
     action = str(step.get("action", "") or "")
     selector = str(step.get("selector", "") or "")
-    if action in {"if", "repeat"}:
+    if action in {"if", "repeat", "while", "for_each"}:
         return StepValidateResult(step_index, action, selector, "skipped", "")
     if action in {"goto"} | _NAV_ACTIONS | _SESSION_ACTIONS | _WAIT_ACTIONS:
         return StepValidateResult(step_index, action, selector, "skipped", "")
+    if action in _TAB_ACTIONS:
+        return _validate_tab_step(page, step, step_index=step_index)
     if action in {"remember_text", "remember_url", "assert_download_contains"}:
         return StepValidateResult(step_index, action, selector, "skipped", "")
     if action == "remember_field":
@@ -182,9 +285,36 @@ def validate_scenario_selectors(
             )
             return results
 
+    def _append_result(item: StepValidateResult) -> None:
+        warn = compatibility_warning(item.action, browser_engine)
+        if warn and item.status in {"ok", "skipped"}:
+            item = StepValidateResult(item.step_index, item.action, item.selector, "fragile", warn)
+        results.append(item)
+
     def validate_one(index: int, step: dict[str, Any]) -> None:
         action = str(step.get("action", "") or "")
         if action in {"if", "repeat"}:
+            for sub_step in step.get("steps") or []:
+                validate_one(index, sub_step)
+            return
+        if action == "while":
+            condition = step.get("condition") or {}
+            cond_item = _validate_block_condition(page, condition, step_index=index, block_action="while")
+            if cond_item is not None:
+                _append_result(cond_item)
+            for sub_step in step.get("steps") or []:
+                validate_one(index, sub_step)
+            return
+        if action == "for_each":
+            selector = str(step.get("selector", "") or "")
+            if not selector:
+                _append_result(
+                    StepValidateResult(index, action, selector, "no_selector", "нет селектора списка")
+                )
+            else:
+                issues = _for_each_selector_issues(page, selector)
+                status, message = _issues_to_status(issues, selector=selector)
+                _append_result(StepValidateResult(index, action, selector, status, message))
             for sub_step in step.get("steps") or []:
                 validate_one(index, sub_step)
             return
@@ -197,10 +327,7 @@ def validate_scenario_selectors(
         )
         if item is None:
             return
-        warn = compatibility_warning(item.action, browser_engine)
-        if warn and item.status in {"ok", "skipped"}:
-            item = StepValidateResult(item.step_index, item.action, item.selector, "fragile", warn)
-        results.append(item)
+        _append_result(item)
 
     for index, step in enumerate(steps, start=1):
         validate_one(index, step)

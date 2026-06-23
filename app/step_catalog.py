@@ -10,7 +10,7 @@ from typing import Any, Literal
 from app.gherkin_ru import GherkinParseError, STEP_INDENT, parse_gherkin_steps
 from app.gherkin_snippets import GherkinSnippet, STEP_SNIPPETS
 
-_ACTION_RE = re.compile(r"\(action:\s*(\w+)\)", re.IGNORECASE)
+_ACTION_RE = re.compile(r"action:\s*(\w+)", re.IGNORECASE)
 _KEYWORD_PREFIX_RE = re.compile(
     r"^(?:Допустим|Когда|Тогда|И|Но)\s+",
     re.IGNORECASE,
@@ -22,6 +22,7 @@ StepCategory = Literal[
     "assert",
     "wait",
     "session",
+    "tabs",
     "files",
     "generators",
     "conditions",
@@ -35,6 +36,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "assert": "Проверки",
     "wait": "Ожидание",
     "session": "Сессия",
+    "tabs": "Вкладки",
     "files": "Файлы",
     "generators": "Генераторы",
     "conditions": "Условия",
@@ -71,6 +73,9 @@ ACTION_CATEGORY: dict[str, StepCategory] = {
     "wait_for": "wait",
     "wait_for_hidden": "wait",
     "close_browser": "session",
+    "switch_tab": "tabs",
+    "close_tab": "tabs",
+    "assert_tab_count": "tabs",
     "if": "conditions",
     "repeat": "loops",
     "while": "loops",
@@ -105,6 +110,13 @@ ACTION_PARAMS: dict[str, tuple[str, ...]] = {
     "wait": ('seconds — длительность паузы',),
     "wait_for": ('selector — элемент, появление которого ждём',),
     "wait_for_hidden": ('selector — элемент, исчезновение которого ждём',),
+    "close_browser": (),
+    "switch_tab": (
+        "mode — title, url, index (номер с 1), first, new",
+        "value — фрагмент заголовка, URL или индекс (для title/url/index)",
+    ),
+    "close_tab": (),
+    "assert_tab_count": ("count — ожидаемое число вкладок",),
     "if": (
         "condition — вижу / не вижу / url содержит / текст на странице",
         "steps — вложенные шаги с отступом (таб или 2 пробела)",
@@ -201,9 +213,30 @@ def entry_for_action(action: str, *, line_body: str = "") -> StepEntry | None:
     if len(candidates) == 1:
         return candidates[0]
     body = line_body.lower()
-    for entry in candidates:
+    sorted_candidates = sorted(candidates, key=lambda entry: len(entry.label), reverse=True)
+    for entry in sorted_candidates:
         if body.startswith(entry.label.lower()):
             return entry
+    if action == "switch_tab":
+        if "с url" in body:
+            for entry in candidates:
+                if "с url" in entry.label.lower():
+                    return entry
+        if "первую" in body:
+            for entry in candidates:
+                if "первую" in entry.label.lower():
+                    return entry
+        if "новую" in body:
+            for entry in candidates:
+                if "новую" in entry.label.lower():
+                    return entry
+        if re.fullmatch(r"переключаюсь\s+на\s+вкладку\s+\d+", body.strip()):
+            for entry in candidates:
+                if re.search(r"\d", entry.label):
+                    return entry
+        for entry in candidates:
+            if entry.label.lower().startswith("переключаюсь на вкладку"):
+                return entry
     if action == "fill_generated":
         for entry in candidates:
             if entry.label.lower() in body:

@@ -46,7 +46,7 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
     GherkinSnippet(
         "навожу",
         'навожу "nav a:has-text(\\"Услуги\\")"',
-        "Наведение перед кликом по подменю или тултипу",
+        "Наведение перед кликом по подменю (action: hover)",
     ),
     GherkinSnippet(
         "ввожу",
@@ -61,47 +61,52 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
     GherkinSnippet(
         "случайное имя",
         'ввожу случайное имя в "input[name=firstName]"',
-        "Имя (отдельное поле)",
+        "Случайное имя на каждый прогон (action: fill_generated)",
     ),
     GherkinSnippet(
         "случайная фамилия",
         'ввожу случайную фамилию в "input[name=lastName]"',
-        "Фамилия (отдельное поле)",
+        "Случайная фамилия на каждый прогон (action: fill_generated)",
     ),
     GherkinSnippet(
         "случайное отчество",
         'ввожу случайное отчество в "input[name=middleName]"',
-        "Отчество (отдельное поле)",
+        "Случайное отчество на каждый прогон (action: fill_generated)",
     ),
     GherkinSnippet(
         "случайный адрес",
         'ввожу случайный адрес в "textarea[name=address]"',
-        "Случайный адрес на каждый прогон",
+        "Случайный адрес на каждый прогон (action: fill_generated)",
     ),
     GherkinSnippet(
         "случайный инн",
         'ввожу случайный инн в "input[name=inn]"',
-        "ИНН физлица (12 цифр) с контрольной суммой",
+        "ИНН физлица (12 цифр) с контрольной суммой (action: fill_generated)",
     ),
     GherkinSnippet(
         "расчётный счёт",
         'ввожу случайный расчётный счёт в "input[name=account]"',
-        "20-значный расчётный счёт",
+        "20-значный расчётный счёт (action: fill_generated)",
     ),
     GherkinSnippet(
         "огрнип",
         'ввожу случайный огрнип в "input[name=ogrnip]"',
-        "ОГРНИП (15 цифр) с контрольной суммой",
+        "ОГРНИП (15 цифр) с контрольной суммой (action: fill_generated)",
     ),
     GherkinSnippet(
         "плейсхолдер",
         'ввожу "{{first_name}}" в "input[name=firstName]"',
-        "Плейсхолдеры: {{first_name}}, {{last_name}}, {{patronymic}}, {{phone}}…",
+        "Подстановка переменных {{first_name}} и др. (action: fill)",
     ),
     GherkinSnippet(
         "ввожу код из почты",
         'ввожу код из почты с клавиатуры в 6 полей "input.pin-digit"',
-        "OTP через keyboard.type (Svelte); по умолчанию для нескольких ячеек — клавиатура",
+        "OTP через keyboard.type в нескольких полях (action: prompt_email_code)",
+    ),
+    GherkinSnippet(
+        "код из почты email",
+        'ввожу код из почты "user@example.com" в "input#code"',
+        "OTP из письма на указанный ящик (action: prompt_email_code)",
     ),
     GherkinSnippet(
         "очищаю",
@@ -127,6 +132,11 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "нажимаю клавишу",
         'нажимаю клавишу "Enter"',
         "Клавиша на странице — Enter, Escape, Tab… (action: press)",
+    ),
+    GherkinSnippet(
+        "нажимаю клавишу в",
+        'нажимаю клавишу "Tab" в "input[name=email]"',
+        "Клавиша в конкретном поле (action: press)",
     ),
     GherkinSnippet(
         "загружаю файл",
@@ -161,7 +171,7 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
     GherkinSnippet(
         "рисую подпись",
         'рисую подпись в "canvas"',
-        "Рисование подписи на canvas (ПЭП, action: draw_signature)",
+        "Рисование подписи на canvas, ПЭП (action: draw_signature)",
     ),
     GherkinSnippet(
         "скроллю к",
@@ -182,6 +192,41 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "закрываю браузер",
         "закрываю браузер",
         "Закрыть окно браузера (action: close_browser)",
+    ),
+    GherkinSnippet(
+        "переключаюсь на вкладку",
+        'переключаюсь на вкладку "Оплата"',
+        "Активировать вкладку по заголовку (часть title) (action: switch_tab)",
+    ),
+    GherkinSnippet(
+        "переключаюсь на вкладку с url",
+        'переключаюсь на вкладку с url "checkout"',
+        "Активировать вкладку по подстроке в URL (action: switch_tab)",
+    ),
+    GherkinSnippet(
+        "переключаюсь на вкладку 2",
+        "переключаюсь на вкладку 2",
+        "Переключиться на вкладку по номеру, с 1 (action: switch_tab)",
+    ),
+    GherkinSnippet(
+        "переключаюсь на первую вкладку",
+        "переключаюсь на первую вкладку",
+        "Переключиться на первую вкладку в окне (action: switch_tab)",
+    ),
+    GherkinSnippet(
+        "переключаюсь на новую вкладку",
+        "переключаюсь на новую вкладку",
+        "Переключиться на последнюю открытую вкладку (action: switch_tab)",
+    ),
+    GherkinSnippet(
+        "закрываю текущую вкладку",
+        "закрываю текущую вкладку",
+        "Закрыть активную вкладку (action: close_tab)",
+    ),
+    GherkinSnippet(
+        "проверяю что открыто",
+        "проверяю что открыто 2 вкладки",
+        "Проверить число открытых вкладок (action: assert_tab_count)",
     ),
     GherkinSnippet(
         "вижу",
@@ -207,6 +252,11 @@ STEP_SNIPPETS: tuple[GherkinSnippet, ...] = (
         "жду",
         "жду 2 сек",
         "Пауза перед следующим шагом (action: wait)",
+    ),
+    GherkinSnippet(
+        "жду мс",
+        "жду 500 мс",
+        "Короткая пауза в миллисекундах (action: wait)",
     ),
     GherkinSnippet(
         "жду появления",

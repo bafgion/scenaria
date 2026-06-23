@@ -324,6 +324,7 @@ class QuickToolBar(QWidget):
         recording: bool,
         playing: bool,
         has_steps: bool,
+        paused: bool = False,
         unapplied: bool = False,
         parse_error: bool = False,
         batch_running: bool = False,
@@ -380,12 +381,21 @@ class QuickToolBar(QWidget):
         if not recorder_browser_open:
             recorder_browser_open = browser_open and not player_browser_open
         can_picker = False
-        if editor_active and not recording and not batch_running and not picking:
-            if playing:
-                can_picker = player_browser_open
-            else:
-                can_picker = recorder_browser_open or player_browser_open
+        picker_tooltip = self._default_tooltips.get("picker", "")
+        if editor_active and not batch_running and not picking:
+            picker_allowed = not recording or paused
+            if picker_allowed:
+                if playing:
+                    can_picker = player_browser_open
+                else:
+                    can_picker = recorder_browser_open or player_browser_open
+            elif recording:
+                picker_tooltip = "Поставьте запись на паузу, чтобы выбрать элемент"
         self._buttons["picker"].setEnabled(can_picker)
+        if recording and not paused and not can_picker:
+            self._buttons["picker"].setToolTip(picker_tooltip)
+        elif can_picker:
+            self._buttons["picker"].setToolTip(self._default_tooltips.get("picker", picker_tooltip))
         self._buttons["undo"].setEnabled(recording)
 
         if not can_play and not has_steps:

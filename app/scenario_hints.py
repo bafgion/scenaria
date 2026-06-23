@@ -112,19 +112,16 @@ def find_suspicious_menu_clicks(steps: list[dict[str, Any]]) -> list[int]:
         prev = steps[index - 1] if index > 0 else None
         if prev and prev.get("action") == "hover":
             continue
-        if step.get("hoverSelector"):
-            continue
+
         selector = str(step.get("selector", "") or "")
         if split_playwright_chain_selector(selector):
             suspicious.append(index)
             continue
-        text = str(step.get("text", "") or "")
-        haystack = f"{selector} {text}".lower()
-        if any(
-            token in haystack
-            for token in ("nav", "menu", "has-text", "role=menu", "dropdown", "submenu")
-        ):
+
+        # Recorder attached menu context but the hover step is missing from the list.
+        if str(step.get("hoverSelector", "") or "").strip():
             suspicious.append(index)
+
     return suspicious
 
 

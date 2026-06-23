@@ -129,14 +129,24 @@ class BrowserOverlayPanel(QWidget):
         self._btn_focus.setEnabled(recorder_browser or player_browser or playing)
         self._btn_picker.setEnabled(
             (recorder_browser or player_browser)
-            and not recording
+            and (not recording or paused)
             and not picking
             and (not playing or player_browser)
         )
+        if recording and paused:
+            self._btn_picker.setToolTip("Выбрать элемент на странице для шага сценария")
+        elif recording:
+            self._btn_picker.setToolTip("Поставьте запись на паузу, чтобы выбрать элемент")
+        else:
+            self._btn_picker.setToolTip("Выбрать элемент на странице для шага сценария")
 
         if recording:
             color = "#cca700" if paused else COLOR_RECORDING
-            self._title.setText("● Идёт запись" if not paused else "⏸ Запись на паузе")
+            self._title.setText(
+                "⏸ Пауза — можно выбрать элемент или вставить шаг"
+                if paused
+                else "● Идёт запись"
+            )
             self._title.setStyleSheet(f"color: {color}; font-size: 8pt; font-weight: 600;")
         elif playing:
             self._title.setText("▶ Идёт тест")

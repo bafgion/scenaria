@@ -476,6 +476,9 @@ class RecordingController(QObject):
 
     def stop_recording(self) -> None:
         bridge = self._bridge_ref()
+        if self._picking:
+            self.cancel_pick_selector()
+            return
         if self._session.pending or not self._session.recording:
             return
         self._set_pending(True, "Остановка записи...")
@@ -559,11 +562,14 @@ class RecordingController(QObject):
 
     def pick_selector(self) -> None:
         bridge = self._bridge_ref()
+        if self._picking:
+            self.cancel_pick_selector()
+            return
         if self._session.pending or self._recorder.is_busy:
             self.log.emit("Подождите завершения текущей операции", "error")
             return
-        if self._session.recording:
-            self.log.emit("Остановите запись перед выбором элемента", "error")
+        if self._session.recording and not self._session.paused:
+            self.log.emit("Поставьте запись на паузу, чтобы выбрать элемент", "error")
             return
 
         def on_complete(selector: str | None) -> None:

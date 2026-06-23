@@ -63,7 +63,24 @@ def test_find_suspicious_menu_clicks() -> None:
             "selector": 'div:has-text("Меню") >> button:has-text("Пункт")',
         },
     ]
-    assert find_suspicious_menu_clicks(steps) == [1, 5]
+    assert find_suspicious_menu_clicks(steps) == [4, 5]
+
+
+def test_find_suspicious_menu_clicks_ignores_plain_text_selectors() -> None:
+    steps = [
+        {"action": "click", "selector": 'button:has-text("Войти через Telegram")'},
+        {"action": "click", "selector": 'a:has-text("Зарегистрироваться")'},
+        {"action": "click", "selector": 'input[type="email"]'},
+        {"action": "click", "selector": "button.tgme_widget_login_button"},
+    ]
+    assert find_suspicious_menu_clicks(steps) == []
+
+
+def test_find_suspicious_menu_clicks_flags_missing_hover_step() -> None:
+    steps = [
+        {"action": "click", "selector": "button.ok", "hoverSelector": "nav.menu"},
+    ]
+    assert find_suspicious_menu_clicks(steps) == [0]
 
 
 def test_gherkin_template_contains_url() -> None:

@@ -176,6 +176,12 @@ class GherkinEditor(QPlainTextEdit):
         open_save_snippet_dialog(self.window(), text=text, default_label=default_label)
 
     def _open_step_help_for_line(self) -> None:
+        if self._recording_blocks_manual_tools():
+            from app.qt.dialogs import alert
+            from app.brand import BRAND_NAME
+
+            alert(self.window(), BRAND_NAME, "Поставьте запись на паузу, чтобы открыть справку по шагам")
+            return
         from app.step_catalog import resolve_step_entry
         from app.qt.widgets.step_help_panel import open_step_help_panel
 
@@ -200,7 +206,19 @@ class GherkinEditor(QPlainTextEdit):
             initial_search=search,
         )
 
+    def _recording_blocks_manual_tools(self) -> bool:
+        window = self.window()
+        if window is None or not hasattr(window, "_recording_blocks_manual_tools"):
+            return False
+        return bool(window._recording_blocks_manual_tools())
+
     def _open_snippet_palette(self) -> None:
+        if self._recording_blocks_manual_tools():
+            from app.qt.dialogs import alert
+            from app.brand import BRAND_NAME
+
+            alert(self.window(), BRAND_NAME, "Поставьте запись на паузу, чтобы вставить шаг из палитры")
+            return
         from app.qt.widgets.snippet_palette_dialog import open_snippet_palette
 
         open_snippet_palette(self.window(), self)

@@ -81,3 +81,77 @@ def test_category_labels_complete() -> None:
     categories = {entry.category for entry in CATALOG}
     for category in categories:
         assert category in CATEGORY_LABELS
+
+
+def test_catalog_includes_tab_steps() -> None:
+    tabs = list_step_entries(category="tabs")
+    actions = {entry.action for entry in tabs}
+    assert "switch_tab" in actions
+    assert "close_tab" in actions
+    assert "assert_tab_count" in actions
+    titles = {entry.label for entry in tabs}
+    assert "переключаюсь на вкладку" in titles
+    assert "переключаюсь на вкладку с url" in titles
+    assert "закрываю текущую вкладку" in titles
+
+
+def test_resolve_tab_switch_by_title() -> None:
+    line = '\tИ переключаюсь на вкладку "Оплата"'
+    entry = resolve_step_entry(line=line)
+    assert entry is not None
+    assert entry.action == "switch_tab"
+    assert "Оплата" in entry.example
+
+
+def test_resolve_tab_switch_by_url() -> None:
+    line = '\tИ переключаюсь на вкладку с url "checkout"'
+    entry = resolve_step_entry(line=line)
+    assert entry is not None
+    assert entry.action == "switch_tab"
+    assert "checkout" in entry.example
+
+
+def test_all_parser_actions_have_catalog_entry() -> None:
+    """Every action emitted by gherkin_ru parser should appear in step help."""
+    expected_actions = {
+        "goto",
+        "go_back",
+        "reload",
+        "scroll_to",
+        "click",
+        "double_click",
+        "hover",
+        "fill",
+        "fill_generated",
+        "clear",
+        "select",
+        "check",
+        "uncheck",
+        "press",
+        "prompt_email_code",
+        "upload",
+        "download_click",
+        "assert_download_contains",
+        "remember_text",
+        "remember_field",
+        "remember_url",
+        "draw_signature",
+        "assert_visible",
+        "assert_hidden",
+        "assert_text",
+        "assert_url",
+        "wait",
+        "wait_for",
+        "wait_for_hidden",
+        "close_browser",
+        "switch_tab",
+        "close_tab",
+        "assert_tab_count",
+        "if",
+        "repeat",
+        "while",
+        "for_each",
+    }
+    catalog_actions = {entry.action for entry in CATALOG if entry.action}
+    missing = expected_actions - catalog_actions
+    assert not missing, f"Missing catalog entries for actions: {sorted(missing)}"

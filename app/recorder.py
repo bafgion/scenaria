@@ -16,7 +16,10 @@ from app.http_auth import auth_key, resolve_http_credentials
 from app.paths import configure_playwright_browsers
 from app.settings import load_settings
 from app.playwright_lifecycle import release_playwright_session
-from app.picker_script import PICKER_INSTALL_SCRIPT, PICKER_UNINSTALL_SCRIPT
+from app.picker_script import (
+    install_picker_in_all_frames,
+    uninstall_picker_from_all_frames,
+)
 from app.player import PlayResult, highlight_selector, remove_highlight, reset_highlight_cleanup_state, run_scenario_on_page, setup_highlight_cleanup
 from app.recorder_script import RECORDER_INIT_SCRIPT, RECORDER_INSTALLED_CHECK
 from app.selector_build import apply_smart_selector_to_step
@@ -385,7 +388,7 @@ class ScenarioRecorder:
         return emitted
 
     def _enqueue_browser_step(self, step: dict) -> None:
-        if self._playing:
+        if self._playing or self._paused:
             return
         self._step_inbox.put(step)
 
@@ -908,12 +911,10 @@ class ScenarioRecorder:
         self._picker_result.put(None)
 
     def _uninstall_picker(self) -> None:
-        if self._page is None or self._page.is_closed():
+        page = self._page
+        if page is None or page.is_closed():
             return
-        try:
-            self._page.evaluate(PICKER_UNINSTALL_SCRIPT)
-        except Exception:
-            pass
+        uninstall_picker_from_all_frames(page)
 
     def _drain_picker_result(self) -> None:
         while True:
@@ -944,7 +945,7 @@ class ScenarioRecorder:
             return False
 
     def _handle_pick_selector(self) -> str | None:
-        if self._recording:
+        if self._recording and not self._paused:
             raise RuntimeError("Остановите запись перед выбором элемента")
         if self._playing:
             raise RuntimeError("Дождитесь окончания воспроизведения")
@@ -960,23 +961,40 @@ class ScenarioRecorder:
         self._attach_picker_bindings()
         self._drain_picker_result()
         self._emit_status("Выбор элемента — кликните в браузере, Esc — отмена")
-        page.evaluate(PICKER_INSTALL_SCRIPT)
+
+        def on_frame_navigated(frame) -> None:
+            if frame != page.main_frame:
+                return
+            self._handle_pick_selector_cancel()
+            try:
+                self._picker_result.put_nowait(None)
+            except queue.Full:
+                pass
+
+        page.on("framenavigated", on_frame_navigated)
+        install_picker_in_all_frames(page)
 
         deadline = time.time() + 300
-        while time.time() < deadline:
-            try:
-                selector = self._picker_result.get(timeout=0.05)
-                self._uninstall_picker()
-                if selector:
-                    self._emit_status(f"Выбран селектор: {selector}")
-                else:
-                    self._emit_status("Выбор элемента отменён")
-                return selector
-            except queue.Empty:
-                if self._abort_pick_if_interrupted():
+        try:
+            while time.time() < deadline:
+                try:
+                    selector = self._picker_result.get(timeout=0.05)
                     self._uninstall_picker()
-                    return None
-                self._pump_playwright()
+                    if selector:
+                        self._emit_status(f"Выбран селектор: {selector}")
+                    else:
+                        self._emit_status("Выбор элемента отменён")
+                    return selector
+                except queue.Empty:
+                    if self._abort_pick_if_interrupted():
+                        self._uninstall_picker()
+                        return None
+                    self._pump_playwright()
+        finally:
+            try:
+                page.remove_listener("framenavigated", on_frame_navigated)
+            except Exception:
+                pass
 
         self._uninstall_picker()
         raise RuntimeError("Время выбора элемента истекло")
@@ -1098,7 +1116,4 @@ class ScenarioRecorder:
     def _uninstall_picker_on_page(self, page: Page | None) -> None:
         if page is None or page.is_closed():
             return
-        try:
-            page.evaluate(PICKER_UNINSTALL_SCRIPT)
-        except Exception:
-            pass
+        uninstall_picker_from_all_frames(page)

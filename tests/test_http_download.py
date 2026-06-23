@@ -52,6 +52,67 @@ def test_download_url_resilient_retries_after_connection_reset(tmp_path: Path) -
     assert calls["count"] == 2
 
 
+def test_download_url_resilient_reports_progress_without_content_length(tmp_path: Path) -> None:
+    destination = tmp_path / "pkg.zip"
+    payload = b"x" * 5000
+    progress: list[tuple[int, int]] = []
+
+    def fake_urlopen(request, timeout=0):
+        response = MagicMock()
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        response.status = 200
+        response.getcode.return_value = 200
+        response.headers = {}
+        response.read.side_effect = [payload, b""]
+        return response
+
+    with patch("app.update.http_download.urllib.request.urlopen", side_effect=fake_urlopen):
+        download_url_resilient(
+            "https://example.com/pkg.zip",
+            destination,
+            on_progress=lambda done, total: progress.append((done, total)),
+        )
+
+    assert destination.read_bytes() == payload
+    assert progress
+    assert progress[-1][0] == len(payload)
+    assert progress[-1][1] == 0
+
+
+def test_download_url_resilient_honours_cancel(tmp_path: Path) -> None:
+    destination = tmp_path / "pkg.zip"
+    state = {"reads": 0}
+
+    def should_cancel() -> bool:
+        return state["reads"] >= 1
+
+    def fake_urlopen(request, timeout=0):
+        response = MagicMock()
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        response.status = 200
+        response.getcode.return_value = 200
+        response.headers = {"Content-Length": "1000000"}
+
+        def read_chunk(_size: int) -> bytes:
+            state["reads"] += 1
+            return b"chunk"
+
+        response.read.side_effect = read_chunk
+        return response
+
+    with patch("app.update.http_download.urllib.request.urlopen", side_effect=fake_urlopen):
+        with pytest.raises(UpdateCheckError, match="отменено"):
+            download_url_resilient(
+                "https://example.com/pkg.zip",
+                destination,
+                should_cancel=should_cancel,
+            )
+
+    assert not destination.exists()
+
+
 def test_download_asset_tries_alternate_url(tmp_path: Path) -> None:
     asset = UpdateAsset(
         name="Scenaria-update.zip",
@@ -62,7 +123,7 @@ def test_download_asset_tries_alternate_url(tmp_path: Path) -> None:
     destination = tmp_path / "Scenaria-update.zip"
     payload = b"data"
 
-    def fake_resilient(url, dest, *, total_hint=0, on_progress=None):
+    def fake_resilient(url, dest, *, total_hint=0, on_progress=None, should_cancel=None):
         if "fail" in url:
             raise UpdateCheckError("connection reset")
         dest.write_bytes(payload)

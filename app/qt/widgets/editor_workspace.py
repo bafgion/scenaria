@@ -816,7 +816,8 @@ class EditorWorkspace(QWidget):
         if self._switching:
             return
         if self._session.recording:
-            self.gherkin_panel.sync_from_model(force=True)
+            if not self.gherkin_panel.is_unapplied:
+                self.gherkin_panel.sync_from_model(force=True)
         self._refresh_steps_strip()
         if self._current_index >= 0:
             tab = self._tabs[self._current_index]

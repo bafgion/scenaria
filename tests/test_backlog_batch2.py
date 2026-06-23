@@ -62,6 +62,7 @@ def test_parse_tab_steps() -> None:
         f"{TAB}Допустим открыт \"https://example.com\"\n"
         f'{TAB}И переключаюсь на вкладку "Оплата"\n'
         f'{TAB}И переключаюсь на вкладку с url "checkout"\n'
+        f"{TAB}И переключаюсь на вкладку 2\n"
         f"{TAB}И переключаюсь на первую вкладку\n"
         f"{TAB}И переключаюсь на новую вкладку\n"
         f"{TAB}И закрываю текущую вкладку\n"
@@ -70,10 +71,11 @@ def test_parse_tab_steps() -> None:
     steps = gherkin_to_steps(text)
     assert steps[1] == {"action": "switch_tab", "mode": "title", "value": "Оплата"}
     assert steps[2]["mode"] == "url"
-    assert steps[3]["mode"] == "first"
-    assert steps[4]["mode"] == "new"
-    assert steps[5]["action"] == "close_tab"
-    assert steps[6] == {"action": "assert_tab_count", "count": 2}
+    assert steps[3] == {"action": "switch_tab", "mode": "index", "value": "1"}
+    assert steps[4]["mode"] == "first"
+    assert steps[5]["mode"] == "new"
+    assert steps[6]["action"] == "close_tab"
+    assert steps[7] == {"action": "assert_tab_count", "count": 2}
 
 
 def test_resolve_tab_page_by_title() -> None:
@@ -86,6 +88,28 @@ def test_resolve_tab_page_by_title() -> None:
     context = MagicMock()
     context.pages = [page_a, page_b]
     assert resolve_tab_page(context, mode="title", value="оплат") is page_b
+
+
+def test_resolve_tab_page_by_index() -> None:
+    pages = []
+    for title in ("A", "B", "C"):
+        page = MagicMock()
+        page.is_closed.return_value = False
+        page.title.return_value = title
+        pages.append(page)
+    context = MagicMock()
+    context.pages = pages
+    assert resolve_tab_page(context, mode="index", value="0") is pages[0]
+    assert resolve_tab_page(context, mode="index", value="2") is pages[2]
+    assert resolve_tab_page(context, mode="index", value="9") is None
+
+
+def test_roundtrip_switch_tab_index() -> None:
+    steps = [{"action": "switch_tab", "mode": "index", "value": "1"}]
+    text = steps_to_gherkin(steps, scenario_name="Tabs")
+    reparsed = gherkin_to_steps(text)
+    assert reparsed[0] == {"action": "switch_tab", "mode": "index", "value": "1"}
+    assert "переключаюсь на вкладку 2" in text
 
 
 def test_execute_switch_tab_updates_context() -> None:

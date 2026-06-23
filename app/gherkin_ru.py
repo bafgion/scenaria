@@ -631,6 +631,25 @@ def _parse_step_body(line_no: int, line: str) -> dict[str, Any]:
     if re.fullmatch(r"закрываю\s+браузер", body, flags=re.IGNORECASE):
         return {"action": "close_browser"}
 
+    switch_tab_index_match = re.fullmatch(
+        r"переключаюсь\s+на\s+вкладку\s+(\d+)",
+        body,
+        flags=re.IGNORECASE,
+    )
+    if switch_tab_index_match:
+        user_index = int(switch_tab_index_match.group(1))
+        if user_index < 1:
+            raise GherkinParseError(
+                line_no,
+                line,
+                "Номер вкладки должен быть не меньше 1",
+            )
+        return {
+            "action": "switch_tab",
+            "mode": "index",
+            "value": str(user_index - 1),
+        }
+
     switch_tab_title_match = re.fullmatch(
         r'переключаюсь\s+на\s+вкладку\s+"((?:\\.|[^"])*)"',
         body,
@@ -1213,6 +1232,8 @@ def _append_step_lines(
                 phrase = "переключаюсь на первую вкладку"
             elif mode == "new":
                 phrase = "переключаюсь на новую вкладку"
+            elif mode == "index":
+                phrase = f"переключаюсь на вкладку {int(value) + 1}"
             else:
                 phrase = f'переключаюсь на вкладку "{_quote(value)}"'
             lines.append(format_step_line(prefix, phrase, indent=indent))

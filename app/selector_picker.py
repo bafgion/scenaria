@@ -7,10 +7,13 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from app.picker_script import PICKER_INSTALL_SCRIPT, PICKER_UNINSTALL_SCRIPT
+from app.picker_script import (
+    install_picker_in_all_frames,
+    uninstall_picker_from_all_frames,
+)
 
 if TYPE_CHECKING:
-    from playwright.sync_api import BrowserContext, Page
+    from playwright.sync_api import BrowserContext, Frame, Page
 
 PumpCallback = Callable[[], None] | None
 
@@ -59,25 +62,35 @@ class SelectorPickerSession:
     ) -> str | None:
         self.attach(context)
         self.drain()
-        page.evaluate(PICKER_INSTALL_SCRIPT)
+
+        def on_frame_navigated(frame: Frame) -> None:
+            if frame != page.main_frame:
+                return
+            self.cancel_active(page)
+
+        page.on("framenavigated", on_frame_navigated)
+        install_picker_in_all_frames(page)
         deadline = time.time() + timeout
-        while time.time() < deadline:
+        try:
+            while time.time() < deadline:
+                try:
+                    selector = self._results.get(timeout=0.05)
+                    self._uninstall(page)
+                    return selector
+                except queue.Empty:
+                    if pump is not None:
+                        pump()
+                    elif not page.is_closed():
+                        page.wait_for_timeout(50)
+            self._uninstall(page)
+            raise RuntimeError("Время выбора элемента истекло")
+        finally:
             try:
-                selector = self._results.get(timeout=0.05)
-                self._uninstall(page)
-                return selector
-            except queue.Empty:
-                if pump is not None:
-                    pump()
-                elif not page.is_closed():
-                    page.wait_for_timeout(50)
-        self._uninstall(page)
-        raise RuntimeError("Время выбора элемента истекло")
+                page.remove_listener("framenavigated", on_frame_navigated)
+            except Exception:
+                pass
 
     def _uninstall(self, page: Page | None) -> None:
         if page is None or page.is_closed():
             return
-        try:
-            page.evaluate(PICKER_UNINSTALL_SCRIPT)
-        except Exception:
-            pass
+        uninstall_picker_from_all_frames(page)
