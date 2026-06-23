@@ -5,11 +5,10 @@ from __future__ import annotations
 import base64
 import html
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.step_display import format_step_table_cells
 from app.qt.theme import (
     COLOR_BG,
     COLOR_BORDER,
@@ -18,6 +17,7 @@ from app.qt.theme import (
     COLOR_SUCCESS,
     COLOR_TEXT,
 )
+from app.step_display import format_step_table_cells
 
 
 @dataclass
@@ -62,7 +62,7 @@ def run_report_from_play(
     feature_path: str | Path | None = None,
     duration_ms: int | None = None,
 ) -> RunReport:
-    started = started_at or datetime.now(timezone.utc)
+    started = started_at or datetime.now(UTC)
     raw_steps = list(result.get("step_results") or [])
     steps: list[StepRunResult] = []
     if raw_steps:

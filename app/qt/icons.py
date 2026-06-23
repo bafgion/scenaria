@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from PySide6.QtCore import QSize, QRectF
+from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
-from PySide6.QtCore import Qt
 
 from app.qt.lucide_svgs import LUCIDE_BODIES, lucide_template
 from app.qt.theme import COLOR_MUTED, COLOR_RECORDING, COLOR_SUCCESS, COLOR_TEXT

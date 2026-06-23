@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -12,11 +13,11 @@ from PySide6.QtCore import QTimer
 from app.brand import BRAND_NAME
 from app.feature_store import get_root
 from app.qt.dialogs import alert
+from app.qt.worker_bridge import WorkerBridge
 from app.run_display import compare_run_with_recording
 from app.run_status_store import record_run
 from app.run_suite import collect_play_scenarios
 from app.scenario_utils import ScenarioNotFoundError
-from app.qt.worker_bridge import WorkerBridge
 
 if TYPE_CHECKING:
     from app.mvc.controllers.recording_controller import RecordingController
@@ -320,7 +321,7 @@ class PlaybackCoordinatorMixin:
             self._emit_session()
 
     def _save_html_report(self: RecordingController, payload: dict[str, Any], *, duration_ms: int) -> Path | None:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from app.html_report import save_play_html_report
         from app.settings import load_settings
@@ -332,7 +333,7 @@ class PlaybackCoordinatorMixin:
         except ScenarioNotFoundError:
             return None
         started = (
-            datetime.fromtimestamp(self._play_started_at, tz=timezone.utc)
+            datetime.fromtimestamp(self._play_started_at, tz=UTC)
             if self._play_started_at
             else None
         )

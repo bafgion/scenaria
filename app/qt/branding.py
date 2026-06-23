@@ -5,12 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from app.paths import app_root, bundled_root
 from app.brand import BRAND_DESCRIPTION, BRAND_NAME, BRAND_TAGLINE
+from app.paths import app_root, bundled_root
 
 _BRANDING_REL = Path("assets") / "branding"
 _ICON_SIZES = (16, 20, 24, 32, 48, 64, 128, 256)

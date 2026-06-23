@@ -5,7 +5,12 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QListWidgetItem, QMessageBox, QWidget
 
-from app.http_auth import credentials_for_host, list_http_auth_hosts, remove_host_credentials, store_host_credentials
+from app.http_auth import (
+    credentials_for_host,
+    list_http_auth_hosts,
+    remove_host_credentials,
+    store_host_credentials,
+)
 from app.qt.dialogs import BTN_NO, BTN_YES, alert, prompt_http_auth
 from app.qt.widgets.list_manager_dialog import ListManagerDialog
 from app.settings import load_settings, save_settings

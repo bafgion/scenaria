@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 from scenaria_vanessa.epf_install import default_epf_path, resolve_epf_download_url
 from scenaria_vanessa.report_parsers import (

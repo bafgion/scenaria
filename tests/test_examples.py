@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from app.gherkin_ru import gherkin_to_steps
 from app.paths import examples_dir
 

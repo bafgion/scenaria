@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.plugins.models import RunMode, RunRequest
-
 from scenaria_vanessa.params_merger import VAParamsMerger, path_for_va_json
+
+from app.plugins.models import RunMode, RunRequest
 
 
 def test_merge_overlay_writes_va_params(tmp_path: Path, monkeypatch) -> None:

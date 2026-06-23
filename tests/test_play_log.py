@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from app.play_log import format_click_log, format_fill_generated_log, format_fill_log, step_log_target
+from app.play_log import (
+    format_click_log,
+    format_fill_generated_log,
+    format_fill_log,
+    step_log_target,
+)
 
 
 def test_step_log_target_prefers_step_text() -> None:

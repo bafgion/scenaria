@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -26,7 +26,7 @@ from app.qt.labels import muted_label
 from app.qt.widgets.base_dialog import BaseAppDialog
 
 
-class PickerInsertMode(str, Enum):
+class PickerInsertMode(StrEnum):
     CLICK = "click"
     VISIBLE = "visible"
     HOVER = "hover"

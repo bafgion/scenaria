@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
 import pytest
+from playwright.sync_api import sync_playwright
 
 from app.paths import configure_playwright_browsers
 from app.recorder_script import RECORDER_INIT_SCRIPT

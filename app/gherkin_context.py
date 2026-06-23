@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 
 from app.gherkin_ru import (
-    GHERKIN_KEYWORDS,
-    GherkinParseError,
-    STEP_INDENT,
     _KEYWORD_RE,
+    GHERKIN_KEYWORDS,
+    STEP_INDENT,
+    GherkinParseError,
     _quote,
     _unquote,
     is_gherkin_step_line,

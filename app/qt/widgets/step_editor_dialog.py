@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 from app.qt.dialog_buttons import BTN_OK
 from app.qt.widgets.base_dialog import BaseAppDialog
 from app.selector_build import strategy_label
-
 from app.step_display import ACTION_ICONS
 
 

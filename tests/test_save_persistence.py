@@ -144,7 +144,7 @@ def test_flush_editor_preserves_comments(tmp_path: Path) -> None:
 
 
 def test_draft_autosave_uses_editor_text() -> None:
-    from app.feature_store import load_draft, clear_draft
+    from app.feature_store import clear_draft, load_draft
 
     clear_draft()
     model = ScenarioModel()

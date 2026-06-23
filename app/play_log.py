@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.run_variables import generator_play_log_label
+from app.player_context import generator_play_log_label
 
 
 def step_log_target(step: dict, selector: str = "") -> str:

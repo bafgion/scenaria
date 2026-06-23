@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,7 @@ def export_scenario_json(target: Path, scenario: dict[str, Any]) -> Path:
     payload = {
         "name": scenario.get("name", ""),
         "startUrl": scenario.get("startUrl", ""),
-        "exportedAt": datetime.now(timezone.utc).isoformat(),
+        "exportedAt": datetime.now(UTC).isoformat(),
         "steps": scenario.get("steps", []),
     }
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

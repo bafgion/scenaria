@@ -7,28 +7,37 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSizePolicy, QStackedWidget, QTabBar, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QTabBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from app.gherkin_ru import GherkinParseError, gherkin_to_steps
+from app.brand import BRAND_NAME
 from app.feature_store import feature_texts_equivalent, normalize_feature_text
+from app.gherkin_ru import GherkinParseError, gherkin_to_steps
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.scenario_controller import ScenarioController
 from app.mvc.models.scenario_model import ScenarioModel
 from app.mvc.models.session_model import SessionModel
-from app.qt.dialogs import confirm
 from app.qt import icons
+from app.qt.dialogs import confirm
+from app.qt.labels import caption_label, strip_title_label
 from app.qt.widgets.dirty_banner import DirtyBanner
+from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.gherkin_panel import GherkinPanel
 from app.qt.widgets.ide_splitter import HIT_SIZE, IdeSplitter
 from app.qt.widgets.post_record_banner import PostRecordBanner
-from app.qt.widgets.editor_action_bar import EditorActionBar
 from app.qt.widgets.recording_modes_bar import RecordingModesBar
 from app.qt.widgets.steps_strip import StepsStrip
 from app.qt.widgets.welcome_panel import WelcomePanel
 from app.scenario_hints import collect_all_hints
 from app.settings import load_settings, save_settings
-from app.qt.labels import caption_label, strip_title_label
-from app.brand import BRAND_NAME
 
 _PAGE_WELCOME = 0
 _PAGE_EDITOR = 1

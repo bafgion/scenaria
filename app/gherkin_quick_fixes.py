@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, coalesce_mixed_step_indents_in_text, gherkin_to_steps, is_step_indented, leading_indent
+from app.gherkin_ru import (
+    STEP_INDENT,
+    GherkinParseError,
+    coalesce_mixed_step_indents_in_text,
+    gherkin_to_steps,
+    is_step_indented,
+    leading_indent,
+)
 
 _KEYWORD_FIXES: dict[str, str] = {
     "дапустим": "Допустим",

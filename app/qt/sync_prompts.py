@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThread, Qt, Slot, Q_ARG, QMetaObject
+from PySide6.QtCore import Q_ARG, QMetaObject, QObject, Qt, QThread, Slot
 from PySide6.QtWidgets import QApplication, QWidget
 
 from app.qt.dialogs import prompt_email_code as _prompt_email_code_dialog

@@ -12,7 +12,6 @@ from app.feature_store import MAX_FEATURES_IN_TREE, get_root, set_root
 from app.gherkin_ru import GherkinParseError
 from app.run_status_store import domain_from_url, get_run_history, get_run_status
 
-
 RowKind = Literal["root", "dir", "file"]
 EmptyKind = Literal["no_project", "missing", "no_files", "no_match"]
 

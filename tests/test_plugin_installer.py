@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from app.plugins.installer import PluginInstallError, install_from_zip, list_installed_plugins, uninstall_plugin
+from app.plugins.installer import (
+    PluginInstallError,
+    install_from_zip,
+    list_installed_plugins,
+    uninstall_plugin,
+)
 from app.plugins.registry import get_registry, reset_registry
 
 

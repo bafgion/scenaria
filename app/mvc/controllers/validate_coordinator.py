@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-
 from app.scenario_utils import ScenarioNotFoundError
 
 if TYPE_CHECKING:

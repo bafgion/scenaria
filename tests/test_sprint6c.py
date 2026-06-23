@@ -5,10 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
+from app.gherkin_outline import (
+    expand_outline_steps,
+    outline_example_count,
+    parse_outline,
+    substitute_outline_value,
+)
 from app.gherkin_quick_fixes import suggest_quick_fixes, suggest_quick_fixes_for_error
 from app.gherkin_ru import STEP_INDENT, gherkin_to_steps, steps_to_gherkin
-from app.gherkin_outline import expand_outline_steps, outline_example_count, parse_outline, substitute_outline_value
 from app.player import _evaluate_condition, execute_step
 from app.run_suite import collect_run_cases, expand_feature_cases
 from app.run_variables import RunContext

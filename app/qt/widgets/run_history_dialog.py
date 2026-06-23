@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QWidget
 
@@ -17,8 +17,8 @@ from app.run_display import format_duration, format_run_at
 from app.run_result_display import (
     brief_error_message,
     format_failed_step_label,
-    format_runner_label,
     format_run_status_text,
+    format_runner_label,
     summarize_run_history,
 )
 from app.run_status_store import RunHistoryEntry, get_run_history

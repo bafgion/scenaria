@@ -17,9 +17,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.qt.labels import link_label, welcome_heading_label, welcome_section_label, welcome_title_label
-from app.qt.theme import COLOR_MUTED, COLOR_SUCCESS, COLOR_TEXT
 from app.brand import BRAND_NAME
+from app.qt.labels import (
+    link_label,
+    welcome_heading_label,
+    welcome_section_label,
+    welcome_title_label,
+)
+from app.qt.theme import COLOR_MUTED, COLOR_SUCCESS, COLOR_TEXT
 
 _CHECKLIST_STEPS = (
     (1, "Открыть проект"),

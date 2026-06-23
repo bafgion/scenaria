@@ -6,12 +6,12 @@ import json
 from pathlib import Path
 
 from app.snippet_store import (
+    UserSnippet,
     extract_placeholders,
     list_palette_snippets,
     load_user_snippets,
     resolve_placeholders,
     save_user_snippets,
-    UserSnippet,
 )
 
 

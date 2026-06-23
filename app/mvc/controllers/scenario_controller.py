@@ -8,6 +8,7 @@ from typing import Any
 
 from PySide6.QtWidgets import QWidget
 
+from app.brand import BRAND_NAME
 from app.feature_store import (
     clear_draft,
     delete_feature,
@@ -20,6 +21,12 @@ from app.feature_store import (
 from app.gherkin_ru import GherkinParseError, gherkin_to_steps, merge_steps_into_feature_text
 from app.mvc.models.catalog_model import CatalogModel
 from app.mvc.models.scenario_model import ScenarioModel
+from app.playwright_export import (
+    ExportFormat,
+    analyze_export,
+    export_scenario_playwright,
+    format_export_warnings,
+)
 from app.qt.dialogs import alert, confirm, prompt_text
 from app.qt.file_dialogs import (
     FEATURE_FILTER,
@@ -30,12 +37,7 @@ from app.qt.file_dialogs import (
     pick_open_file,
     pick_save_file,
 )
-from app.playwright_export import (
-    ExportFormat,
-    analyze_export,
-    export_scenario_playwright,
-    format_export_warnings,
-)
+from app.scenario_hints import ScenarioHint, apply_hint_fix, apply_menu_hover_fix_at_index
 from app.scenario_io import (
     export_scenario_feature,
     export_scenario_json,
@@ -43,11 +45,9 @@ from app.scenario_io import (
     import_scenario_feature,
     import_scenario_json,
 )
+from app.scenario_utils import ScenarioNotFoundError, suggest_scenario_name
 from app.settings import load_settings
 from app.steps import normalize_steps
-from app.scenario_hints import ScenarioHint, apply_hint_fix, apply_menu_hover_fix_at_index
-from app.scenario_utils import ScenarioNotFoundError, suggest_scenario_name
-from app.brand import BRAND_NAME
 
 
 class ScenarioController:

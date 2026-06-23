@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.gherkin_context import format_context_lines, parse_feature_test_client
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, parse_feature_structure
+from app.gherkin_ru import STEP_INDENT, GherkinParseError, gherkin_to_steps, parse_feature_structure
 
 
 def test_parse_context_test_client() -> None:

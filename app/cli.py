@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from app.feature_store import load_feature
 from app.junit_report import write_junit_report
 from app.paths import configure_playwright_browsers
 from app.playwright_export import (
@@ -16,7 +17,6 @@ from app.playwright_export import (
     export_scenario_playwright,
     format_export_warning_lines,
 )
-from app.feature_store import load_feature
 from app.plugins.installer import (
     PluginInstallError,
     install_from_zip,

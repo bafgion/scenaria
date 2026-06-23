@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenaria"
-version = "0.10.2"
+version = "0.10.3"
 description = "Scenaria — запись и запуск автотестов сайтов (Gherkin + Playwright)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -42,6 +42,11 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+# E501: many legacy Russian UI strings; line-length=100 still guides new edits.
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # Re-exports for app.qt.dialogs public API (vanessa add-on, legacy imports).

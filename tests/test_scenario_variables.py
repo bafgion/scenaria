@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.gherkin_ru import gherkin_to_steps, parse_gherkin_steps, steps_to_gherkin
 from app.player import execute_step

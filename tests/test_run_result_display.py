@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from app.run_result_display import (
     format_failed_step_label,
-    format_runner_label,
     format_run_status_text,
+    format_runner_label,
     format_single_run_summary,
     summarize_run_history,
     summarize_suite_cases,

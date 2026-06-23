@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from app.step_catalog import (
-    CATEGORY_LABELS,
     CATALOG,
+    CATEGORY_LABELS,
     entry_for_action,
     list_step_entries,
     resolve_step_entry,

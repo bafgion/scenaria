@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -101,7 +101,7 @@ def _entry_to_dict(
     payload: dict[str, Any] = {
         "success": bool(success),
         "message": _brief_message(message),
-        "at": datetime.now(timezone.utc).isoformat(),
+        "at": datetime.now(UTC).isoformat(),
         "duration_ms": max(0, int(duration_ms)),
         "runner": str(runner or "playwright"),
     }

@@ -6,10 +6,24 @@ import re
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeyEvent, QPainter
-from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import (
+    QCompleter,
+    QPlainTextEdit,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+)
 
-from app.gherkin_snippets import GherkinSnippet, KEYWORDS, completions_for_line
-from app.qt.theme import COLOR_ACTIVITY, COLOR_BORDER, COLOR_DIR_SELECTED, COLOR_INPUT, COLOR_MUTED, COLOR_SIDEBAR, COLOR_TEXT
+from app.gherkin_snippets import KEYWORDS, GherkinSnippet, completions_for_line
+from app.qt.theme import (
+    COLOR_ACTIVITY,
+    COLOR_BORDER,
+    COLOR_DIR_SELECTED,
+    COLOR_INPUT,
+    COLOR_MUTED,
+    COLOR_SIDEBAR,
+    COLOR_TEXT,
+)
 from app.step_catalog import entry_for_action
 
 # Gherkin string token color (matches gherkin_highlighter)

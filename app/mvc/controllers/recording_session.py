@@ -5,7 +5,6 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, Any
 
-
 from app.brand import BRAND_NAME
 from app.gherkin_ru import GherkinParseError
 from app.qt.dialogs import confirm

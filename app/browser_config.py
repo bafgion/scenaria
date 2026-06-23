@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from app.http_auth import playwright_http_credentials
 
@@ -86,8 +87,8 @@ def browser_context_options(
         options["http_credentials"] = credentials
 
     if test_client:
-        from app.test_clients import require_test_client
         from app.feature_store import get_root
+        from app.test_clients import require_test_client
 
         root = project_root or get_root()
         options["storage_state"] = require_test_client(test_client, root)

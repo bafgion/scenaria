@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 
 from PySide6.QtCore import Qt
-from app.gherkin_ru import STEP_INDENT, is_step_indented, leading_indent, suggest_step_keyword
-from app.gherkin_ru import block_text_has_step_content
 from PySide6.QtGui import (
     QColor,
     QGuiApplication,
@@ -17,6 +15,13 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QMenu, QPlainTextEdit, QTextEdit
 
+from app.gherkin_ru import (
+    STEP_INDENT,
+    block_text_has_step_content,
+    is_step_indented,
+    leading_indent,
+    suggest_step_keyword,
+)
 from app.qt.fonts import editor_font
 from app.qt.widgets.gherkin_completions import GherkinCompleter
 from app.qt.widgets.gherkin_highlighter import GherkinHighlighter
@@ -175,13 +180,13 @@ class GherkinEditor(QPlainTextEdit):
 
     def _open_step_help_for_line(self) -> None:
         if self._recording_blocks_manual_tools():
-            from app.qt.dialogs import alert
             from app.brand import BRAND_NAME
+            from app.qt.dialogs import alert
 
             alert(self.window(), BRAND_NAME, "Поставьте запись на паузу, чтобы открыть справку по шагам")
             return
-        from app.step_catalog import resolve_step_entry
         from app.qt.widgets.step_help_panel import open_step_help_panel
+        from app.step_catalog import resolve_step_entry
 
         cursor = self.textCursor()
         line_no = cursor.blockNumber() + 1
@@ -212,8 +217,8 @@ class GherkinEditor(QPlainTextEdit):
 
     def _open_snippet_palette(self) -> None:
         if self._recording_blocks_manual_tools():
-            from app.qt.dialogs import alert
             from app.brand import BRAND_NAME
+            from app.qt.dialogs import alert
 
             alert(self.window(), BRAND_NAME, "Поставьте запись на паузу, чтобы вставить шаг из палитры")
             return

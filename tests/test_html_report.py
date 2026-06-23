@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from app.html_report import (
-    run_report_from_play,
     render_run_report_html,
+    run_report_from_play,
     write_run_report_html,
     write_suite_index_html,
 )
-from app.selector_validate import validate_results_to_issues
-from app.selector_validate import StepValidateResult
+from app.selector_validate import StepValidateResult, validate_results_to_issues
 
 
 def test_run_report_from_play_with_step_results() -> None:

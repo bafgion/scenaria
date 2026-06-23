@@ -11,7 +11,12 @@ from app.gherkin_refactor import (
     update_start_urls,
 )
 from app.gherkin_ru import STEP_INDENT
-from app.snippet_store import append_user_snippet, load_user_snippets, slugify_snippet_id, UserSnippet
+from app.snippet_store import (
+    UserSnippet,
+    append_user_snippet,
+    load_user_snippets,
+    slugify_snippet_id,
+)
 from app.upload_helpers import resolve_upload_path, validate_upload_path
 
 TAB = STEP_INDENT

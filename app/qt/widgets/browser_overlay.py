@@ -6,9 +6,9 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
+from app.brand import BRAND_NAME
 from app.qt import icons
 from app.qt.labels import caption_label, set_label_tone
-from app.brand import BRAND_NAME
 
 
 class BrowserOverlayPanel(QWidget):

@@ -4,37 +4,22 @@
 
 from __future__ import annotations
 
-
-
 import threading
-
 import time
-
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from dataclasses import dataclass
-
 from pathlib import Path
-
-from typing import Any, Callable
-
-
+from typing import Any
 
 from app.feature_store import load_feature
-
 from app.gherkin_context import parse_feature_test_client
-from app.gherkin_ru import gherkin_to_steps
 from app.gherkin_outline import expand_outline_steps, parse_outline
-
+from app.gherkin_ru import gherkin_to_steps
 from app.mvc.models.catalog_model import collect_feature_paths_with_tag, feature_has_tag
-
 from app.player import ScenarioPlayer
-
 from app.run_status_store import record_run
-
 from app.settings import load_settings
-
-
 
 ProgressCallback = Callable[[str], None]
 

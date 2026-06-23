@@ -46,7 +46,7 @@ def test_ensure_welcome_tab_is_closable(qapp) -> None:
 
 def test_close_welcome_reopens_start_tab(qapp) -> None:
     from app.mvc.controllers.app_controller import AppController
-    from app.qt.widgets.editor_workspace import EditorWorkspace, _PAGE_WELCOME
+    from app.qt.widgets.editor_workspace import _PAGE_WELCOME, EditorWorkspace
 
     controller = AppController()
     workspace = EditorWorkspace(controller)

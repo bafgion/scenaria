@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.gherkin_ru import STEP_INDENT, _KEYWORD_RE, is_gherkin_step_line, leading_indent
+from app.gherkin_ru import _KEYWORD_RE, STEP_INDENT, is_gherkin_step_line, leading_indent
 
 _GOTO_BODY_RE = re.compile(r'^открыт[а]?\s+"((?:\\.|[^"])*)"$', re.IGNORECASE)
 _HEADER_RE = re.compile(r"^(?:функционал|сценарий|структура\s+сценария)\s*:", re.IGNORECASE)

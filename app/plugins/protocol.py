@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from app.plugins.models import RunBatchResult, RunCaseResult, RunRequest, RunResult

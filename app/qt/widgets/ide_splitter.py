@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QSplitter, QSplitterHandle
 
-from app.qt.theme import COLOR_DIVIDER, COLOR_EDITOR, COLOR_PANEL, COLOR_SIDEBAR, COLOR_WORKSPACE, COLOR_ZONE_LINE
+from app.qt.theme import (
+    COLOR_DIVIDER,
+    COLOR_EDITOR,
+    COLOR_PANEL,
+    COLOR_SIDEBAR,
+    COLOR_WORKSPACE,
+    COLOR_ZONE_LINE,
+)
 
 HIT_SIZE = 9
 LINE_SIZE = 1

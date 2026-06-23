@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.feature_store import get_root
-from app.gherkin_snippets import GherkinSnippet, HEADER_SNIPPETS, STEP_SNIPPETS
+from app.gherkin_snippets import HEADER_SNIPPETS, STEP_SNIPPETS, GherkinSnippet
 from app.paths import global_snippets_path, project_snippets_path
 
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")

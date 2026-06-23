@@ -9,9 +9,9 @@ from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedWidget, QTreeView, QVBoxLayout, QWidget
 
 from app.mvc.models.catalog_model import CatalogNode, CatalogViewState
-from app.run_display import format_last_run_summary
 from app.qt.theme import COLOR_ERROR, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING
 from app.qt.widgets.catalog_empty_state import CatalogEmptyState
+from app.run_display import format_last_run_summary
 
 
 class CatalogTreeView(QTreeView):

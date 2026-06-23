@@ -76,6 +76,9 @@ Release workflow (тег `v*`) — один прогон pytest без retry, з
 python -m ruff check app tests
 ```
 
+Правила: `E`, `F`, `I`, `UP` в `[tool.ruff.lint]` (`pyproject.toml`); `E501` игнорируется для legacy UI-строк.  
+Mixin-guard: `python scripts/check_mixin_methods.py` (также в CI).
+
 Конфигурация: `[tool.ruff]` в `pyproject.toml`.
 
 ## Настройки в тестах

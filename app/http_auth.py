@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import unquote, urlunparse, urlparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 
 def host_from_url(url: str) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from app.player import ScenarioPlayer, _PICK_CANCEL
+from app.player import _PICK_CANCEL, ScenarioPlayer
 
 
 def test_pick_pump_cancel_unblocks_active_pick() -> None:

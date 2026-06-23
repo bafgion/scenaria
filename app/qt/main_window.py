@@ -5,41 +5,43 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
+from app.brand import BRAND_NAME
 from app.feature_store import get_root, resolve_project_root
-from app.plugins.registry import get_registry
-from app.progress_state import ProgressState
-from app.qt.drag_drop import classify_drop_paths, paths_from_drop_urls
+from app.http_auth import apply_url_credentials_to_settings, host_from_url, strip_url_credentials
 from app.mvc.controllers.app_controller import AppController
 from app.mvc.controllers.catalog_controller import CatalogController
-from app.http_auth import apply_url_credentials_to_settings, host_from_url, strip_url_credentials
-from app.qt.dialogs import alert, confirm, prompt_text
+from app.plugins.registry import get_registry
+from app.progress_state import ProgressState
+from app.qt.branding import about_text, brand_mark_pixmap
+from app.qt.dialogs import alert, prompt_text
+from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
 from app.qt.main_window_batch import MainWindowBatchMixin
+from app.qt.main_window_dragdrop import MainWindowDragDropMixin
+from app.qt.main_window_layout import MainWindowLayoutMixin
 from app.qt.main_window_menus import build_menus, refresh_plugins_menu
 from app.qt.main_window_palette import MainWindowPaletteMixin
+from app.qt.main_window_playback import MainWindowPlaybackMixin
 from app.qt.main_window_update import MainWindowUpdateMixin
 from app.qt.main_window_welcome import MainWindowWelcomeMixin
-from app.qt.widgets.http_auth_dialog import HttpAuthDialog
-from app.qt.widgets.browser_session_dialog import BrowserSessionDialog
 from app.qt.sync_prompts import install_prompt_service
-from app.qt.file_dialogs import FEATURE_FILTER, pick_open_file
-from app.qt.widgets.browser_overlay import BrowserOverlayPanel
+from app.qt.update_ui import current_version_label, updates_supported
 from app.qt.widgets.activity_bar import ActivityBar
 from app.qt.widgets.bottom_panel import BottomPanel
+from app.qt.widgets.browser_overlay import BrowserOverlayPanel
+from app.qt.widgets.browser_session_dialog import BrowserSessionDialog
 from app.qt.widgets.editor_workspace import EditorWorkspace
 from app.qt.widgets.hotkeys_dialog import HotkeysDialog
+from app.qt.widgets.http_auth_dialog import HttpAuthDialog
+from app.qt.widgets.ide_splitter import IdeSplitter
 from app.qt.widgets.ide_status_bar import IdeStatusBar
 from app.qt.widgets.sidebar import Sidebar
 from app.qt.widgets.zone_divider import zone_divider
-from app.qt.widgets.ide_splitter import IdeSplitter, HIT_SIZE
 from app.qt.worker_bridge import WorkerBridge
 from app.recent import recent_features, recent_projects, remember_feature, remember_project
 from app.scenario_hints import gherkin_template_text
-from app.qt.branding import about_text, brand_mark_pixmap
-from app.brand import BRAND_NAME
-from app.qt.update_ui import current_version_label, updates_supported
 from app.settings import load_settings, save_settings
 
 
@@ -49,6 +51,9 @@ class MainWindow(
     MainWindowBatchMixin,
     MainWindowPaletteMixin,
     MainWindowWelcomeMixin,
+    MainWindowLayoutMixin,
+    MainWindowDragDropMixin,
+    MainWindowPlaybackMixin,
 ):
     def __init__(self, controller: AppController) -> None:
         super().__init__()
@@ -267,46 +272,7 @@ class MainWindow(
             on_retry=self._play_with_apply,
         )
 
-    def _on_side_splitter_moved(self, _pos: int, _index: int) -> None:
-        sizes = self._side_splitter.sizes()
-        if sizes and sizes[0] > 0:
-            self._sidebar_width = sizes[0]
-
-    def _toggle_explorer(self, visible: bool) -> None:
-        self.sidebar.setVisible(visible)
-        splitter = self._side_splitter
-        sizes = splitter.sizes()
-        total = sum(sizes) or max(splitter.width(), 600)
-        if visible:
-            splitter.setHandleWidth(HIT_SIZE)
-            sidebar_w = self._sidebar_width if self._sidebar_width > 0 else 260
-            splitter.setSizes([sidebar_w, max(1, total - sidebar_w)])
-        else:
-            if sizes and sizes[0] > 0:
-                self._sidebar_width = sizes[0]
-            splitter.setHandleWidth(0)
-            splitter.setSizes([0, total])
-
-    def _toggle_bottom_panel(self, visible: bool) -> None:
-        self._panel_visible = visible
-        splitter = self._panel_splitter
-        sizes = splitter.sizes()
-        total = sum(sizes) or max(splitter.height(), 600)
-        if visible:
-            splitter.setHandleWidth(HIT_SIZE)
-            panel_h = max(140, int(total * 0.35))
-            splitter.setSizes([max(1, total - panel_h), panel_h])
-        else:
-            splitter.setHandleWidth(0)
-            splitter.setSizes([total, 0])
-        self.activity_bar.set_panel_checked(visible)
-
-    def _show_bottom_panel(self, page: str) -> None:
-        self.bottom_panel.show_page(page)
-        self._toggle_bottom_panel(True)
-
     def _on_feature_selected(self, path: object) -> None:
-        from pathlib import Path
 
         if not isinstance(path, Path):
             return
@@ -317,13 +283,11 @@ class MainWindow(
         self.workspace.open_file(resolved, reload_if_clean=True)
 
     def _on_catalog_file_open(self, path: object) -> None:
-        from pathlib import Path
 
         if isinstance(path, Path) and self.workspace.open_file(path, reload_if_clean=True):
             self._controller.catalog.select_feature(path)
 
     def _on_directory_selected(self, path: object) -> None:
-        from pathlib import Path
 
         if isinstance(path, Path):
             self.status_bar.set_message(f"Папка: {path.name}", "info")
@@ -437,7 +401,6 @@ class MainWindow(
         self._refresh_welcome_recents()
 
     def _open_recent_feature(self, path: object) -> None:
-        from pathlib import Path
 
         if isinstance(path, Path):
             root = get_root()
@@ -449,7 +412,6 @@ class MainWindow(
             self._refresh_welcome_recents()
 
     def _open_recent_project(self, path: object) -> None:
-        from pathlib import Path
 
         if isinstance(path, Path):
             self._controller.catalog.set_features_root(path)
@@ -662,7 +624,6 @@ class MainWindow(
         self._controller.catalog.refresh_tree()
 
     def _show_run_history(self, path: object) -> None:
-        from pathlib import Path
 
         from app.qt.widgets.run_history_dialog import open_run_history_dialog
 
@@ -710,34 +671,6 @@ class MainWindow(
             rec.stop_playback()
         elif session.player_browser:
             rec.close_player_browser()
-
-    def _reset_layout(self) -> None:
-        self.activity_bar.explorer_btn.setChecked(True)
-        self._toggle_explorer(True)
-        self._sidebar_width = 260
-        splitter = self._side_splitter
-        total = sum(splitter.sizes()) or max(splitter.width(), 1000)
-        splitter.setHandleWidth(HIT_SIZE)
-        splitter.setSizes([260, max(1, total - 260)])
-        self._toggle_bottom_panel(False)
-        self.workspace.reset_editor_layout()
-        self.status_bar.set_message("Макет окон сброшен", "success")
-
-    def _apply_toolbar_compact(self, enabled: bool) -> None:
-        self.workspace.editor_action_bar.set_toolbar_simple_mode(enabled)
-        if hasattr(self, "_act_toolbar_compact"):
-            blocked = self._act_toolbar_compact.blockSignals(True)
-            self._act_toolbar_compact.setChecked(enabled)
-            self._act_toolbar_compact.setText(
-                "Расширенная панель" if enabled else "Компактная панель"
-            )
-            self._act_toolbar_compact.blockSignals(blocked)
-
-    def _on_toolbar_compact_toggled(self, checked: bool) -> None:
-        settings = load_settings()
-        settings["toolbar_compact"] = checked
-        save_settings(settings)
-        self._apply_toolbar_compact(checked)
 
     def _export_with_apply(self, action):
         def _run() -> None:
@@ -1153,178 +1086,6 @@ class MainWindow(
         if task_id == "batch-run":
             self._controller.recording.stop_batch()
 
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
-        if not event.mimeData().hasUrls():
-            return
-        urls = [url.toLocalFile() for url in event.mimeData().urls()]
-        paths = paths_from_drop_urls(urls)
-        if not paths:
-            return
-        features, directories = classify_drop_paths(paths)
-        if not features and not directories:
-            return
-        event.acceptProposedAction()
-        hints: list[str] = []
-        if features:
-            hints.append(f"{len(features)} .feature")
-        if directories:
-            hints.append(f"проект «{directories[0].name}»")
-        self.status_bar.set_message(f"Отпустите для открытия: {', '.join(hints)}", "info")
-
-    def dragLeaveEvent(self, event) -> None:  # noqa: N802
-        self._restore_status_after_drag()
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
-        if not event.mimeData().hasUrls():
-            return
-        urls = [url.toLocalFile() for url in event.mimeData().urls()]
-        paths = paths_from_drop_urls(urls)
-        features, directories = classify_drop_paths(paths)
-        ignored = len(paths) - len(features) - len(directories)
-
-        if directories:
-            self._open_dropped_project(directories[0])
-
-        if features:
-            if not self.workspace.apply_before_action():
-                event.acceptProposedAction()
-                self._restore_status_after_drag()
-                return
-            opened = self.workspace.open_files(features, reload_if_clean=True)
-            root = get_root()
-            for path in features:
-                remember_feature(path)
-                if root is not None and root in path.parents:
-                    self._controller.catalog.select_feature(path)
-            self._refresh_welcome_recents()
-            self.status_bar.set_message(f"Открыто файлов: {opened}", "success")
-
-        if ignored > 0:
-            alert(
-                self,
-                BRAND_NAME,
-                f"Пропущено элементов: {ignored} (ожидаются .feature или папка проекта).",
-            )
-
-        event.acceptProposedAction()
-        if not features:
-            self._restore_status_after_drag()
-
-    def _open_dropped_project(self, folder: Path) -> None:
-        resolved = folder.resolve()
-        current = get_root()
-        if current is not None and current.resolve() != resolved:
-            if not confirm(
-                self,
-                BRAND_NAME,
-                f"Открыть проект «{resolved.name}»?\nТекущий: {current}",
-            ):
-                return
-        self._controller.catalog.set_features_root(resolved)
-        remember_project(resolved)
-        self._refresh_welcome_recents()
-        self.status_bar.set_message(str(resolved))
-        self.workspace.ensure_welcome_tab(activate=not self.workspace.has_editor_tabs())
-
-    def _restore_status_after_drag(self) -> None:
-        root = get_root()
-        if root is not None:
-            self.status_bar.set_message(str(root))
-        else:
-            self.status_bar.set_message("Проект → Открыть проект…", "info")
-
-    def _on_play_step(self, index: int) -> None:
-        self.workspace.clear_play_highlight()
-        self.workspace.highlight_play_step(index)
-
-    def _on_focus_failed(self, index: int) -> None:
-        self.workspace.mark_failed_step(index)
-        display = index + 1
-        self._show_error_for_step(index, display_index=display)
-        self._show_bottom_panel("error")
-
-    def _show_error_for_step(self, step_index: int, *, display_index: int | None = None) -> None:
-        steps = self._controller.scenario.steps
-        step = steps[step_index] if 0 <= step_index < len(steps) else {}
-        selector = str(step.get("selector") or step.get("url") or "")
-        self.bottom_panel.error_panel.show_failure(
-            step_index=display_index if display_index is not None else step_index + 1,
-            selector=selector,
-            message="Шаг не выполнен — см. журнал и результаты",
-            screenshot_path=None,
-        )
-
-    def _on_validation_results(self, payload: dict) -> None:
-        self.bottom_panel.validate_panel.show_results(payload)
-        self.workspace.show_editor()
-        self._show_bottom_panel("validate")
-
-    def _on_validate_step_focus(self, step_index: int) -> None:
-        self.workspace.show_editor()
-        payload = self.bottom_panel.validate_panel.results_as_payload()
-        status = ""
-        for item in payload.get("results", []):
-            if int(item.get("step_index", 0)) == step_index:
-                status = str(item.get("status", "") or "")
-                break
-        failed = status not in {"", "ok", "fragile", "skipped"}
-        self.workspace.gherkin_panel.highlight_step(step_index, failed=failed)
-
-    def _on_play_results(self, payload: dict, _duration_ms: int) -> None:
-        has_failed = self._controller.session.last_failed_step_index is not None
-        if not has_failed:
-            from app.settings import load_settings, save_settings
-
-            settings = load_settings()
-            if not settings.get("first_run_checklist_done"):
-                settings["first_run_checklist_done"] = True
-                save_settings(settings)
-                self._sync_welcome_checklist()
-        self.bottom_panel.results_panel.show_results(payload, has_failed_step=has_failed)
-        self.workspace.clear_play_highlight()
-        if has_failed:
-            idx = int(self._controller.session.last_failed_step_index or -1)
-            self.workspace.mark_failed_step(idx)
-            steps = self._controller.scenario.steps
-            step = steps[idx] if 0 <= idx < len(steps) else {}
-            selector = str(step.get("selector") or step.get("url") or "")
-            display = int(payload.get("failed_step") or (idx + 1 if idx >= 0 else 0))
-            self.bottom_panel.error_panel.show_failure(
-                step_index=display,
-                selector=selector,
-                message=str(payload.get("message", "")),
-                screenshot_path=payload.get("screenshot_path"),
-                trace_path=payload.get("trace_path"),
-            )
-            self._show_bottom_panel("error")
-        else:
-            self.bottom_panel.error_panel.clear()
-            self._show_bottom_panel("results")
-        self._maybe_open_html_report(payload)
-
-    def _maybe_open_html_report(self, payload: dict) -> None:
-        from app.settings import load_settings
-
-        if not load_settings().get("open_html_report_after_run", False):
-            return
-        from app.report_locator import ReportTarget, find_latest_report
-
-        hints = {
-            "html_report_path": payload.get("html_report_path"),
-            "suite_html_index": payload.get("suite_html_index"),
-            "allure_dir": payload.get("allure_dir"),
-        }
-        target = find_latest_report(hints=hints, project_root=get_root())
-        if target is None:
-            report_path = payload.get("html_report_path") or payload.get("suite_html_index")
-            if report_path:
-                path = Path(str(report_path))
-                if path.is_file():
-                    target = ReportTarget("html", path)
-        if target is not None:
-            self._open_report_target(target)
-
     def _on_save_prompt(self, count: int) -> None:
         _ = count
         self.workspace.show_post_record(list(self._controller.scenario.steps))
@@ -1342,7 +1103,6 @@ class MainWindow(
         self._controller.recording.rerun_vanessa_failed()
 
     def _open_allure_results(self, allure_dir: object) -> None:
-        from pathlib import Path
 
         from scenaria_vanessa.allure_helpers import open_allure_directory, run_allure_serve
         from scenaria_vanessa.settings import load_vanessa_settings
@@ -1353,27 +1113,6 @@ class MainWindow(
         cli = str(settings.get("allure_cli_path", "allure") or "allure")
         if run_allure_serve(allure_dir, cli) is None:
             open_allure_directory(allure_dir)
-
-    def _on_batch_results(self, payload: dict, _duration_ms: int) -> None:
-        self.bottom_panel.results_panel.show_results(payload, has_failed_step=not payload.get("success"))
-        self.bottom_panel.error_panel.clear()
-        self._show_bottom_panel("results")
-        self._maybe_open_html_report(payload)
-
-    def _on_batch_partial_results(self, payload: dict) -> None:
-        if str(payload.get("runner", "") or "") != "vanessa":
-            return
-        panel = self.bottom_panel.results_panel
-        total_hint = int(payload.get("total", 0) or 0)
-        if payload.get("bootstrap"):
-            panel.begin_live_suite(total_hint=total_hint)
-            self._show_bottom_panel("results")
-            return
-        cases = list(payload.get("cases") or [])
-        if not cases:
-            return
-        panel.update_suite_cases(cases)
-        self._show_bottom_panel("results")
 
     def _show_about(self) -> None:
         box = QMessageBox(self)

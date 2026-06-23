@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLineEdit,
+    QPlainTextEdit,
+    QWidget,
+)
 
 from app.feature_store import get_root
 from app.qt.widgets.base_dialog import BaseAppDialog, style_dialog_button_box
-from app.snippet_store import UserSnippet, append_user_snippet, extract_placeholders, slugify_snippet_id
+from app.snippet_store import (
+    UserSnippet,
+    append_user_snippet,
+    extract_placeholders,
+    slugify_snippet_id,
+)
 
 
 class SaveSnippetDialog(BaseAppDialog):

@@ -12,7 +12,11 @@ if TYPE_CHECKING:
 
 class MainWindowPaletteMixin:
     def _collect_palette_commands(self: MainWindow):
-        from app.qt.widgets.command_palette import PaletteCommand, normalize_menu_label, shortcut_text
+        from app.qt.widgets.command_palette import (
+            PaletteCommand,
+            normalize_menu_label,
+            shortcut_text,
+        )
 
         commands: list[PaletteCommand] = []
         seen: set[str] = set()

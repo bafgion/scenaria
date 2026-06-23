@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class UpdatePhase(str, Enum):
+class UpdatePhase(StrEnum):
     DOWNLOAD = "download"
     VERIFY = "verify"
     EXTRACT = "extract"

@@ -7,7 +7,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
 from integration_subprocess import integration_subprocess_active, run_integration_tests
 
 ROOT = Path(__file__).resolve().parents[1]

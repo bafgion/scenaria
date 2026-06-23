@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.text_replace import find_matches, line_is_replaceable, replace_all
 
-
 SAMPLE = """Функционал: UI
 @smoke
 Сценарий: Demo

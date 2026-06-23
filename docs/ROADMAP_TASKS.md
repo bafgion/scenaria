@@ -20,11 +20,15 @@
 | **13** | v0.10.0 | T4 — Тесты | ✅ | 4/4 |
 | **14** | v0.10.1 | T5 — Export и docs | ✅ | 3/3 |
 | **15** | v0.10.2 | T6 — CI без skip | ✅ | 4/4 |
-| **16** | v0.10.3 | T7 — Сопровождение | ⬜ | 0/4 |
-| **17** | — | T8a — Player (ядро) | ⬜ | 0/3 |
+| **16** | v0.10.3 | T7 — Сопровождение | ✅ | 4/4 |
+| **17** | — | T8a — Player (ядро) | ✅ | 3/3 |
 | **18** | v0.11.0 | T8b — Player (фасад) | ⬜ | 0/3 |
 | **19** | v0.11.1 | T9 — Gherkin split | ⬜ | 0/4 |
 | **20** | v0.11.2 | T10 — mypy | ⬜ | 0/3 |
+
+**Спринт 17 закрыт:** `player.py` 754 LOC; модули `player_step_executor`, `player_context`, `player_step_helpers`, `player_highlight`.
+
+**Спринт 16 закрыт:** MainWindow 1146 LOC (layout/playback/dragdrop mixins), архив v0.10.x, ruff select, mixin guard.
 
 **Спринт 15 закрыт:** 0 skip на CI — `QSignalSpy` + `sync_update_threads`, toolbar по расчётной ширине, тесты `_status_brief`.
 
@@ -155,103 +159,58 @@
 
 ---
 
-## Спринт 16 → v0.10.3 — Сопровождение (T7)
+## Спринт 16 → v0.10.3 — Сопровождение (T7) ✅
 
-**Источник:** аудит P2.
-
-### T7-1 — MainWindow ≤ 1200 ⬜
-
-**Цель:** закрыть хвост T2-4 (сейчас **1222** строки).
-
-**Поведение:**
-- Вынести ещё один связный блок (кандидаты: drag-drop handlers, status/sync, `_reset_layout` cluster) в `main_window_*.py`
+### T7-1 — MainWindow ≤ 1200 ✅
 
 **Критерии:**
-- [ ] `main_window.py` ≤ 1200 строк
-- [ ] `test_menu_structure.py`, `test_main_window_smoke.py` зелёные
+- [x] `main_window.py` — **1146** строк
+- [x] Mixins: `main_window_layout.py`, `main_window_playback.py`, `main_window_dragdrop.py`
+- [x] `test_menu_structure.py`, `test_main_window_smoke.py` зелёные
 
-**Оценка:** S
+### T7-2 — Архив спринтов ✅
+
+**Критерии:**
+- [x] `archive/COMPLETED_SPRINTS.md` — спринты 10–15, v0.9.0–v0.10.2
+
+### T7-3 — Ruff rules ✅
+
+**Критерии:**
+- [x] `select = ["E", "F", "I", "UP"]`, `ignore = ["E501"]`
+- [x] `StrEnum` для `UP042`, `ruff check --fix` для I/UP
+- [x] Документировано в `tests/README.md`
+
+### T7-4 — Guard для split-скриптов ✅
+
+**Критерии:**
+- [x] `scripts/check_mixin_methods.py` — AST, только методы класса
+- [x] Шаг в CI, `tests/test_check_mixin_methods.py`
+- [x] `docs/MIGRATION.md`
 
 ---
 
-### T7-2 — Архив спринтов ⬜
+## Спринт 17 — T8a: Player — исполнение шагов ✅
 
-**Цель:** `archive/COMPLETED_SPRINTS.md` отражает v0.10.x.
+**База:** `player.py` ~1810 строк → **754** (фасад). Релиз **v0.11.0** — после спринта 18.
 
-**Критерии:**
-- [ ] Таблица: спринты 10–14, релизы v0.9.0–v0.10.1
-- [ ] Ссылка из README при необходимости
-
-**Оценка:** S
-
----
-
-### T7-3 — Ruff rules ⬜
-
-**Цель:** явная конфигурация линтера.
-
-**Поведение:**
-- `[tool.ruff.lint] select = [...]` — минимум `E`, `F`, `I`, `UP`
-- Исправить новые находки или `ignore` с комментарием
+### T8a-1 — `player_step_executor.py` ✅
 
 **Критерии:**
-- [ ] CI ruff без сюрпризов
-- [ ] Документировано в `tests/README.md` или CONTRIBUTING one-liner
+- [x] Модуль **524** строк (≤ 600)
+- [x] `tests/test_player_execute.py` зелёные
 
-**Оценка:** S
-
----
-
-### T7-4 — Guard для split-скриптов ⬜
-
-**Цель:** ловить mixin-методы без `self` до runtime.
-
-**Поведение:**
-- `scripts/check_mixin_methods.py` — AST: методы в `*_coordinator.py` / `recording_session.py` должны иметь `self`
-- Опционально: шаг в CI или pre-commit (документировать)
+### T8a-2 — `player_context.py` ✅
 
 **Критерии:**
-- [ ] Скрипт ловит `_status_brief(message)` без `self`
-- [ ] Упоминание в `docs/MIGRATION.md`
+- [x] `RunContext` + `prepare_run_context`, `resolve_email_for_code_prompt`, `_evaluate_condition`
+- [x] `run_variables.py` — re-export для обратной совместимости
+- [x] `tests/test_run_variables.py`, generated steps зелёные
 
-**Оценка:** S
-
----
-
-## Спринт 17 — T8a: Player — исполнение шагов
-
-**База:** `player.py` ~1594 строк. Релиз **v0.11.0** — после спринта 18.
-
-### T8a-1 — `player_step_executor.py` ⬜
-
-**Цель:** вынести `execute_step` и dispatch по `action`.
+### T8a-3 — Урезать `player.py` ✅
 
 **Критерии:**
-- [ ] Модуль ≤ 600 строк
-- [ ] `tests/test_player_execute.py` без изменений поведения
-
-**Оценка:** L
-
----
-
-### T8a-2 — `player_context.py` ⬜
-
-**Цель:** `RunContext`, переменные, `fill_generated`, downloads state — отдельно от Playwright page API.
-
-**Критерии:**
-- [ ] `tests/test_run_variables.py`, `test_player_execute.py` (generated) зелёные
-
-**Оценка:** M · **Зависимости:** T8a-1 частично
-
----
-
-### T8a-3 — Урезать `player.py` (промежуточно) ⬜
-
-**Критерии:**
-- [ ] `player.py` ≤ 1100 строк после T8a
-- [ ] Нет циклических импортов
-
-**Оценка:** S
+- [x] `player.py` **754** строк (≤ 1100)
+- [x] Нет циклических импортов (`play_log` → `player_context`)
 
 ---
 
@@ -387,13 +346,13 @@
 | T6-2 | Toolbar resize CI | 15 | M | ✅ | T6-4 |
 | T6-3 | `_status_brief` test | 15 | S | ✅ | — |
 | T6-4 | Docs 0 skip | 15 | S | ✅ | T6-1, T6-2 |
-| T7-1 | MainWindow LOC | 16 | S | ⬜ | — |
-| T7-2 | Archive v0.10 | 16 | S | ⬜ | — |
-| T7-3 | Ruff select | 16 | S | ⬜ | — |
-| T7-4 | Mixin guard script | 16 | S | ⬜ | — |
-| T8a-1 | player_step_executor | 17 | L | ⬜ | T8b-* |
-| T8a-2 | player_context | 17 | M | ⬜ | T8a-1 |
-| T8a-3 | player interim LOC | 17 | S | ⬜ | T8a-1,2 |
+| T7-1 | MainWindow LOC | 16 | S | ✅ | — |
+| T7-2 | Archive v0.10 | 16 | S | ✅ | — |
+| T7-3 | Ruff select | 16 | S | ✅ | — |
+| T7-4 | Mixin guard script | 16 | S | ✅ | — |
+| T8a-1 | player_step_executor | 17 | L | ✅ | T8b-* |
+| T8a-2 | player_context | 17 | M | ✅ | T8a-1 |
+| T8a-3 | player interim LOC | 17 | S | ✅ | T8a-1,2 |
 | T8b-1 | player_highlight | 18 | M | ⬜ | T8a-* |
 | T8b-2 | player worker | 18 | M | ⬜ | T8a-* |
 | T8b-3 | player ≤900 | 18 | S | ⬜ | T8b-1,2 |

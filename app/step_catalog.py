@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, parse_gherkin_steps
-from app.gherkin_snippets import GherkinSnippet, STEP_SNIPPETS
+from app.gherkin_ru import STEP_INDENT, GherkinParseError, parse_gherkin_steps
+from app.gherkin_snippets import STEP_SNIPPETS, GherkinSnippet
 
 _ACTION_RE = re.compile(r"action:\s*(\w+)", re.IGNORECASE)
 _KEYWORD_PREFIX_RE = re.compile(

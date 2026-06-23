@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, merge_steps_into_feature_text, parse_feature_structure, steps_to_gherkin, suggest_step_keyword
+from app.gherkin_ru import (
+    STEP_INDENT,
+    GherkinParseError,
+    gherkin_to_steps,
+    merge_steps_into_feature_text,
+    parse_feature_structure,
+    steps_to_gherkin,
+    suggest_step_keyword,
+)
 
 TAB = STEP_INDENT
 

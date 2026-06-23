@@ -1,4 +1,11 @@
-from app.version import _normalize_version, _read_bundled_version, _read_pyproject_version, app_version, is_newer_version, version_tuple
+from app.version import (
+    _normalize_version,
+    _read_bundled_version,
+    _read_pyproject_version,
+    app_version,
+    is_newer_version,
+    version_tuple,
+)
 
 
 def test_app_version_matches_pyproject():

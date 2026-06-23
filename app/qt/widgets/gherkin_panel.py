@@ -9,16 +9,23 @@ from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.gherkin_ru import GherkinParseError, STEP_INDENT, gherkin_to_steps, is_gherkin_step_line, parse_gherkin_steps, steps_to_gherkin
+from app.brand import BRAND_NAME
+from app.gherkin_ru import (
+    STEP_INDENT,
+    GherkinParseError,
+    gherkin_to_steps,
+    is_gherkin_step_line,
+    parse_gherkin_steps,
+    steps_to_gherkin,
+)
 from app.mvc.controllers.scenario_controller import ScenarioController
 from app.mvc.models.scenario_model import ScenarioModel
 from app.qt.dialogs import prompt_text
-from app.qt.widgets.picker_step_dialog import pick_picker_step
 from app.qt.theme import COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING
 from app.qt.widgets.gherkin_editor import GherkinEditor
 from app.qt.widgets.gherkin_error_bar import GherkinErrorBar
 from app.qt.widgets.gherkin_hints import GherkinHintsBar
-from app.brand import BRAND_NAME
+from app.qt.widgets.picker_step_dialog import pick_picker_step
 
 
 class GherkinPanel(QWidget):

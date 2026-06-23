@@ -6,8 +6,9 @@ import os
 import queue
 import threading
 import time
+from collections.abc import Callable
 from enum import Enum, auto
-from typing import Any, Callable
+from typing import Any
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
@@ -15,15 +16,22 @@ from app.browser_config import browser_context_options, launch_browser, load_bro
 from app.browser_focus import focus_browser_context_with_title
 from app.http_auth import auth_key, resolve_http_credentials
 from app.paths import configure_playwright_browsers
-from app.settings import load_settings
-from app.playwright_lifecycle import release_playwright_session
 from app.picker_script import (
     install_picker_in_all_frames,
     uninstall_picker_from_all_frames,
 )
-from app.player import PlayResult, highlight_selector, remove_highlight, reset_highlight_cleanup_state, run_scenario_on_page, setup_highlight_cleanup
+from app.player import (
+    PlayResult,
+    highlight_selector,
+    remove_highlight,
+    reset_highlight_cleanup_state,
+    run_scenario_on_page,
+    setup_highlight_cleanup,
+)
+from app.playwright_lifecycle import release_playwright_session
 from app.recorder_script import RECORDER_INIT_SCRIPT, RECORDER_INSTALLED_CHECK
 from app.selector_build import apply_smart_selector_to_step
+from app.settings import load_settings
 from app.steps import NAV_TIMEOUT_MS, NAV_WAIT_UNTIL, apply_coalesced_step, normalize_steps
 
 BrowserCallback = Callable[[], None]

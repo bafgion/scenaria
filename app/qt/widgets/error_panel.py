@@ -108,15 +108,15 @@ class ErrorPanel(QWidget):
     def _open_screenshot(self) -> None:
         if not self._screenshot_path:
             return
-        from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(self._screenshot_path))
 
     def _open_trace(self) -> None:
         if not self._trace_path:
             return
-        from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(self._trace_path))

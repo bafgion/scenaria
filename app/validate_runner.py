@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from playwright.sync_api import sync_playwright
 
@@ -15,7 +16,6 @@ from app.selector_validate import (
     validate_results_to_payload,
     validate_scenario_selectors,
 )
-
 
 ProgressCallback = Callable[[str], None]
 

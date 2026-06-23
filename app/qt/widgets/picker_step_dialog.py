@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.gherkin_picker import PickerStepChoice, picker_step_choices
 from app.qt.labels import caption_label, code_preview_label, dialog_title_label

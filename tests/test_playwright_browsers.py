@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
 from app.paths import browser_cache_candidates, resolve_playwright_browsers_path
 from app.playwright_browsers import (
     browser_install_status,

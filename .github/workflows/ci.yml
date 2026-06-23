@@ -29,6 +29,10 @@ jobs:
         shell: pwsh
         run: python -m ruff check app tests
 
+      - name: Mixin method guard
+        shell: pwsh
+        run: python scripts/check_mixin_methods.py
+
       - name: Run tests
         shell: pwsh
         run: python -m pytest tests/ -q

@@ -5,19 +5,19 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from app.run_variables import generator_gherkin_phrase
 from app.steps import normalize_steps
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     TYPESCRIPT = "typescript"
     PYTHON = "python"
 
 
-class ExportSupport(str, Enum):
+class ExportSupport(StrEnum):
     SUPPORTED = "supported"
     PARTIAL = "partial"
     UNSUPPORTED = "unsupported"

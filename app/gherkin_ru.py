@@ -6,7 +6,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from app.run_variables import GENERATOR_GHERKIN_PHRASES, generator_gherkin_phrase, normalize_generator_name
+from app.run_variables import (
+    GENERATOR_GHERKIN_PHRASES,
+    generator_gherkin_phrase,
+    normalize_generator_name,
+)
 
 _KEYWORD_RE = re.compile(r"^(?:(?:Допустим|Дано|Когда|Тогда|И|Но)\s+)?(.+)$", re.IGNORECASE)
 _STEP_HEADER_RE = re.compile(r"^(?:функционал|сценарий|функция|контекст)\s*:", re.IGNORECASE)

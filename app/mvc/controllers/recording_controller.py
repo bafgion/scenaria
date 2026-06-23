@@ -4,28 +4,30 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
-from app.progress_state import ProgressState
 from app.feature_store import get_root
-from app.project_config import default_runner
-from app.run_suite import collect_feature_files, format_suite_summary
-from app.plugins.models import RunMode, RunRequest
-from app.plugins.registry import get_registry
-from app.mvc.models.catalog_model import CatalogModel
-from app.mvc.models.scenario_model import ScenarioModel
-from app.mvc.models.session_model import SessionModel
 from app.mvc.controllers.playback_coordinator import PlaybackCoordinatorMixin
 from app.mvc.controllers.recording_session import RecordingSessionMixin
 from app.mvc.controllers.validate_coordinator import ValidateCoordinatorMixin
+from app.mvc.models.catalog_model import CatalogModel
+from app.mvc.models.scenario_model import ScenarioModel
+from app.mvc.models.session_model import SessionModel
 from app.player import ScenarioPlayer
+from app.plugins.models import RunMode, RunRequest
+from app.plugins.registry import get_registry
+from app.progress_state import ProgressState
+from app.project_config import default_runner
 from app.qt.worker_bridge import WorkerBridge
 from app.recorder import ScenarioRecorder
+from app.run_suite import collect_feature_files, format_suite_summary
 from app.scenario_utils import ScenarioNotFoundError  # noqa: F401 — re-export for tests
 from app.steps import apply_coalesced_step
+
 
 class RecordingController(
     QObject,
@@ -447,12 +449,12 @@ class RecordingController(
 
         suite_html_index = None
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             from app.html_report import save_batch_html_reports
 
             started = (
-                datetime.fromtimestamp(self._play_started_at, tz=timezone.utc)
+                datetime.fromtimestamp(self._play_started_at, tz=UTC)
                 if self._play_started_at
                 else None
             )
@@ -467,7 +469,10 @@ class RecordingController(
         run_dir_raw = payload.get("run_dir")
         if run_dir_raw and payload.get("runner") == "vanessa":
             try:
-                from scenaria_vanessa.report_parsers import allure_dir_from_params, load_merged_params
+                from scenaria_vanessa.report_parsers import (
+                    allure_dir_from_params,
+                    load_merged_params,
+                )
 
                 merged = load_merged_params(Path(str(run_dir_raw)))
                 resolved = allure_dir_from_params(merged) or (Path(str(run_dir_raw)) / "allure")

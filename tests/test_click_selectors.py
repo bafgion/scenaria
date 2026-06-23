@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import sync_playwright
 import pytest
+from playwright.sync_api import sync_playwright
 
 from app.paths import configure_playwright_browsers
 from app.selector_heuristics import SELECTOR_HEURISTICS_JS
