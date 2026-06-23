@@ -4,15 +4,130 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from app.run_variables import generator_gherkin_phrase
 from app.steps import normalize_steps
 
 
 class ExportFormat(str, Enum):
     TYPESCRIPT = "typescript"
     PYTHON = "python"
+
+
+class ExportSupport(str, Enum):
+    SUPPORTED = "supported"
+    PARTIAL = "partial"
+    UNSUPPORTED = "unsupported"
+
+
+# Catalog web steps → Playwright export coverage (VA-only steps are out of scope).
+EXPORT_ACTION_SUPPORT: dict[str, ExportSupport] = {
+    "goto": ExportSupport.SUPPORTED,
+    "go_back": ExportSupport.SUPPORTED,
+    "reload": ExportSupport.SUPPORTED,
+    "scroll_to": ExportSupport.SUPPORTED,
+    "click": ExportSupport.SUPPORTED,
+    "double_click": ExportSupport.SUPPORTED,
+    "hover": ExportSupport.SUPPORTED,
+    "fill": ExportSupport.SUPPORTED,
+    "fill_generated": ExportSupport.PARTIAL,
+    "clear": ExportSupport.SUPPORTED,
+    "select": ExportSupport.SUPPORTED,
+    "check": ExportSupport.SUPPORTED,
+    "uncheck": ExportSupport.SUPPORTED,
+    "press": ExportSupport.SUPPORTED,
+    "upload": ExportSupport.SUPPORTED,
+    "draw_signature": ExportSupport.SUPPORTED,
+    "assert_visible": ExportSupport.SUPPORTED,
+    "assert_hidden": ExportSupport.SUPPORTED,
+    "assert_text": ExportSupport.SUPPORTED,
+    "assert_url": ExportSupport.SUPPORTED,
+    "wait": ExportSupport.SUPPORTED,
+    "wait_for": ExportSupport.SUPPORTED,
+    "wait_for_hidden": ExportSupport.SUPPORTED,
+    "close_browser": ExportSupport.SUPPORTED,
+    "prompt_email_code": ExportSupport.UNSUPPORTED,
+    "download_click": ExportSupport.UNSUPPORTED,
+    "assert_download_contains": ExportSupport.UNSUPPORTED,
+    "remember_text": ExportSupport.UNSUPPORTED,
+    "remember_field": ExportSupport.UNSUPPORTED,
+    "remember_url": ExportSupport.UNSUPPORTED,
+    "switch_tab": ExportSupport.UNSUPPORTED,
+    "close_tab": ExportSupport.UNSUPPORTED,
+    "assert_tab_count": ExportSupport.UNSUPPORTED,
+    "if": ExportSupport.UNSUPPORTED,
+    "repeat": ExportSupport.UNSUPPORTED,
+    "while": ExportSupport.UNSUPPORTED,
+    "for_each": ExportSupport.UNSUPPORTED,
+}
+
+
+@dataclass
+class ExportAnalysis:
+    supported: list[str] = field(default_factory=list)
+    partial: list[str] = field(default_factory=list)
+    unsupported: list[str] = field(default_factory=list)
+
+    @property
+    def has_blocking_issues(self) -> bool:
+        return bool(self.unsupported)
+
+    @property
+    def has_warnings(self) -> bool:
+        return bool(self.partial or self.unsupported)
+
+
+def export_support_for_action(action: str) -> ExportSupport:
+    return EXPORT_ACTION_SUPPORT.get(str(action or ""), ExportSupport.UNSUPPORTED)
+
+
+def analyze_export(scenario: dict[str, Any]) -> ExportAnalysis:
+    """Classify scenario steps by Playwright export coverage."""
+    steps = normalize_steps(list(scenario.get("steps", [])))
+    analysis = ExportAnalysis()
+    seen: set[str] = set()
+    for step in steps:
+        action = str(step.get("action", "") or "")
+        if not action or action in seen:
+            continue
+        seen.add(action)
+        level = export_support_for_action(action)
+        if level == ExportSupport.SUPPORTED:
+            analysis.supported.append(action)
+        elif level == ExportSupport.PARTIAL:
+            analysis.partial.append(action)
+        else:
+            analysis.unsupported.append(action)
+    return analysis
+
+
+def format_export_warnings(analysis: ExportAnalysis) -> str:
+    """Multi-line warning for GUI confirm dialogs."""
+    lines: list[str] = []
+    if analysis.partial:
+        lines.append(
+            "Частичный экспорт: " + ", ".join(analysis.partial)
+            + " (нужны фикстуры или переменные окружения)."
+        )
+    if analysis.unsupported:
+        lines.append(
+            "Не экспортируется в Playwright: " + ", ".join(analysis.unsupported)
+            + " (в файле останутся комментарии unsupported)."
+        )
+    return "\n".join(lines)
+
+
+def format_export_warning_lines(analysis: ExportAnalysis) -> list[str]:
+    """Single-line warnings for CLI stderr."""
+    lines: list[str] = []
+    if analysis.partial:
+        lines.append(f"warning: partial export for actions: {', '.join(analysis.partial)}")
+    if analysis.unsupported:
+        lines.append(f"warning: unsupported actions: {', '.join(analysis.unsupported)}")
+    return lines
 
 
 def _ts_literal(value: str) -> str:
@@ -26,6 +141,11 @@ def _py_literal(value: str) -> str:
 def _safe_test_name(name: str) -> str:
     cleaned = re.sub(r"[^\w\-]+", "_", name.strip(), flags=re.UNICODE).strip("_")
     return cleaned or "scenario"
+
+
+def _generator_env_name(generator: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9_]", "_", generator).upper()
+    return f"SCENARIA_GEN_{safe or 'VALUE'}"
 
 
 def _locator_expr(fmt: ExportFormat, selector: str) -> str:
@@ -66,8 +186,18 @@ def _signature_export_py(selector: str) -> list[str]:
     ]
 
 
+def _unsupported_lines(action: str, fmt: ExportFormat) -> list[str]:
+    if fmt == ExportFormat.TYPESCRIPT:
+        return [f"  // unsupported action: {action}"]
+    return [f"    # unsupported action: {action}"]
+
+
 def _step_lines(step: dict[str, Any], fmt: ExportFormat) -> list[str]:
     action = step.get("action")
+    support = export_support_for_action(str(action or ""))
+    if support == ExportSupport.UNSUPPORTED:
+        return _unsupported_lines(str(action), fmt)
+
     lines: list[str] = []
 
     if action == "goto":
@@ -112,17 +242,21 @@ def _step_lines(step: dict[str, Any], fmt: ExportFormat) -> list[str]:
         return lines
 
     if action == "fill_generated":
-        from app.run_variables import generator_gherkin_phrase
-
-        loc = _locator_expr(fmt, str(step.get("selector", "")))
         generator = str(step.get("generator", ""))
         label = generator_gherkin_phrase(generator)
+        env_name = _generator_env_name(generator)
+        loc = _locator_expr(fmt, str(step.get("selector", "")))
+        placeholder = f"REPLACE_{generator or 'generated'}"
         if fmt == ExportFormat.TYPESCRIPT:
-            lines.append(f"  // TODO: generate {label}")
-            lines.append(f"  await {loc}.fill('generated-{generator}');")
+            lines.append(f"  // partial export: generator {generator!r} ({label})")
+            lines.append(
+                f"  await {loc}.fill(process.env.{env_name} ?? {_ts_literal(placeholder)});"
+            )
         else:
-            lines.append(f"    # TODO: generate {label}")
-            lines.append(f"    {loc}.fill('generated-{generator}')")
+            lines.append(f"    # partial export: generator {generator!r} ({label})")
+            lines.append(
+                f"    {loc}.fill(os.environ.get({_py_literal(env_name)}, {_py_literal(placeholder)}))"
+            )
         return lines
 
     if action == "select":
@@ -276,10 +410,22 @@ def _step_lines(step: dict[str, Any], fmt: ExportFormat) -> list[str]:
             lines.append(f"    {loc}.wait_for(state='hidden')")
         return lines
 
+    return _unsupported_lines(str(action), fmt)
+
+
+def _export_notice_lines(analysis: ExportAnalysis, fmt: ExportFormat) -> list[str]:
+    if not analysis.has_warnings:
+        return []
     if fmt == ExportFormat.TYPESCRIPT:
-        lines.append(f"  // unsupported action: {action}")
+        prefix = "//"
     else:
-        lines.append(f"    # unsupported action: {action}")
+        prefix = "#"
+    lines = [f"{prefix} Scenaria export notice:"]
+    if analysis.partial:
+        lines.append(f"{prefix} partial: {', '.join(analysis.partial)}")
+    if analysis.unsupported:
+        lines.append(f"{prefix} unsupported: {', '.join(analysis.unsupported)}")
+    lines.append(prefix)
     return lines
 
 
@@ -291,14 +437,19 @@ def export_scenario_playwright(
     """Return Playwright test source for a scenario dict."""
     name = str(scenario.get("name", "") or "scenario")
     steps = normalize_steps(list(scenario.get("steps", [])))
+    analysis = analyze_export(scenario)
     body_lines: list[str] = []
     for step in steps:
         body_lines.extend(_step_lines(step, fmt))
+
+    notice = _export_notice_lines(analysis, fmt)
+    needs_os = any(step.get("action") == "fill_generated" for step in steps)
 
     if fmt == ExportFormat.TYPESCRIPT:
         test_name = _safe_test_name(name)
         header = [
             "// Generated by Scenaria",
+            *notice,
             "import { test, expect } from '@playwright/test';",
             "",
             f"test({_ts_literal(name)}, async ({{ page }}) => {{",
@@ -311,11 +462,18 @@ def export_scenario_playwright(
     test_name = _safe_test_name(name)
     header = [
         "# Generated by Scenaria",
-        "from playwright.sync_api import Page, expect",
-        "",
-        "",
-        f"def test_{test_name}(page: Page) -> None:",
+        *notice,
     ]
+    if needs_os:
+        header.append("import os")
+    header.extend(
+        [
+            "from playwright.sync_api import Page, expect",
+            "",
+            "",
+            f"def test_{test_name}(page: Page) -> None:",
+        ]
+    )
     if not body_lines:
         body_lines = ["    pass"]
     return "\n".join(header + body_lines + ["", ""])

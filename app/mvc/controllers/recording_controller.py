@@ -503,7 +503,7 @@ class RecordingController(
         self._scenario.set_steps(updated)
         self._emit_session()
 
-    def _status_brief(message: str) -> str:
+    def _status_brief(self, message: str) -> str:
         line = (message or "").splitlines()[0].strip()
         if "Call log:" in line:
             line = line.split("Call log:", 1)[0].strip()

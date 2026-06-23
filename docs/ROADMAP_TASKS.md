@@ -3,7 +3,7 @@
 Детальная спецификация для [ROADMAP.md](ROADMAP.md) (фазы T1–T5).  
 Продуктовые спринты 1–9: [archive/COMPLETED_SPRINTS.md](archive/COMPLETED_SPRINTS.md).
 
-**Обновлено:** 2026-06-23 · **База:** master v0.10.0 (спринт 13)  
+**Обновлено:** 2026-06-23 · **База:** master v0.10.1 (спринт 14)  
 **Формат:** цель → файлы → критерии приёмки → тесты  
 **Оценка:** **S** (1–2 дня), **M** (3–5 дней), **L** (1–2 недели)  
 **Статус:** ✅ готово · 🔶 частично · ⬜ не начато
@@ -18,7 +18,7 @@
 | **11** | v0.9.1 | T2 — MainWindow | ✅ | 4/4 |
 | **12** | v0.9.2 | T3 — RecordingController | ✅ | 4/4 |
 | **13** | v0.10.0 | T4 — Тесты | ✅ | 4/4 |
-| **14** | v0.10.1 | T5 — Export и docs | ⬜ | 0/3 |
+| **14** | v0.10.1 | T5 — Export и docs | ✅ | 3/3 |
 
 **Спринт 10 закрыт:** CI на PR, единые зависимости, ruff, `tests/README.md`.
 
@@ -102,52 +102,17 @@
 
 ---
 
-## Спринт 14 → v0.10.1 — Export и сопровождение
-
-### T5-1 — Playwright export audit ⬜
-
-**Цель:** убрать «тихие» `TODO` в экспорте.
-
-**Поведение:**
-- Таблица: шаг каталога → TS/Python генератор или `unsupported`
-- GUI/CLI: предупреждение при экспорте с unsupported шагами
-
-**Файлы:**
-- `app/playwright_export.py`, `tests/test_playwright_export.py`
-
-**Критерии:**
-- [ ] Нет `TODO: generate` для шагов из основного каталога ИЛИ явный список в docs
-- [ ] Тест на каждый поддерживаемый action
-
-**Оценка:** M
+**Спринт 14 закрыт:** аудит Playwright export, CHANGELOG, VERSIONING в git.
 
 ---
 
-### T5-2 — CHANGELOG.md ⬜
+## Спринт 14 → v0.10.1 — Export и сопровождение ✅
 
-**Цель:** пользовательская история релизов в репозитории.
-
-**Содержание:**
-- v0.7.0 … v0.8.1 из release notes GitHub (кратко)
-- Шаблон для следующих релизов
-
-**Критерии:**
-- [ ] Ссылка из README
-- [ ] Процесс в RELEASE.md: «добавить секцию в CHANGELOG перед тегом»
-
-**Оценка:** S
-
----
-
-### T5-3 — VERSIONING.md в git ⬜
-
-**Цель:** правила версий видны контрибьюторам.
-
-**Критерии:**
-- [ ] Файл не в `.gitignore`
-- [ ] Согласован с ROADMAP (таблица релизов T1–T5)
-
-**Оценка:** S
+| ID | Результат |
+|----|-----------|
+| T5-1 | `EXPORT_ACTION_SUPPORT`, `analyze_export`, предупреждения GUI/CLI, `docs/PLAYWRIGHT_EXPORT.md` |
+| T5-2 | `CHANGELOG.md`, ссылка в README, процесс в RELEASE.md |
+| T5-3 | `docs/VERSIONING.md` в репозитории, согласован с ROADMAP |
 
 ---
 
@@ -167,13 +132,13 @@
 | T3-2 | ValidateCoordinator | 12 | M | ✅ | — |
 | T3-3 | RecordingSession | 12 | L | ✅ | — |
 | T3-4 | RecordingController LOC | 12 | S | ✅ | T3-1…3 |
-| T4-1 | Integration subprocess | 13 | L | ⬜ | T4-4 |
-| T4-2 | Qt smoke | 13 | M | ⬜ | — |
-| T4-3 | Убрать skip CI | 13 | M | ⬜ | T4-1, T4-2 |
-| T4-4 | Release без retry | 13 | S | ⬜ | T4-1…3 |
-| T5-1 | Export audit | 14 | M | ⬜ | — |
-| T5-2 | CHANGELOG | 14 | S | ⬜ | — |
-| T5-3 | VERSIONING в git | 14 | S | ⬜ | — |
+| T4-1 | Integration subprocess | 13 | L | ✅ | T4-4 |
+| T4-2 | Qt smoke | 13 | M | ✅ | — |
+| T4-3 | Убрать skip CI | 13 | M | ✅ | T4-1, T4-2 |
+| T4-4 | Release без retry | 13 | S | ✅ | T4-1…3 |
+| T5-1 | Export audit | 14 | M | ✅ | — |
+| T5-2 | CHANGELOG | 14 | S | ✅ | — |
+| T5-3 | VERSIONING в git | 14 | S | ✅ | — |
 
 ---
 

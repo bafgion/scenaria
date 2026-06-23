@@ -10,7 +10,12 @@ from typing import Any
 
 from app.junit_report import write_junit_report
 from app.paths import configure_playwright_browsers
-from app.playwright_export import ExportFormat, export_scenario_playwright
+from app.playwright_export import (
+    ExportFormat,
+    analyze_export,
+    export_scenario_playwright,
+    format_export_warning_lines,
+)
 from app.feature_store import load_feature
 from app.plugins.installer import (
     PluginInstallError,
@@ -92,6 +97,16 @@ def export_command(args: argparse.Namespace) -> int:
         "steps": feature.get("steps", []),
     }
     fmt = ExportFormat.PYTHON if args.python else ExportFormat.TYPESCRIPT
+    analysis = analyze_export(scenario)
+    for line in format_export_warning_lines(analysis):
+        print(line, file=sys.stderr)
+    if analysis.has_blocking_issues and not getattr(args, "force", False):
+        print(
+            "Экспорт отменён: есть неподдерживаемые шаги. "
+            "Используйте --force, чтобы записать файл с комментариями.",
+            file=sys.stderr,
+        )
+        return 1
     text = export_scenario_playwright(scenario, fmt=fmt)
 
     if args.output:
@@ -286,6 +301,11 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("source", help="Файл .feature")
     export_parser.add_argument("-o", "--output", metavar="PATH", help="Путь к выходному файлу")
     export_parser.add_argument("--python", action="store_true", help="Python вместо TypeScript")
+    export_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Записать файл даже при неподдерживаемых шагах (с комментариями в коде)",
+    )
     export_parser.set_defaults(func=export_command)
 
     validate_parser = sub.add_parser("validate", help="Проверить селекторы в .feature без прогона шагов")

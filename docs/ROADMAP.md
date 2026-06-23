@@ -1,6 +1,6 @@
 # Roadmap Scenaria — технический долг и инфраструктура
 
-**Текущий релиз:** v0.9.2 (спринт 12 — RecordingController split)  
+**Текущий релиз:** v0.10.1 (спринт 14 — export audit + CHANGELOG)  
 **Продуктовые спринты 1–9:** завершены — см. [archive/COMPLETED_SPRINTS.md](archive/COMPLETED_SPRINTS.md).
 
 После v0.8.x фокус смещается с новых фич на **устойчивость разработки**: CI, декомпозиция крупных модулей, стабильные тесты, единые зависимости.
@@ -79,7 +79,7 @@
 | **v0.9.1** | 11 | **T2** MainWindow split | PATCH |
 | **v0.9.2** | 12 | **T3** RecordingController split | PATCH |
 | **v0.10.0** | 13 | **T4** стабильные тесты | MINOR |
-| **v0.10.1** | 14 | **T5** export + CHANGELOG | PATCH |
+| **v0.10.1** | 14 | **T5** export + CHANGELOG — **закрыт** | PATCH |
 
 Порядок T2/T3 можно менять; **T1 желательно первым** — защита рефакторинга.
 

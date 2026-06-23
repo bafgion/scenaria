@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.cli import build_parser, export_json_command, import_json_command
+from app.cli import build_parser, export_command, export_json_command, import_json_command
 
 
 def test_build_parser_has_json_commands() -> None:
@@ -53,3 +53,32 @@ def test_import_json_command_writes_feature(tmp_path: Path) -> None:
     text = target.read_text(encoding="utf-8")
     assert "https://example.com" in text
     assert "Сценарий:" in text
+
+
+def test_export_command_blocks_unsupported_without_force(tmp_path: Path, capsys) -> None:
+    feature = tmp_path / "tab.feature"
+    feature.write_text(
+        'Функционал: UI\nСценарий: Tab\n\tДопустим переключаюсь на первую вкладку\n',
+        encoding="utf-8",
+    )
+    code = export_command(
+        build_parser().parse_args(["export", str(feature), "-o", str(tmp_path / "out.spec.ts")])
+    )
+    assert code == 1
+    assert "unsupported" in capsys.readouterr().err.lower()
+    assert not (tmp_path / "out.spec.ts").exists()
+
+
+def test_export_command_force_writes_file(tmp_path: Path) -> None:
+    feature = tmp_path / "tab.feature"
+    feature.write_text(
+        'Функционал: UI\nСценарий: Tab\n\tДопустим переключаюсь на первую вкладку\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "out.spec.ts"
+    code = export_command(
+        build_parser().parse_args(["export", str(feature), "-o", str(out), "--force"])
+    )
+    assert code == 0
+    text = out.read_text(encoding="utf-8")
+    assert "unsupported action: switch_tab" in text

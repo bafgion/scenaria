@@ -30,4 +30,3 @@ Desktop.ini
 release.json
 
 # Local release override only; roadmap is tracked in git
-# docs/VERSIONING.md — tracked after sprint 14 (T5-3); until then optional local copy

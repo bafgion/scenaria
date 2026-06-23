@@ -128,8 +128,10 @@ cd scenaria\scripts
 
 | Файл | Содержание |
 |------|------------|
+| [CHANGELOG.md](CHANGELOG.md) | История релизов |
 | [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | Первые шаги, интерфейс, Gherkin |
 | [examples/README.md](examples/README.md) | Готовые примеры для новичков |
+| [docs/PLAYWRIGHT_EXPORT.md](docs/PLAYWRIGHT_EXPORT.md) | Экспорт в Playwright (поддерживаемые шаги) |
 | [docs/RELEASE.md](docs/RELEASE.md) | Сборка, релизы, автообновление |
 | [docs/VERSIONING.md](docs/VERSIONING.md) | SemVer и теги |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Планы (техдолг, спринты 10+) |
@@ -158,7 +160,7 @@ docs/                # документация
 tests/               # pytest
 ```
 
-**Текущий релиз:** [v0.8.0](https://github.com/bafgion/scenaria/releases/tag/v0.8.0) — TestClient, единый GUI, пример `05-testclient-kontekst.feature`.
+**Текущий релиз:** [v0.10.1](https://github.com/bafgion/scenaria/releases/tag/v0.10.1) — техдолг T1–T5, аудит Playwright export. См. [CHANGELOG.md](CHANGELOG.md).
 
 ## Сторонние компоненты
 

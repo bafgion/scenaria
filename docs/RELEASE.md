@@ -42,8 +42,9 @@ cd scripts
 
 ## Авторелиз через GitHub Actions
 
-1. Обновите версию в `pyproject.toml`.
-2. Закоммитьте и создайте тег:
+1. Добавьте секцию в [CHANGELOG.md](CHANGELOG.md) для новой версии.
+2. Обновите версию в `pyproject.toml`.
+3. Закоммитьте и создайте тег:
 
 ```powershell
 git add pyproject.toml
@@ -100,5 +101,6 @@ gh auth status
 
 ## См. также
 
+- [CHANGELOG.md](../CHANGELOG.md) — история релизов
 - [GETTING_STARTED.md](GETTING_STARTED.md) — onboarding и примеры
 - [README.md](../README.md) — обзор продукта

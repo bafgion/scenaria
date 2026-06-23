@@ -30,7 +30,12 @@ from app.qt.file_dialogs import (
     pick_open_file,
     pick_save_file,
 )
-from app.playwright_export import ExportFormat, export_scenario_playwright
+from app.playwright_export import (
+    ExportFormat,
+    analyze_export,
+    export_scenario_playwright,
+    format_export_warnings,
+)
 from app.scenario_io import (
     export_scenario_feature,
     export_scenario_json,
@@ -491,6 +496,15 @@ class ScenarioController:
         )
         if path is None:
             return False
+        analysis = analyze_export(scenario)
+        warning = format_export_warnings(analysis)
+        if warning and self._parent is not None:
+            if not confirm(
+                self._parent,
+                "Экспорт Playwright",
+                f"{warning}\n\nВ файле останутся комментарии для неподдерживаемых шагов.\nПродолжить?",
+            ):
+                return False
         if not python and path.suffix.lower() not in {".ts", ".spec.ts"}:
             path = path.with_suffix(".spec.ts")
         if python and path.suffix.lower() != ".py":
