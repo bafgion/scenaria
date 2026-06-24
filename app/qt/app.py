@@ -7,24 +7,17 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from app.mvc.controllers.app_controller import AppController
-from app.paths import configure_playwright_browsers
-from app.qt.branding import apply_app_branding, apply_window_icon
-from app.qt.main_window import MainWindow
-from app.qt.theme import apply_dark_theme
+from app.qt.startup import finish_startup, load_application, show_startup_splash
 
 
 def run_qt_app() -> None:
-    configure_playwright_browsers()
-
     app = QApplication(sys.argv)
-    apply_app_branding(app)
-    apply_dark_theme(app)
+    splash = show_startup_splash(app)
 
-    controller = AppController()
+    controller, window = load_application(app, splash)
     atexit.register(controller.shutdown)
-    window = MainWindow(controller)
-    apply_window_icon(window)
+
     window.show()
+    finish_startup(app, splash)
 
     sys.exit(app.exec())

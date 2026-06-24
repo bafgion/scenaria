@@ -160,7 +160,7 @@ docs/                # документация
 tests/               # pytest
 ```
 
-**Текущий релиз:** [v0.10.1](https://github.com/bafgion/scenaria/releases/tag/v0.10.1) — техдолг T1–T5, аудит Playwright export. См. [CHANGELOG.md](CHANGELOG.md).
+**Текущий релиз:** [v0.12.0](https://github.com/bafgion/scenaria/releases/tag/v0.12.0) — splash-экран при запуске. См. [CHANGELOG.md](CHANGELOG.md).
 
 ## Сторонние компоненты
 

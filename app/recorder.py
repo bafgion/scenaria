@@ -603,6 +603,10 @@ class ScenarioRecorder:
         if callback:
             callback(exc)
 
+    def prewarm_ready(self) -> bool:
+        """True after background Playwright driver has started (splash / startup)."""
+        return self._playwright is not None
+
     def _handle_prewarm(self) -> None:
         configure_playwright_browsers()
         if self._playwright is None:
