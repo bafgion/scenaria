@@ -3,31 +3,31 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.brand import BRAND_NAME
 from app.gherkin_ru import GherkinParseError
+from app.mvc.controller_host import RecordingControllerHost
 from app.qt.dialogs import confirm
 from app.scenario_utils import ScenarioNotFoundError, suggest_scenario_name
 from app.steps import normalize_steps
-
-if TYPE_CHECKING:
-    from app.mvc.controllers.recording_controller import RecordingController
 
 
 class RecordingSessionMixin:
     """Browser record/session flow (T3-3)."""
 
-    def sync_browser_state(self: RecordingController) -> None:
+    _append_base_steps: list[dict[str, Any]] | None
+
+    def sync_browser_state(self: RecordingControllerHost) -> None:
         self._sync_browser_state()
 
-    def _sync_browser_state(self: RecordingController) -> None:
+    def _sync_browser_state(self: RecordingControllerHost) -> None:
         if self._session.browser_open and not self._recorder.browser_open:
             self._on_browser_closed()
         if self._session.player_browser and not self._player.browser_open:
             self._on_player_browser_closed()
 
-    def _editor_test_client(self: RecordingController) -> str | None:
+    def _editor_test_client(self: RecordingControllerHost) -> str | None:
         from app.gherkin_context import parse_feature_test_client
 
         text = self._scenario.source_text or ""
@@ -45,7 +45,7 @@ class RecordingSessionMixin:
             self.log.emit(str(exc), "error")
             raise
 
-    def open_browser(self: RecordingController, url: str) -> None:
+    def open_browser(self: RecordingControllerHost, url: str) -> None:
         bridge = self._bridge_ref()
         self._sync_browser_state()
         if self._session.pending or self._recorder.is_busy:
@@ -69,7 +69,7 @@ class RecordingSessionMixin:
             test_client=test_client,
         )
 
-    def _confirm_replace_steps(self: RecordingController) -> bool:
+    def _confirm_replace_steps(self: RecordingControllerHost) -> bool:
         if not self._scenario.steps:
             return True
         if self._parent_widget is None:
@@ -80,7 +80,7 @@ class RecordingSessionMixin:
             "Текущие шаги сценария будут заменены записью.\nПродолжить?",
         )
 
-    def quick_record(self: RecordingController, url: str) -> None:
+    def quick_record(self: RecordingControllerHost, url: str) -> None:
         bridge = self._bridge_ref()
         if self._session.pending or self._recorder.is_busy:
             return
@@ -98,7 +98,7 @@ class RecordingSessionMixin:
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
         )
 
-    def close_browser(self: RecordingController) -> None:
+    def close_browser(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if self._session.pending or self._recorder.is_busy:
             return
@@ -117,7 +117,7 @@ class RecordingSessionMixin:
             on_status=self._recorder_status,
         )
 
-    def focus_browser(self: RecordingController) -> None:
+    def focus_browser(self: RecordingControllerHost) -> None:
         player_active = (
             self._session.playing
             or self._session.player_browser
@@ -141,11 +141,11 @@ class RecordingSessionMixin:
         else:
             self.status.emit("Браузер ещё запускается…", "normal")
 
-    def _on_browser_focused(self: RecordingController, title: str) -> None:
+    def _on_browser_focused(self: RecordingControllerHost, title: str) -> None:
         self.browser_raise.emit(title or "")
         self.status.emit("Браузер на переднем плане", "normal")
 
-    def start_recording(self: RecordingController, url: str) -> None:
+    def start_recording(self: RecordingControllerHost, url: str) -> None:
         bridge = self._bridge_ref()
         if self._session.pending or self._recorder.is_busy:
             return
@@ -170,7 +170,7 @@ class RecordingSessionMixin:
             test_client=test_client,
         )
 
-    def continue_recording(self: RecordingController, url: str, *, prepare_browser: bool = False) -> None:
+    def continue_recording(self: RecordingControllerHost, url: str, *, prepare_browser: bool = False) -> None:
         bridge = self._bridge_ref()
         if self._session.pending or self._recorder.is_busy:
             return
@@ -222,7 +222,7 @@ class RecordingSessionMixin:
             end_step=end_step,
         )
 
-    def _begin_append_recording(self: RecordingController, url: str) -> None:
+    def _begin_append_recording(self: RecordingControllerHost, url: str) -> None:
         bridge = self._bridge_ref()
         self._set_pending(True, "Подготовка дозаписи...")
         base_count = len(self._append_base_steps or [])
@@ -242,7 +242,7 @@ class RecordingSessionMixin:
             test_client=test_client,
         )
 
-    def _on_continue_prepare_done(self: RecordingController, result: dict[str, Any]) -> None:
+    def _on_continue_prepare_done(self: RecordingControllerHost, result: dict[str, Any]) -> None:
         self._session.playing = False
         if result.get("success"):
             self._begin_append_recording(self._scenario.start_url or "")
@@ -256,11 +256,11 @@ class RecordingSessionMixin:
         self.status.emit("Дозапись отменена", "error")
         self._emit_session()
 
-    def _on_append_start_error(self: RecordingController, exc: Exception) -> None:
+    def _on_append_start_error(self: RecordingControllerHost, exc: Exception) -> None:
         self._append_base_steps = None
         self._bridge_ref().emit_event("error", str(exc))
 
-    def stop_recording(self: RecordingController) -> None:
+    def stop_recording(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if self._picking:
             self.cancel_pick_selector()
@@ -274,7 +274,7 @@ class RecordingSessionMixin:
             on_status=self._recorder_status,
         )
 
-    def toggle_pause(self: RecordingController) -> None:
+    def toggle_pause(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if not self._session.recording:
             return
@@ -283,7 +283,7 @@ class RecordingSessionMixin:
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
         )
 
-    def undo_last_step(self: RecordingController) -> None:
+    def undo_last_step(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if not self._session.recording:
             return
@@ -292,7 +292,7 @@ class RecordingSessionMixin:
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
         )
 
-    def fetch_url_from_tab(self: RecordingController) -> None:
+    def fetch_url_from_tab(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if not self._recorder.browser_open:
             self.log.emit("Сначала откройте браузер", "error")
@@ -302,7 +302,7 @@ class RecordingSessionMixin:
             on_error=lambda exc: bridge.emit_event("error", str(exc)),
         )
 
-    def save_browser_session(self: RecordingController, label: str = "", *, on_saved=None, on_error=None) -> None:
+    def save_browser_session(self: RecordingControllerHost, label: str = "", *, on_saved=None, on_error=None) -> None:
         if not self._recorder.browser_open:
             if on_error:
                 on_error(RuntimeError("Сначала откройте браузер"))
@@ -323,7 +323,7 @@ class RecordingSessionMixin:
 
         self._recorder.save_browser_session(label=label, on_complete=_complete, on_error=_fail)
 
-    def save_test_client_sync(self: RecordingController, name: str) -> str:
+    def save_test_client_sync(self: RecordingControllerHost, name: str) -> str:
 
         done = threading.Event()
         holder: dict[str, object] = {}
@@ -344,10 +344,10 @@ class RecordingSessionMixin:
         return str(holder.get("path", ""))
 
     @property
-    def is_picking(self: RecordingController) -> bool:
+    def is_picking(self: RecordingControllerHost) -> bool:
         return self._picking
 
-    def pick_selector(self: RecordingController) -> None:
+    def pick_selector(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         if self._picking:
             self.cancel_pick_selector()
@@ -373,7 +373,7 @@ class RecordingSessionMixin:
             return
         self.log.emit("Откройте браузер для выбора элемента", "error")
 
-    def _start_picking(self: RecordingController, start, on_complete, on_error) -> None:
+    def _start_picking(self: RecordingControllerHost, start, on_complete, on_error) -> None:
         self._picking = True
         self._set_pending(True, "Выбор элемента...")
         self.log.emit("Кликните по элементу в браузере (Esc — отмена)", "info")
@@ -384,7 +384,7 @@ class RecordingSessionMixin:
             self._set_pending(False)
             self.log.emit(str(exc), "error")
 
-    def cancel_pick_selector(self: RecordingController) -> None:
+    def cancel_pick_selector(self: RecordingControllerHost) -> None:
         if not self._picking:
             return
         if self._recorder.browser_open:
@@ -392,12 +392,12 @@ class RecordingSessionMixin:
         if self._player.browser_open or self._player.worker_alive:
             self._player.cancel_pick_selector()
 
-    def apply_recording_modes(self: RecordingController) -> None:
+    def apply_recording_modes(self: RecordingControllerHost) -> None:
         self._recorder.set_filter_mode(self._session.filter_recording)
         self._recorder.set_nav_only_mode(self._session.nav_only_recording)
         self._recorder.set_hover_record_mode(self._session.hover_recording)
 
-    def on_step_row_selected(self: RecordingController, step: object) -> None:
+    def on_step_row_selected(self: RecordingControllerHost, step: object) -> None:
         if not self._recorder.browser_open:
             return
 
@@ -413,14 +413,14 @@ class RecordingSessionMixin:
             return
         self._recorder.highlight_selector(str(selector), on_error=on_error)
 
-    def _on_browser_opened(self: RecordingController) -> None:
+    def _on_browser_opened(self: RecordingControllerHost) -> None:
         self._session.browser_open = True
         self._set_pending(False)
         self.status.emit("Браузер открыт", "success")
         self.log.emit("Браузер готов", "success")
         self._emit_session()
 
-    def _on_browser_closed(self: RecordingController) -> None:
+    def _on_browser_closed(self: RecordingControllerHost) -> None:
         self._session.browser_open = False
         self._session.recording = False
         self._session.paused = False
@@ -432,7 +432,7 @@ class RecordingSessionMixin:
         self.log.emit("Браузер закрыт", "info")
         self._emit_session()
 
-    def _on_recording_started(self: RecordingController, start_url: str = "") -> None:
+    def _on_recording_started(self: RecordingControllerHost, start_url: str = "") -> None:
         self._session.browser_open = True
         self._session.recording = True
         self._session.paused = False
@@ -449,7 +449,7 @@ class RecordingSessionMixin:
             self.log.emit("Запись активна", "success")
         self._emit_session()
 
-    def _on_recording_stopped(self: RecordingController, steps: list[dict[str, Any]]) -> None:
+    def _on_recording_stopped(self: RecordingControllerHost, steps: list[dict[str, Any]]) -> None:
         if self._append_base_steps is not None:
             base_count = len(self._append_base_steps)
             steps = normalize_steps(list(self._append_base_steps) + list(steps))
@@ -486,12 +486,12 @@ class RecordingSessionMixin:
             self.save_prompt.emit(len(steps))
         self._emit_session()
 
-    def _on_pause_toggled(self: RecordingController, paused: bool) -> None:
+    def _on_pause_toggled(self: RecordingControllerHost, paused: bool) -> None:
         self._session.paused = paused
         self.status.emit("Запись на паузе" if paused else "Запись продолжена", "paused" if paused else "recording")
         self._emit_session()
 
-    def _on_steps_undone(self: RecordingController, steps: list[dict[str, Any]]) -> None:
+    def _on_steps_undone(self: RecordingControllerHost, steps: list[dict[str, Any]]) -> None:
         if self._append_base_steps is not None:
             merged = normalize_steps(list(self._append_base_steps) + list(steps))
             self._scenario.set_steps(merged)
@@ -500,11 +500,11 @@ class RecordingSessionMixin:
         self._scenario.set_steps(steps)
         self.log.emit(f"Шагов после отмены: {len(steps)}", "info")
 
-    def _on_url_fetched(self: RecordingController, url: str) -> None:
+    def _on_url_fetched(self: RecordingControllerHost, url: str) -> None:
         self._scenario.set_start_url(url)
         self.log.emit(f"URL из вкладки: {url}", "info")
 
-    def _on_picker_done(self: RecordingController, selector: str) -> None:
+    def _on_picker_done(self: RecordingControllerHost, selector: str) -> None:
         self._picking = False
         self._set_pending(False)
         if selector:
@@ -513,7 +513,7 @@ class RecordingSessionMixin:
         else:
             self.log.emit("Выбор элемента отменён", "info")
 
-    def _validate_url(self: RecordingController, url: str) -> bool:
+    def _validate_url(self: RecordingControllerHost, url: str) -> bool:
         if not url or url.startswith("http"):
             return True
         self.log.emit("Укажите корректный URL (https://...)", "error")

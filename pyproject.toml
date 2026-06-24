@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenaria"
-version = "0.11.1"
+version = "0.11.2"
 description = "Scenaria — запись и запуск автотестов сайтов (Gherkin + Playwright)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.4.0",
+    "mypy>=1.0",
     "pillow>=10.0.0",
 ]
 build = [
@@ -38,6 +39,16 @@ testpaths = ["tests"]
 markers = [
     "integration: launches a real browser; runs first and serialized (before Qt tests)",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "packages/scenaria_vanessa"
+follow_imports = "skip"
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "scenaria_vanessa.*"
+ignore_missing_imports = false
 
 [tool.ruff]
 line-length = 100

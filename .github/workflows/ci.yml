@@ -33,6 +33,10 @@ jobs:
         shell: pwsh
         run: python scripts/check_mixin_methods.py
 
+      - name: Mypy
+        shell: pwsh
+        run: python -m mypy app/mvc/controllers app/mvc/models app/playwright_export.py app/step_catalog.py
+
       - name: Run tests
         shell: pwsh
         run: python -m pytest tests/ -q

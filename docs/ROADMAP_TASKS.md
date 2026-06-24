@@ -24,7 +24,9 @@
 | **17** | — | T8a — Player (ядро) | ✅ | 3/3 |
 | **18** | v0.11.0 | T8b — Player (фасад) | ✅ | 3/3 |
 | **19** | v0.11.1 | T9 — Gherkin split | ✅ | 4/4 |
-| **20** | v0.11.2 | T10 — mypy | ⬜ | 0/3 |
+| **20** | v0.11.2 | T10 — mypy | ✅ | 3/3 |
+
+**Спринт 20 закрыт:** mypy на `app/mvc/controllers`, `app/mvc/models`, `playwright_export`, `step_catalog`; `RecordingControllerHost` Protocol для mixins.
 
 **Спринт 19 закрыт:** `gherkin_ru.py` 288 LOC (фасад); модули `gherkin_parse`, `gherkin_serialize`; `scripts/split_gherkin_ru.py`.
 
@@ -266,35 +268,25 @@
 
 ---
 
-## Спринт 20 → v0.11.2 — Static typing (T10)
+## Спринт 20 → v0.11.2 — Static typing (T10) ✅
 
-### T10-1 — mypy в проекте ⬜
-
-**Поведение:**
-- `optional-dependencies.dev`: `mypy>=1.0`
-- `[tool.mypy]` — `python_version`, `packages = ["app.mvc"]`
-
-**Оценка:** S
-
----
-
-### T10-2 — CI mypy ⬜
+### T10-1 — mypy в проекте ✅
 
 **Критерии:**
-- [ ] Шаг в `ci.yml` или отдельный job
-- [ ] 0 errors на `app/mvc/controllers/`, `app/mvc/models/`
+- [x] `optional-dependencies.dev`: `mypy>=1.0`
+- [x] `[tool.mypy]` — `python_version`, `follow_imports = "skip"`, `mypy_path` для vanessa
 
-**Оценка:** M · **Зависимости:** T10-1, желательно T8
-
----
-
-### T10-3 — Типы export + catalog ⬜
+### T10-2 — CI mypy ✅
 
 **Критерии:**
-- [ ] `app/playwright_export.py`, `app/step_catalog.py` в scope mypy
-- [ ] Без `# type: ignore` без комментария
+- [x] Шаг **Mypy** в `ci.yml`
+- [x] 0 errors на `app/mvc/controllers/`, `app/mvc/models/`
 
-**Оценка:** M
+### T10-3 — Типы export + catalog ✅
+
+**Критерии:**
+- [x] `app/playwright_export.py`, `app/step_catalog.py` в scope mypy
+- [x] Без `# type: ignore` в scope
 
 ---
 
@@ -339,9 +331,9 @@
 | T9-2 | gherkin_serialize | 19 | M | ✅ | T9-1 |
 | T9-3 | gherkin_ru facade | 19 | S | ✅ | T9-1,2 |
 | T9-4 | blocks integration | 19 | M | ✅ | T9-1 |
-| T10-1 | mypy config | 20 | S | ⬜ | T10-2 |
-| T10-2 | mypy CI | 20 | M | ⬜ | T10-1, T8 |
-| T10-3 | mypy export/catalog | 20 | M | ⬜ | T10-2 |
+| T10-1 | mypy config | 20 | S | ✅ | T10-2 |
+| T10-2 | mypy CI | 20 | M | ✅ | T10-1, T8 |
+| T10-3 | mypy export/catalog | 20 | M | ✅ | T10-2 |
 
 ---
 

@@ -35,6 +35,29 @@ class RecordingController(
     ValidateCoordinatorMixin,
     RecordingSessionMixin,
 ):
+    """Recording, playback, and browser session."""
+
+    _scenario: ScenarioModel
+    _catalog: CatalogModel
+    _session: SessionModel
+    _recorder: ScenarioRecorder
+    _player: ScenarioPlayer
+    _scenario_controller: Any
+    _play_log_buffer: list[str]
+    _play_started_at: float
+    _picking: bool
+    _batch_running: bool
+    _batch_stop_requested: bool
+    _batch_runner_id: str
+    _last_batch_meta: dict[str, Any]
+    _parent_widget: Any
+    _bridge: WorkerBridge | None
+    _append_base_steps: list[dict[str, Any]] | None
+    _play_scenario_queue: list[dict[str, Any]]
+    _play_queue_index: int
+    _play_start_step: int
+    _play_end_step: int | None
+
     status = Signal(str, str)  # message, tone
     log = Signal(str, str)  # message, tag
     play_results = Signal(dict, int)  # payload, duration_ms

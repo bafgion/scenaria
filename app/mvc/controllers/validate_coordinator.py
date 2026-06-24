@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from app.mvc.controller_host import RecordingControllerHost
 from app.scenario_utils import ScenarioNotFoundError
-
-if TYPE_CHECKING:
-    from app.mvc.controllers.recording_controller import RecordingController
 
 
 class ValidateCoordinatorMixin:
     """Selector validate flow (T3-2)."""
 
-    def validate_current(self: RecordingController) -> None:
+    def validate_current(self: RecordingControllerHost) -> None:
         bridge = self._bridge_ref()
         try:
             scenario = self._scenario_controller.current_scenario_dict()
@@ -32,7 +30,7 @@ class ValidateCoordinatorMixin:
             on_status=self._recorder_status,
         )
 
-    def _on_validation_done(self: RecordingController, payload: dict[str, Any] | list[str]) -> None:
+    def _on_validation_done(self: RecordingControllerHost, payload: dict[str, Any] | list[str]) -> None:
         if isinstance(payload, list):
             payload = {"issues": payload, "results": []}
         issues = list(payload.get("issues") or [])

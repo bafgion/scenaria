@@ -6,12 +6,13 @@ import threading
 import time
 from datetime import UTC
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from PySide6.QtCore import QTimer
 
 from app.brand import BRAND_NAME
 from app.feature_store import get_root
+from app.mvc.controller_host import RecordingControllerHost
 from app.qt.dialogs import alert
 from app.qt.worker_bridge import WorkerBridge
 from app.run_display import compare_run_with_recording
@@ -19,14 +20,11 @@ from app.run_status_store import record_run
 from app.run_suite import collect_play_scenarios
 from app.scenario_utils import ScenarioNotFoundError
 
-if TYPE_CHECKING:
-    from app.mvc.controllers.recording_controller import RecordingController
-
 
 class PlaybackCoordinatorMixin:
     """Playback flow (T3-1)."""
 
-    def _resolve_play_scenarios(self: RecordingController) -> list[dict[str, Any]]:
+    def _resolve_play_scenarios(self: RecordingControllerHost) -> list[dict[str, Any]]:
         path = self._scenario.feature_path
         text = self._scenario.source_text
         if path is not None or text:
@@ -38,7 +36,7 @@ class PlaybackCoordinatorMixin:
                 pass
         return [self._scenario_controller.current_scenario_dict()]
 
-    def play(self: RecordingController, *, start_step: int = 0, end_step: int | None = None) -> None:
+    def play(self: RecordingControllerHost, *, start_step: int = 0, end_step: int | None = None) -> None:
         bridge = self._bridge_ref()
         try:
             self._play_scenario_queue = self._resolve_play_scenarios()
@@ -61,7 +59,7 @@ class PlaybackCoordinatorMixin:
             self.log.emit(f"Таблица примеров: {len(self._play_scenario_queue)} прогонов", "info")
         self._run_next_queued_play(bridge)
 
-    def _run_next_queued_play(self: RecordingController, bridge: WorkerBridge) -> None:
+    def _run_next_queued_play(self: RecordingControllerHost, bridge: WorkerBridge) -> None:
         if self._play_queue_index >= len(self._play_scenario_queue):
             self._play_scenario_queue = []
             return
@@ -74,7 +72,7 @@ class PlaybackCoordinatorMixin:
             self._sync_player_browser_state()
             if self._session.player_browser and not self._player.browser_open:
                 self._session.player_browser = False
-            self._play_log_buffer = []
+            self._play_log_buffer: list[str] = []
             self._play_started_at = time.time()
             self._session.playing = True
             self._session.last_failed_step_index = None
@@ -150,18 +148,18 @@ class PlaybackCoordinatorMixin:
             end_step=end_step,
         )
 
-    def _sync_player_browser_state(self: RecordingController) -> None:
+    def _sync_player_browser_state(self: RecordingControllerHost) -> None:
         self._session.player_browser = self._player.browser_open
 
-    def _player_worker_active(self: RecordingController) -> bool:
+    def _player_worker_active(self: RecordingControllerHost) -> bool:
         return self._player.worker_alive
 
     @property
-    def player_worker_active(self: RecordingController) -> bool:
+    def player_worker_active(self: RecordingControllerHost) -> bool:
         return self._player.worker_alive
 
     def _start_player_play(
-        self,
+        self: RecordingControllerHost,
         scenario: dict[str, Any],
         on_log,
         on_done,
@@ -196,7 +194,7 @@ class PlaybackCoordinatorMixin:
         self._set_pending(False)
         self._emit_session()
 
-    def handle_escape(self: RecordingController) -> None:
+    def handle_escape(self: RecordingControllerHost) -> None:
         if self._picking:
             self.cancel_pick_selector()
             return
@@ -206,7 +204,7 @@ class PlaybackCoordinatorMixin:
         if self._session.playing:
             self.stop_playback()
 
-    def stop_playback(self: RecordingController) -> None:
+    def stop_playback(self: RecordingControllerHost) -> None:
         if self._picking:
             self.cancel_pick_selector()
         self._recorder.stop_playback()
@@ -226,21 +224,21 @@ class PlaybackCoordinatorMixin:
             self._session.player_browser = False
         self._emit_session()
 
-    def close_player_browser(self: RecordingController) -> None:
+    def close_player_browser(self: RecordingControllerHost) -> None:
         if not self._player.browser_open:
             return
         self._player.stop()
         self._session.player_browser = False
         self._emit_session()
 
-    def _on_player_browser_started(self: RecordingController) -> None:
+    def _on_player_browser_started(self: RecordingControllerHost) -> None:
         self._session.player_browser = True
         self._set_pending(False)
         self.status.emit("Браузер теста запущен", "success")
         self.log.emit("Браузер теста готов", "success")
         self._emit_session()
 
-    def _on_player_browser_closed(self: RecordingController) -> None:
+    def _on_player_browser_closed(self: RecordingControllerHost) -> None:
         self._session.player_browser = False
         self._picking = False
         if not self._batch_running:
@@ -250,17 +248,17 @@ class PlaybackCoordinatorMixin:
         self.log.emit("Браузер теста закрыт", "info")
         self._emit_session()
 
-    def _on_play_log(self: RecordingController, message: str) -> None:
+    def _on_play_log(self: RecordingControllerHost, message: str) -> None:
         self._play_log_buffer.append(message)
         self.log.emit(message, "info")
 
-    def _on_play_step(self: RecordingController, payload: dict[str, Any]) -> None:
+    def _on_play_step(self: RecordingControllerHost, payload: dict[str, Any]) -> None:
         step_index = int(payload.get("step_index", payload.get("index", -1)))
         if step_index >= 0:
             self.switch_tab.emit("editor")
             self.play_step.emit(step_index)
 
-    def _on_play_queue_continue(self: RecordingController) -> None:
+    def _on_play_queue_continue(self: RecordingControllerHost) -> None:
         """Start the next outline example after the player worker thread has exited."""
         if not self._play_scenario_queue or self._play_queue_index >= len(self._play_scenario_queue):
             return
@@ -271,7 +269,7 @@ class PlaybackCoordinatorMixin:
             return
         self._run_next_queued_play(self._bridge_ref())
 
-    def _on_play_done(self: RecordingController, payload: dict[str, Any]) -> None:
+    def _on_play_done(self: RecordingControllerHost, payload: dict[str, Any]) -> None:
         try:
             success = bool(payload.get("success"))
             message = str(payload.get("message", ""))
@@ -320,7 +318,7 @@ class PlaybackCoordinatorMixin:
             self._set_pending(False)
             self._emit_session()
 
-    def _save_html_report(self: RecordingController, payload: dict[str, Any], *, duration_ms: int) -> Path | None:
+    def _save_html_report(self: RecordingControllerHost, payload: dict[str, Any], *, duration_ms: int) -> Path | None:
         from datetime import datetime
 
         from app.html_report import save_play_html_report
