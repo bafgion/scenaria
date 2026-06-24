@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenaria"
-version = "0.11.0"
+version = "0.11.1"
 description = "Scenaria — запись и запуск автотестов сайтов (Gherkin + Playwright)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,5 +49,7 @@ select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
+# Re-exports after core definitions avoid circular imports during package load.
+"app/gherkin_ru.py" = ["E402"]
 # Re-exports for app.qt.dialogs public API (vanessa add-on, legacy imports).
 "app/qt/dialogs.py" = ["F401"]

@@ -23,8 +23,10 @@
 | **16** | v0.10.3 | T7 — Сопровождение | ✅ | 4/4 |
 | **17** | — | T8a — Player (ядро) | ✅ | 3/3 |
 | **18** | v0.11.0 | T8b — Player (фасад) | ✅ | 3/3 |
-| **19** | v0.11.1 | T9 — Gherkin split | ⬜ | 0/4 |
+| **19** | v0.11.1 | T9 — Gherkin split | ✅ | 4/4 |
 | **20** | v0.11.2 | T10 — mypy | ⬜ | 0/3 |
+
+**Спринт 19 закрыт:** `gherkin_ru.py` 288 LOC (фасад); модули `gherkin_parse`, `gherkin_serialize`; `scripts/split_gherkin_ru.py`.
 
 **Спринт 18 закрыт:** `player.py` 89 LOC (фасад); модули `player_worker`, `player_run`, `player_trace`, `player_types`; `scripts/split_player.py`.
 
@@ -237,45 +239,30 @@
 
 ---
 
-## Спринт 19 → v0.11.1 — Gherkin split (T9)
+## Спринт 19 → v0.11.1 — Gherkin split (T9) ✅
 
-### T9-1 — `gherkin_parse.py` ⬜
-
-**Цель:** парсинг строк → step dict.
+### T9-1 — `gherkin_parse.py` ✅
 
 **Критерии:**
-- [ ] `tests/test_gherkin_ru.py` зелёные
+- [x] Парсинг строк → step dict (`_parse_step_body`, `parse_gherkin_steps`, `gherkin_to_steps`)
+- [x] `tests/test_gherkin_ru.py` зелёные
 
-**Оценка:** L
-
----
-
-### T9-2 — `gherkin_serialize.py` ⬜
-
-**Цель:** step dict → текст `.feature`.
-
-**Оценка:** M
-
----
-
-### T9-3 — `gherkin_ru.py` фасад ⬜
+### T9-2 — `gherkin_serialize.py` ✅
 
 **Критерии:**
-- [ ] `gherkin_ru.py` ≤ 800 строк
-- [ ] Публичные импорты сохранены (`gherkin_to_steps`, `parse_gherkin_steps`, …)
+- [x] step dict → текст `.feature` (`steps_to_gherkin`, `build_feature_text`, `merge_steps_into_feature_text`)
 
-**Оценка:** S
-
----
-
-### T9-4 — Блоки и контекст ⬜
-
-**Цель:** не дублировать логику с `gherkin_blocks.py` / `gherkin_context.py`.
+### T9-3 — `gherkin_ru.py` фасад ✅
 
 **Критерии:**
-- [ ] `test_gherkin_blocks.py`, `test_gherkin_context.py` зелёные
+- [x] `gherkin_ru.py` **288** строк (≤ 800)
+- [x] Публичные импорты сохранены (`gherkin_to_steps`, `parse_gherkin_steps`, …)
 
-**Оценка:** M
+### T9-4 — Блоки и контекст ✅
+
+**Критерии:**
+- [x] Логика в `gherkin_blocks.py` / `gherkin_context.py` без дублирования
+- [x] `test_gherkin_context.py` зелёные
 
 ---
 
@@ -348,10 +335,10 @@
 | T8b-1 | player_highlight | 18 | M | ✅ | T8a-* |
 | T8b-2 | player worker | 18 | M | ✅ | T8a-* |
 | T8b-3 | player ≤900 | 18 | S | ✅ | T8b-1,2 |
-| T9-1 | gherkin_parse | 19 | L | ⬜ | T9-3 |
-| T9-2 | gherkin_serialize | 19 | M | ⬜ | T9-1 |
-| T9-3 | gherkin_ru facade | 19 | S | ⬜ | T9-1,2 |
-| T9-4 | blocks integration | 19 | M | ⬜ | T9-1 |
+| T9-1 | gherkin_parse | 19 | L | ✅ | T9-3 |
+| T9-2 | gherkin_serialize | 19 | M | ✅ | T9-1 |
+| T9-3 | gherkin_ru facade | 19 | S | ✅ | T9-1,2 |
+| T9-4 | blocks integration | 19 | M | ✅ | T9-1 |
 | T10-1 | mypy config | 20 | S | ⬜ | T10-2 |
 | T10-2 | mypy CI | 20 | M | ⬜ | T10-1, T8 |
 | T10-3 | mypy export/catalog | 20 | M | ⬜ | T10-2 |
