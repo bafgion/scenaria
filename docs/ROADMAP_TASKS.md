@@ -22,9 +22,11 @@
 | **15** | v0.10.2 | T6 — CI без skip | ✅ | 4/4 |
 | **16** | v0.10.3 | T7 — Сопровождение | ✅ | 4/4 |
 | **17** | — | T8a — Player (ядро) | ✅ | 3/3 |
-| **18** | v0.11.0 | T8b — Player (фасад) | ⬜ | 0/3 |
+| **18** | v0.11.0 | T8b — Player (фасад) | ✅ | 3/3 |
 | **19** | v0.11.1 | T9 — Gherkin split | ⬜ | 0/4 |
 | **20** | v0.11.2 | T10 — mypy | ⬜ | 0/3 |
+
+**Спринт 18 закрыт:** `player.py` 89 LOC (фасад); модули `player_worker`, `player_run`, `player_trace`, `player_types`; `scripts/split_player.py`.
 
 **Спринт 17 закрыт:** `player.py` 754 LOC; модули `player_step_executor`, `player_context`, `player_step_helpers`, `player_highlight`.
 
@@ -143,7 +145,7 @@
 
 **Критерии:**
 - [x] 5 resize-тестов на CI без skip
-- [x] `_resize_for_full_toolbar` по `chrome + full_layout_min_width + 80` вместо цикла
+- [x] `_resize_for_full_toolbar` — итеративный пересчёт `chrome + full_layout` до выхода из compact (chrome растёт после show)
 
 ### T6-3 — Регрессия `_status_brief` ✅
 
@@ -214,34 +216,24 @@
 
 ---
 
-## Спринт 18 → v0.11.0 — T8b: Player — фасад
+## Спринт 18 → v0.11.0 — T8b: Player — фасад ✅
 
-### T8b-1 — `player_highlight.py` ⬜
-
-**Цель:** `_maybe_highlight`, cleanup, picker overlay hooks.
-
-**Оценка:** M
-
----
-
-### T8b-2 — Worker lifecycle ⬜
-
-**Цель:** thread/worker/queue остаются в `ScenarioPlayer`; координаторы — делегаты.
+### T8b-1 — `player_highlight.py` ✅
 
 **Критерии:**
-- [ ] Ручной smoke: прогон, stop, play from step N, batch queue
+- [x] `_maybe_highlight`, cleanup hooks, `reset_highlight_cleanup_state` в `player_highlight.py` (T8a/T8b)
 
-**Оценка:** M
-
----
-
-### T8b-3 — `player.py` ≤ 900 ⬜
+### T8b-2 — Worker lifecycle ✅
 
 **Критерии:**
-- [ ] LOC ≤ 900
-- [ ] `scripts/split_player.py` (опционально, по образцу recording_controller)
+- [x] `ScenarioPlayer` в `player_worker.py` — thread, picker queue, browser session
+- [x] `test_player_picker.py`, `test_player_pick_cancel.py`, `test_player_completion.py` зелёные
 
-**Оценка:** S · **Зависимости:** T8a-*
+### T8b-3 — `player.py` ≤ 900 ✅
+
+**Критерии:**
+- [x] `player.py` **89** строк (фасад)
+- [x] `scripts/split_player.py` — layout reference
 
 ---
 
@@ -353,9 +345,9 @@
 | T8a-1 | player_step_executor | 17 | L | ✅ | T8b-* |
 | T8a-2 | player_context | 17 | M | ✅ | T8a-1 |
 | T8a-3 | player interim LOC | 17 | S | ✅ | T8a-1,2 |
-| T8b-1 | player_highlight | 18 | M | ⬜ | T8a-* |
-| T8b-2 | player worker | 18 | M | ⬜ | T8a-* |
-| T8b-3 | player ≤900 | 18 | S | ⬜ | T8b-1,2 |
+| T8b-1 | player_highlight | 18 | M | ✅ | T8a-* |
+| T8b-2 | player worker | 18 | M | ✅ | T8a-* |
+| T8b-3 | player ≤900 | 18 | S | ✅ | T8b-1,2 |
 | T9-1 | gherkin_parse | 19 | L | ⬜ | T9-3 |
 | T9-2 | gherkin_serialize | 19 | M | ⬜ | T9-1 |
 | T9-3 | gherkin_ru facade | 19 | S | ⬜ | T9-1,2 |

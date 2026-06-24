@@ -68,7 +68,7 @@ Workflow `.github/workflows/ci.yml` на `push` / `pull_request` в `master`:
 
 Release workflow (тег `v*`) — один прогон pytest без retry, затем сборка portable EXE.
 
-На CI **0 skipped** тестов (спринт 15): update runners — `QSignalSpy` + фикстура `sync_update_threads` (патч `threading.Thread`); toolbar — расчёт ширины `chrome + full_layout_min_width` вместо resize-циклов.
+На CI **0 skipped** тестов (спринт 15): update runners — `QSignalSpy` + фикстура `sync_update_threads` (патч `threading.Thread`); toolbar — итеративный пересчёт `chrome + full_layout_min_width` до выхода из compact (chrome растёт после `show()`).
 
 ## Линтер
 

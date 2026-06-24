@@ -27,26 +27,40 @@ def _full_toolbar_width(bar: EditorActionBar) -> int:
     return bar._fixed_chrome_width() + bar.toolbar.full_layout_min_width() + 80
 
 
-def _resize_for_full_toolbar(bar: EditorActionBar, qapp) -> int:
+def _ensure_full_toolbar(bar: EditorActionBar, qapp, *, height: int | None = None) -> int:
+    """Resize until toolbar leaves auto-compact; chrome width can grow after show()."""
+    if height is None:
+        height = bar.sizeHint().height()
     bar.show()
     qapp.processEvents()
-    width = _full_toolbar_width(bar)
-    bar.resize(width, bar.sizeHint().height())
-    qapp.processEvents()
+    width = 0
+    for _ in range(20):
+        width = max(width, _full_toolbar_width(bar))
+        bar.resize(width, height)
+        qapp.processEvents()
+        if not bar.toolbar.is_auto_compact():
+            return width
     assert not bar.toolbar.is_auto_compact(), (
         f"expected full toolbar at {width}px (chrome={bar._fixed_chrome_width()})"
     )
     return width
 
 
+def _resize_for_full_toolbar(bar: EditorActionBar, qapp) -> int:
+    return _ensure_full_toolbar(bar, qapp)
+
+
 def _resize_workspace_for_full_toolbar(workspace: EditorWorkspace, qapp, *, width: int | None = None) -> int:
     workspace.show()
     qapp.processEvents()
     bar = workspace.editor_action_bar
-    if width is None:
-        width = _full_toolbar_width(bar)
-    workspace.resize(width, 700)
-    qapp.processEvents()
+    width = width or 0
+    for _ in range(20):
+        width = max(width, _full_toolbar_width(bar))
+        workspace.resize(width, 700)
+        qapp.processEvents()
+        if not bar.toolbar.is_auto_compact():
+            return width
     assert not bar.toolbar.is_auto_compact(), f"expected full toolbar at workspace width {width}px"
     return width
 
@@ -150,11 +164,13 @@ def test_side_splitter_moves_when_toolbar_shows_labels(qapp) -> None:
     splitter.addWidget(workspace)
     layout.addWidget(splitter)
 
-    workspace_min = workspace.minimumSizeHint().width()
-    host_width = max(3200, workspace_min + 1200)
-    splitter.setSizes([320, host_width - 320])
-    host.resize(host_width, 700)
+    host.resize(4000, 700)
     host.show()
+    qapp.processEvents()
+    needed_workspace = _resize_workspace_for_full_toolbar(workspace, qapp)
+    host_width = max(3200, needed_workspace + 520)
+    host.resize(host_width, 700)
+    splitter.setSizes([320, host_width - 320])
     qapp.processEvents()
     _resize_workspace_for_full_toolbar(workspace, qapp, width=host_width - 320)
 

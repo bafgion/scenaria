@@ -99,6 +99,7 @@ def reset_highlight_cleanup_state() -> None:
     _highlight_cleanup_contexts.clear()
     _highlight_cleanup_pages.clear()
 
+
 def highlight_selector(page: Page, selector: str) -> bool:
     if not selector:
         return False
